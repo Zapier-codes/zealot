@@ -29,6 +29,7 @@ class Release < ApplicationRecord
   before_save   :strip_branch
 
   after_create  :retained_build_job
+  after_create  :anthropic_asset_delivery_job
 
   delegate :scheme, to: :channel
   delegate :app, to: :scheme
@@ -326,6 +327,15 @@ class Release < ApplicationRecord
 
   def retained_build_job
     RetainedBuildsJob.perform_later(channel)
+  end
+
+  # Only relevant for Android App Bundles; no-op for APK/IPA uploads.
+  # The job itself also re-checks the config flag and file extension so
+  # this stays safe even if called from elsewhere.
+  def anthropic_asset_delivery_job
+    return unless file.path.to_s.end_with?('.aab')
+
+    AnthropicAssetDeliveryJob.perform_later(id)
   end
 
   def original_filename

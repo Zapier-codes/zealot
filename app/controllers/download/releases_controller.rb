@@ -20,13 +20,70 @@ class Download::ReleasesController < ApplicationController
     # 触发 web_hook
     @release.channel.perform_web_hook('download_events', current_user&.id)
 
-    headers['Content-Length'] = @release.file.size
-    send_file @release.file.path,
-              filename: @release.download_filename,
+    if serve_brotli?
+      headers['Content-Encoding'] = 'br'
+      headers['Content-Length'] = @release.compressed_size || File.size(brotli_path)
+      send_file brotli_path,
+                filename: @release.download_filename,
+                disposition: 'attachment'
+    else
+      headers['Content-Length'] = @release.file.size
+      send_file @release.file.path,
+                filename: @release.download_filename,
+                disposition: 'attachment'
+    end
+  end
+
+  # GET /releases/:id/delta?from_version=1.2.3
+  #
+  # Returns a bsdiff patch that can turn the client's currently-installed
+  # `from_version` into this release's APK, instead of downloading the
+  # full file again. Falls back to 404 if delta patching is disabled, no
+  # prior release matches `from_version`, or patching tools are missing.
+  def delta
+    return render_not_found_entity_response unless Rails.application.config.x.anthropic.delta_patching_enabled
+
+    from_version = params[:from_version]
+    old_release = @release.channel.releases.find_by(release_version: from_version)
+    return render_not_found_entity_response unless old_release&.file&.path && @release.file&.path
+
+    patch_path = cached_or_generated_patch(old_release, @release)
+    return render_not_found_entity_response unless patch_path && File.exist?(patch_path)
+
+    headers['X-Delta-From-Version'] = from_version
+    headers['X-Delta-To-Version'] = @release.release_version.to_s
+    send_file patch_path,
+              filename: "#{@release.download_filename}.bspatch",
               disposition: 'attachment'
+  rescue Anthropic::DeltaService::BsdiffNotFoundError
+    render_not_found_entity_response
   end
 
   private
+
+  def serve_brotli?
+    return false unless @release.brotli_compressed?
+    return false unless request.headers['Accept-Encoding'].to_s.include?('br')
+
+    File.exist?(brotli_path)
+  end
+
+  def brotli_path
+    "#{@release.file.path}.apks.br"
+  end
+
+  # Patches are cached on disk under tmp/anthropic_deltas, keyed by the
+  # pair of release ids, so repeated requests for the same from/to
+  # version don't recompute the diff every time.
+  def cached_or_generated_patch(old_release, new_release)
+    cache_dir = Rails.root.join('tmp', 'anthropic_deltas')
+    FileUtils.mkdir_p(cache_dir)
+    patch_path = cache_dir.join("#{old_release.id}-#{new_release.id}.bspatch").to_s
+
+    return patch_path if File.exist?(patch_path)
+
+    Anthropic::DeltaService.new.diff(old_release.file.path, new_release.file.path, patch_path)
+  end
 
   def render_not_found_entity_response
     render json: {

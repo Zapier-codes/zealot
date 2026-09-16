@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2025_11_21_145052) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_16_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_stat_statements"
@@ -286,6 +286,11 @@ ActiveRecord::Schema[8.1].define(version: 2025_11_21_145052) do
     t.string "source"
     t.datetime "updated_at", null: false
     t.integer "version", null: false
+    t.string "asset_pack_type"
+    t.boolean "brotli_compressed", default: false, null: false
+    t.bigint "original_size"
+    t.bigint "compressed_size"
+    t.index ["asset_pack_type"], name: "index_releases_on_asset_pack_type"
     t.index ["build_version"], name: "index_releases_on_build_version"
     t.index ["bundle_id"], name: "index_releases_on_bundle_id"
     t.index ["channel_id", "version"], name: "index_releases_on_channel_id_and_version", unique: true

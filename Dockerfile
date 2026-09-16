@@ -69,11 +69,12 @@ ARG REPLACE_CHINA_MIRROR="true"
 ARG ORIGINAL_REPO_URL="dl-cdn.alpinelinux.org"
 ARG MIRROR_REPO_URL="mirrors.ustc.edu.cn"
 ARG RUBYGEMS_SOURCE="https://gems.ruby-china.com/"
-ARG PACKAGES="tzdata curl logrotate postgresql-client postgresql-dev imagemagick imagemagick-dev libwebp-dev libpng-dev tiff-dev openssl openssl-dev caddy gcompat"
+ARG PACKAGES="tzdata curl logrotate postgresql-client postgresql-dev imagemagick imagemagick-dev libwebp-dev libpng-dev tiff-dev openssl openssl-dev caddy gcompat openjdk17-jre-headless brotli bsdiff"
 ARG RUBY_GEMS="bundler"
 ARG APP_ROOT=/app
 ARG S6_OVERLAY_VERSION="2.2.0.3"
 ARG TARGETARCH
+ARG BUNDLETOOL_VERSION="1.17.2"
 
 ENV TZ="Asia/Shanghai" \
     PS1="$(whoami)@$(hostname):$(pwd)$ " \
@@ -92,6 +93,10 @@ RUN set -ex && \
     fi && \
     apk --update --no-cache add $PACKAGES && \
     gem install $RUBY_GEMS && \
+    curl -L -o /usr/local/bin/bundletool.jar \
+      "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar" && \
+    printf '#!/bin/sh\nexec java -jar /usr/local/bin/bundletool.jar "$@"\n' > /usr/local/bin/bundletool && \
+    chmod +x /usr/local/bin/bundletool && \
     echo "Setting variables for ${TARGETARCH}" && \
     case "$TARGETARCH" in \
     "amd64") \

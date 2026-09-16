@@ -94,6 +94,7 @@ Rails.application.routes.draw do
     resources :releases, only: :show do
       member do
         get ':filename', action: :download, filename: /.+/, as: 'filename'
+        get :delta, action: :delta
       end
     end
 
