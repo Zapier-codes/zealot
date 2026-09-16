@@ -70,12 +70,14 @@ Each task below is meant to be handed to one session. A session should:
 
 ## Open questions for the operator (don't guess — ask)
 
-- Is task #9 (public storefront) still in scope now that the console itself
-  is internal-only? If there's no public store, Aptoide/MCP discovery may
-  not be needed at all.
-- Does #2 (Dockerfile verification) get unblocked by giving a session actual
-  Docker access, or should the operator run the build themselves and paste
-  back the failure output for a session to fix blind?
+- ~~Is task #9 (public storefront) still in scope~~ **Answered:** decision on
+  #9 is deferred until the console has been successfully hosted. Do not start
+  #9 before then.
+- ~~Does #2 get unblocked by Docker access or operator-run builds?~~
+  **Answered:** GitHub Actions is the sole source of truth for builds. No
+  session should attempt local/sandbox Docker verification. The operator
+  will run the Actions build and paste back failure output for a session to
+  debug.
 
 ## Session log
 
@@ -103,3 +105,15 @@ Each task below is meant to be handed to one session. A session should:
   (no rubygems/bundler network access in this sandbox) — run
   `bundle install` after applying. R2 path is logic-reviewed but not
   integration-tested against a real R2 bucket.
+- **Session 6 (this session)** — Confirmed `ReleaseStorage` landed on `main`
+  (`f0ee5e25`). Operator answered both open questions (see above: #2 is
+  GitHub-Actions-verified only, #9 deferred until successful hosting).
+  Surveyed `github.com/ShivaReddyVanja/aetheroll` (cloned read-only, not
+  merged/vendored) as the architectural reference for task #6: it uses
+  GramJS for MTProto, a 4-tier cache (Edge → Durable Object RAM → R2 →
+  MTProto), 512KB chunked `upload.getFile` reads, and a persistent
+  warm MTProto connection pool to avoid re-handshaking. Relevant docs there:
+  `docs/CACHING_AND_DATA_FETCHING_ARCHITECTURE.md` (fetch/cache tiers) and
+  `docs/BYO_R2_TURBO_CACHE_PLAN.md` (R2 integration). No code was ported
+  into this repo this session — task #6 is still 🔲 not started; this is
+  groundwork only.
