@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_16_130000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_17_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_stat_statements"
@@ -291,10 +291,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_16_130000) do
     t.bigint "original_size"
     t.bigint "compressed_size"
     t.string "compressed_apks_storage_key"
+    t.string "mtproto_archived_location"
+    t.datetime "mtproto_archived_at"
     t.index ["asset_pack_type"], name: "index_releases_on_asset_pack_type"
     t.index ["build_version"], name: "index_releases_on_build_version"
     t.index ["bundle_id"], name: "index_releases_on_bundle_id"
     t.index ["channel_id", "version"], name: "index_releases_on_channel_id_and_version", unique: true
+    t.index ["mtproto_archived_at"], name: "index_releases_on_mtproto_archived_at"
     t.index ["release_type"], name: "index_releases_on_release_type"
     t.index ["release_version", "build_version"], name: "index_releases_on_release_version_and_build_version"
     t.index ["source"], name: "index_releases_on_source"
