@@ -147,6 +147,20 @@ Rails.application.routes.draw do
         end
       end
 
+      # Org-wide (task #5) — singular resource, not resources: there is at
+      # most one AndroidSigningKey record. See AndroidSigningKey#current.
+      resource :android_signing_key, except: %i[ edit update ]
+
+      # Play Store publish-approval queue (task #7 groundwork). Acts on
+      # Release records that have play_store_target set, not a model of
+      # its own — see Admin::PlayApprovalsController.
+      resources :play_approvals, only: %i[ index ] do
+        member do
+          put :approve
+          put :reject
+        end
+      end
+
       resources :logs, only: %i[ index ] do
         collection do
           get :retrive

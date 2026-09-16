@@ -68,6 +68,27 @@ ever drifts outside it, stop and flag it rather than building it.
   Handoff Process warns about — this file's "Current state" had gone stale
   relative to GitHub. Treat `5d54c81e` as the confirmed current HEAD of
   `main` going forward, not `ab603383`.
+- **This session's changes (stopped partway through, by operator request —
+  see task #11 above for the full itemization of what's unfinished):**
+  1. Task #5: `AndroidSigningKey` converted from one-per-App to an org-wide
+     singleton (migration `20260917150000_make_android_signing_keys_org_wide.rb`
+     removes `app_id`; `App#android_signing_key` removed;
+     `AndroidSigningKey.current` is the new accessor;
+     `AnthropicAssetDeliveryJob` updated to use it). New
+     `Admin::AndroidSigningKeysController` + `AndroidSigningKeyPolicy`
+     (singular `admin/android_signing_key` route) for uploading/verifying/
+     destroying the key — **views not written, will 500 until they exist.**
+  2. Task #11 (new): Play Store publish-approval bookkeeping started —
+     migration `20260917150001_add_play_approval_fields_to_releases.rb`
+     adds the approval-status columns to `releases`; routes for
+     `admin/play_approvals` added — **but the controller, `Release` model
+     changes, policy methods, views, and the 48h expiry cron job are all
+     still unbuilt.** Do not consider #11 usable yet.
+  3. Locale strings added for both of the above in `en.yml`/`zh-CN.yml`.
+  Nothing in this session was build- or integration-verified (no
+  `ruby`/`bundler` in this sandbox, same as every prior session touching
+  Ruby) — everything above is hand-written/reviewed against existing
+  conventions (`AppleKey`, `AnthropicMtprotoArchiveJob`), not run.
 - **Not build- or integration-verified** — same posture as every prior
   session touching Ruby: no `ruby`/`bundler` in this sandbox at all this
   time (not even for a syntax check), so this was written and reviewed by
@@ -108,12 +129,13 @@ Each task below is meant to be handed to one session. A session should:
 | 2 | Dockerfile build verification & fix | #1 | 🔲 Blocked on Docker access | Needs a sandbox with real `docker build` capability, or the operator running it and reporting exact failures back. Do not declare success without an actual build log. |
 | 3 | `ReleaseStorage` service (Local + R2 adapters) | — | ✅ Done | Landed on top of `1a3773c5`. `RELEASE_STORAGE_ADAPTER=local\|r2`. See "Current state" below for what's untested. |
 | 4 | Wire pipeline (#1) onto `ReleaseStorage` (#3) once both exist | #1, #3 | ✅ Done (folded into #3) | `AnthropicAssetDeliveryJob` now always uses `ReleaseStorage`; download controller redirects to a presigned R2 URL when available, else fetches-and-streams. |
-| 5 | Signing pipeline for our own AABs | — | 🟡 In progress | `AndroidSigningKey` model (encrypted keystore, one per App) + wired into `BundletoolService#build_apk_set` via `--ks`/`--ks-pass file:`/`--key-pass file:` (passwords never hit process argv). Signs automatically in `AnthropicAssetDeliveryJob` when an app has a key configured; `Release#signed`/`signing_key_checksum` record the outcome. Needs, before trusted: `bin/rails db:encryption:init` run for real + the 3 resulting values set as `ANTHROPIC_AR_ENCRYPTION_*` env vars (see `config/initializers/active_record_encryption.rb`), a real keystore uploaded and `AndroidSigningKey#verify!`'d, and one real signed build inspected with `apksigner verify` or equivalent. No UI/controller for uploading a keystore yet — only the model + pipeline wiring. Worth noting for whoever reads this: signing with the org's Play Store keystore does **not** make a sideloaded install show as "from a verified developer" — that Play Protect badge is about installation source, not signing identity, and holds true even for a legitimate Play Store cert used outside Play Store. What matching the Play Store key *does* buy is in-place upgradeability (same install, no uninstall, if a sideloaded build and a Play Store release of the same package ever need to swap places). The actual verified-distribution mechanism is task #10. |
+| 5 | Signing pipeline for our own AABs | — | 🟡 In progress | **Changed this session by operator decision: `AndroidSigningKey` is now an org-wide singleton, not one-per-App** (every AAB through this pipeline comes from this one org, so one shared key signs all of it). `AndroidSigningKey.current` is the one place that resolves "the current key" — `AnthropicAssetDeliveryJob` now calls that instead of `release.app.android_signing_key`. `App#android_signing_key` association is gone. Model enforces singleton-ness at the app level (`only_one_record` validation on create), deliberately no DB-level constraint for it. Blast-radius tradeoff of one shared key (vs. one per App) was raised and the operator chose shared — worth remembering if this ever gets revisited. `Admin::AndroidSigningKeysController` + `AndroidSigningKeyPolicy` built this session (singular resource `admin/android_signing_key`, mirrors `AppleKey`'s upload/verify/destroy shape, calls `AndroidSigningKey#verify!` via keytool before saving). **Not done: the views** (`app/views/admin/android_signing_keys/{new,show}.html.slim` — locale strings for them exist under `admin.android_signing_keys.*` in both `en.yml`/`zh-CN.yml`, but no `.slim` templates were written, so `new`/`show` will 500 until they exist). Still also needs, before trusted: `bin/rails db:encryption:init` run for real + `ANTHROPIC_AR_ENCRYPTION_*` env vars, a real keystore uploaded through the new controller, one real signed build inspected with `apksigner verify`. Reminder carried from last session: signing with the key does **not** make a sideloaded install show as "from a verified developer" (that's task #10, a separate system). |
 | 6 | Telegram MTProto cold storage for our own large builds | #3 | 🟡 In progress | `Anthropic::MtprotoArchiveService` (Rails HTTP client) + `AnthropicMtprotoArchiveJob` (pre-population cron, flag-gated on `MTPROTO_ARCHIVE_ENABLED`) + `mtproto-worker/` (Node/GramJS sidecar) scaffolded. See `mtproto-worker/README.md` "Status" for what's unverified — not build- or integration-tested (no Node runtime or real Telegram credentials in sandbox). Next: operator generates `TELEGRAM_SESSION_STRING`, provisions the sidecar, runs `npm install && npm run typecheck`, and does one real archive→retrieve round trip before this is trusted. |
-| 7 | Google Play Developer API publishing | #5 | 🔲 Not started | First listing is manual per Play's own constraints; automate only subsequent releases. |
+| 7 | Google Play Developer API publishing | #5 | 🔲 Not started (groundwork started) | First listing is manual per Play's own constraints; automate only subsequent releases. **This session added the publish-approval bookkeeping only** (operator decision: a release targeting Play Store needs explicit admin approval, auto-expiring after 48h to internal-distribution-only if nobody acts — see task #11 for the full breakdown of what's built vs. not). The actual Play Developer API publish call itself is still not started. |
 | 8 | CI/CD: GitHub Actions → GHCR → Render deploy hook | #2 | 🔲 Not started | |
 | 9 | Storefront / discovery layer | — | ❓ Needs decision | Original vision assumed a public Aptoide-via-MCP storefront. Now that scope is confirmed internal/non-commercial, confirm with the operator whether this is still wanted before any session starts it. |
 | 10 | Register org in the Android Developer Console (Android Developer Verification) | — | 🔲 Operator action needed | **Not code — an account registration, done outside this repo.** Google is rolling out a requirement, separate from Play Store and separate from APK signing, that an app be registered to an identity-verified developer account to install/update normally on certified Android devices at all. Registration opened March 2026 for developers distributing outside Play Store (our exact case for Zealot's sideload distribution); enforcement started Sept 30 2026 in Brazil/Indonesia/Singapore/Thailand and expands globally through 2027, after which unregistered apps need an "advanced flow" (ADB or a deliberately-frictioned manual install) instead of a normal install. Having an existing Play Console org account does **not** cover this — it's a distinct system/registration. Low-effort to do now rather than waiting for global enforcement to bite. No code dependency on task #5 or #7, but worth doing before #7 (Play publishing) since both concern the same org's Google-facing identity. |
+| 11 | Play Store publish-approval workflow (bookkeeping for #7) | #5 (signing, for context only) | 🟡 Started, incomplete | Operator decision this session: a release with Play Store as a target doesn't auto-publish — it needs explicit admin approval, and if 48h pass with no action it expires and the release stays available only through our own internal distribution (nothing about this ever takes a release down from internal distribution). **Built this session:** migration + hand-updated `schema.rb` adding `play_store_target` (boolean), `play_approval_status` (string, default `not_requested`), `play_approval_requested_at`, `play_approval_expires_at`, `play_approved_at`, `play_approved_by_id` (FK `users`) to `releases`, with indexes; routes for `admin/play_approvals` (`index`, member `approve`/`reject`); locale strings (`admin.play_approvals.*`, both `en.yml`/`zh-CN.yml`). **Not built — this is most of the feature, next session should start here:** (1) `Release` model has no enum/scopes/methods yet for the new columns — no `play_approval_status` enum, no `request_play_approval!`/`approve_play_publish!`/`reject_play_publish!`, nothing computes `play_approval_expires_at` at request time; (2) `Admin::PlayApprovalsController` does not exist yet — the routes added this session point at a controller that isn't there; (3) no views for it either; (4) `ReleasePolicy` has no `approve_play_publish?`/`reject_play_publish?` (should almost certainly gate on `admin?` specifically, not the app-scoped `any_manage?` the rest of that policy uses, since this is an org-level publishing decision, not an app-level one); (5) no cron job for the 48h auto-expiry — should follow `AnthropicMtprotoArchiveJob`'s batch-scan pattern (`app/jobs/anthropic_mtproto_archive_job.rb`) rather than a per-release delayed job, and get wired into `config/initializers/good_job.rb`'s `CRON_JOBS_SETUP`; (6) nothing sets `play_store_target` anywhere — no UI on the release upload form, so as of this session the column exists but nothing ever flips it true; (7) the actual Play Developer API publish call on approval is task #7 proper and is separately not started. Not build/syntax-checked, same caveat as every session touching Ruby in this sandbox. |
 
 ## Open questions for the operator (don't guess — ask)
 
@@ -229,3 +251,26 @@ Each task below is meant to be handed to one session. A session should:
   should treat #10 as actionable now (registration is open, enforcement is
   already live in 4 countries and expanding through 2027) rather than
   waiting.
+- **Session 10 (this session)** — Operator raised two things: (a) whether
+  the signing key could be org-wide instead of per-App, since every AAB
+  through this pipeline is this org's own — confirmed technically fine,
+  flagged the blast-radius tradeoff, operator chose shared; (b) whether the
+  existing Play Console org account already grants the "verified developer"
+  badge this org wants for its own app store, plus a proposed workflow
+  where non-Play-Store-bound releases go out immediately on our own store
+  while Play-Store-bound releases wait on 48h-timeboxed admin approval.
+  Corrected the premise: the Play Console org account is not the same
+  system as Android Developer Verification (task #10) — neither the shared
+  key nor the Play Console account confers a "verified" badge on sideloaded
+  installs, and once #10 is registered it applies uniformly to all of the
+  org's distributed apps rather than selectively by destination. The
+  48h-approval-timeout idea itself is sound as a *publishing gate* (separate
+  from device-level verification) and was scoped as task #11. Started
+  building both (see task #5 and #11 above and "Current state" above for
+  exactly what landed vs. didn't) but stopped partway through at the
+  operator's request before task #11's controller/model/views/cron job were
+  built — **next session should pick up directly from task #11's
+  not-built list**, and should also write the missing
+  `admin/android_signing_keys/{new,show}` views for task #5 before trying
+  to use that controller. One combined patch produced for everything that
+  *did* land this session; not pushed by this session (by design).

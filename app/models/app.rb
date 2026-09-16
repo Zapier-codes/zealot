@@ -7,7 +7,6 @@ class App < ApplicationRecord
   has_many :collaborators, dependent: :destroy
   has_many :schemes, dependent: :destroy
   has_many :debug_files, dependent: :destroy
-  has_one :android_signing_key, dependent: :destroy
 
   scope :all_names, -> { all.map { |c| [c.name, c.id] } }
   scope :debug_files, -> { joins(:debug_files).distinct }

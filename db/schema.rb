@@ -10,13 +10,12 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_17_140001) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_17_150001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_stat_statements"
 
   create_table "android_signing_keys", force: :cascade do |t|
-    t.bigint "app_id", null: false
     t.string "filename", null: false
     t.string "key_alias", null: false
     t.string "checksum", null: false
@@ -25,7 +24,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_17_140001) do
     t.text "key_password", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["app_id"], name: "index_android_signing_keys_on_app_id", unique: true
     t.index ["checksum"], name: "index_android_signing_keys_on_checksum", unique: true
   end
 
@@ -309,11 +307,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_17_140001) do
     t.datetime "mtproto_archived_at"
     t.boolean "signed", default: false, null: false
     t.string "signing_key_checksum"
+    t.boolean "play_store_target", default: false, null: false
+    t.string "play_approval_status", default: "not_requested", null: false
+    t.datetime "play_approval_requested_at"
+    t.datetime "play_approval_expires_at"
+    t.datetime "play_approved_at"
+    t.bigint "play_approved_by_id"
     t.index ["asset_pack_type"], name: "index_releases_on_asset_pack_type"
     t.index ["build_version"], name: "index_releases_on_build_version"
     t.index ["bundle_id"], name: "index_releases_on_bundle_id"
     t.index ["channel_id", "version"], name: "index_releases_on_channel_id_and_version", unique: true
     t.index ["mtproto_archived_at"], name: "index_releases_on_mtproto_archived_at"
+    t.index ["play_approval_expires_at"], name: "index_releases_on_play_approval_expires_at"
+    t.index ["play_approval_status"], name: "index_releases_on_play_approval_status"
+    t.index ["play_approved_by_id"], name: "index_releases_on_play_approved_by_id"
     t.index ["release_type"], name: "index_releases_on_release_type"
     t.index ["release_version", "build_version"], name: "index_releases_on_release_version_and_build_version"
     t.index ["source"], name: "index_releases_on_source"
@@ -413,7 +420,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_17_140001) do
     t.index ["url"], name: "index_web_hooks_on_url"
   end
 
-  add_foreign_key "android_signing_keys", "apps"
   add_foreign_key "apple_teams", "apple_keys", on_delete: :cascade
   add_foreign_key "channels", "schemes", on_delete: :cascade
   add_foreign_key "debug_file_metadata", "debug_files"
@@ -421,6 +427,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_17_140001) do
   add_foreign_key "metadata", "releases", on_delete: :cascade
   add_foreign_key "metadata", "users", on_delete: :cascade
   add_foreign_key "releases", "channels", on_delete: :cascade
+  add_foreign_key "releases", "users", column: "play_approved_by_id"
   add_foreign_key "schemes", "apps", on_delete: :cascade
   add_foreign_key "user_providers", "users", on_delete: :cascade
   add_foreign_key "web_hooks", "channels", on_delete: :cascade

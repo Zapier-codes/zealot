@@ -34,7 +34,10 @@ class AnthropicAssetDeliveryJob < ApplicationJob
   private
 
   def process_release(release, work_dir, pack_config)
-    signing_key = release.app.android_signing_key
+    # Org-wide key (task #5, made a singleton this session) — every release
+    # through this pipeline is signed with the same key regardless of
+    # which App it belongs to. See AndroidSigningKey#current.
+    signing_key = AndroidSigningKey.current
 
     result = Anthropic::AssetPackService.new(release.file.path).process(
       output_dir: work_dir,

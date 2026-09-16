@@ -1071,6 +1071,14 @@ zh-CN:
               unknown: "未知错误: %{message}"
             checksum:
               taken: 匹配，密钥文件已存在
+        android_signing_key:
+          attributes:
+            base:
+              singleton: 只能配置一个签名密钥，请先删除现有密钥后再添加新的
+              keytool_unavailable: "无法验证密钥库：%{message}"
+              verification_failed: "密钥库验证失败：%{message}"
+            checksum:
+              taken: 匹配，密钥文件已存在
         udid:
           attributes:
             name:
