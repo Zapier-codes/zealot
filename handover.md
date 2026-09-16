@@ -60,10 +60,10 @@ Each task below is meant to be handed to one session. A session should:
 |---|---|---|---|---|
 | 1 | PAD / Brotli / delta patching services | — | ✅ Done | Landed `a295c6a6` |
 | 2 | Dockerfile build verification & fix | #1 | 🔲 Blocked on Docker access | Needs a sandbox with real `docker build` capability, or the operator running it and reporting exact failures back. Do not declare success without an actual build log. |
-| 3 | `ReleaseStorage` service (Local + R2 adapters) | — | 🔲 Not started | `aws-sdk-s3` pointed at R2 endpoint. Should be built so #1's services can optionally use it (the asset-delivery job already checks `defined?(ReleaseStorage)`). |
-| 4 | Wire pipeline (#1) onto `ReleaseStorage` (#3) once both exist | #1, #3 | 🔲 Not started | Replace the local-disk fallback in `AnthropicAssetDeliveryJob#persist_compressed_artifact`. |
+| 3 | `ReleaseStorage` service (Local + R2 adapters) | — | ✅ Done | Landed on top of `1a3773c5`. `RELEASE_STORAGE_ADAPTER=local\|r2`. See "Current state" below for what's untested. |
+| 4 | Wire pipeline (#1) onto `ReleaseStorage` (#3) once both exist | #1, #3 | ✅ Done (folded into #3) | `AnthropicAssetDeliveryJob` now always uses `ReleaseStorage`; download controller redirects to a presigned R2 URL when available, else fetches-and-streams. |
 | 5 | Signing pipeline for our own AABs | — | 🔲 Not started | Signs builds produced by our own employees only. No submission-from-outside-parties flow. |
-| 6 | Telegram MTProto cold storage for our own large builds | #3 | 🔲 Not started | R2 ⇄ MTProto streaming worker, pre-population cron. Scope: our own release artifacts only. |
+| 6 | Telegram MTProto cold storage for our own large builds | #3 | 🔲 Not started | R2 ⇄ MTProto streaming worker, pre-population cron. Scope: our own release artifacts only. `ReleaseStorage` is now in place to build on. |
 | 7 | Google Play Developer API publishing | #5 | 🔲 Not started | First listing is manual per Play's own constraints; automate only subsequent releases. |
 | 8 | CI/CD: GitHub Actions → GHCR → Render deploy hook | #2 | 🔲 Not started | |
 | 9 | Storefront / discovery layer | — | ❓ Needs decision | Original vision assumed a public Aptoide-via-MCP storefront. Now that scope is confirmed internal/non-commercial, confirm with the operator whether this is still wanted before any session starts it. |
@@ -94,3 +94,12 @@ Each task below is meant to be handed to one session. A session should:
 - **Session 4 (this session)** — Verified `anthropic-pad-brotli.patch` landed
   on `main` (`a295c6a6`, confirmed via independent fresh clone). Created this
   handover file.
+
+## Session log (continued)
+
+- **Session 5** — Built `ReleaseStorage` (Local + R2 adapters), wired the
+  PAD pipeline job and the download controller onto it, added
+  `compressed_apks_storage_key` column. `Gemfile.lock` was NOT regenerated
+  (no rubygems/bundler network access in this sandbox) — run
+  `bundle install` after applying. R2 path is logic-reviewed but not
+  integration-tested against a real R2 bucket.
