@@ -77,6 +77,13 @@ en:
         display_name: Display name
         name: Team name
         team_id: Team ID
+      android_signing_key:
+        key_alias: Key alias
+        keystore_password: Keystore password
+        key_password: Key password
+        keystore: Keystore file
+        filename: Filename
+        checksum: Keystore Hash Verification
       backup:
         general: General settings
         key: Key
@@ -121,6 +128,7 @@ en:
         branch: Git branch. In general either main or develop
         git_commit: 40 bit length SHA value of git commit
         ci_url: The CI URL specific like Jenkins, Gitlab CI, Github Action etc
+        play_store_target: Mark this release as bound for Google Play Store distribution. It stays available through our own internal distribution immediately either way — this only gates whether it also goes through the Play Store publish-approval queue
       web_hook:
         body: Custom JSON struct body to apply the third party notification services. Use <a href="https://zealot.ews.im/docs/user-guide/webhooks">default structure</a> by leave it empty
       debug_file:

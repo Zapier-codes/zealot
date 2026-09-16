@@ -104,6 +104,40 @@ zh-CN:
         udid_created_at: 创建时间
       create:
         successful: 创建成功并成功同步开发者的相关信息
+    android_signing_keys:
+      title: Android 签名密钥
+      new:
+        title: 新增 Android 签名密钥
+        already_configured: 签名密钥已配置，如需更换请先删除现有密钥
+      show:
+        title: :'admin.android_signing_keys.title'
+        key_metadata: 密钥信息
+        filename: 文件名
+        key_alias: 密钥别名
+        checksum: 校验码
+        created_at: 创建时间
+        destroy_warning: "删除此密钥不会重新签名或撤销任何已使用它构建的版本，仅会停止后续版本的自动签名。"
+      create:
+        successful: Android 签名密钥上传并验证成功
+    play_approvals:
+      title: Play Store 发布审批
+      index:
+        title: :'admin.play_approvals.title'
+        number: "#"
+        app: 应用
+        release: 版本
+        requested_at: 申请时间
+        expires_at: 过期时间
+        action: 操作
+        approve: 通过
+        reject: 拒绝
+        expired_badge: 已过期
+        not_found:
+          title: 暂无等待 Play Store 发布审批的版本
+          body: 当上传的版本以 Play Store 为发布目标时会显示在这里；未处理的申请会在 48 小时后自动过期，过期后该版本仍可通过我们自己的分发渠道下载。
+      messages:
+        approved: "%{name} 已通过 Play Store 发布审批"
+        rejected: "%{name} 已被拒绝 Play Store 发布"
     apple_teams:
       edit:
         title: 更新苹果开发者名称

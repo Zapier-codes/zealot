@@ -135,6 +135,7 @@ en:
         action: Action
         approve: Approve
         reject: Reject
+        expired_badge: Expired
         not_found:
           title: No releases awaiting Play Store publish approval.
           body: Releases show up here when a release with Play Store as a target is uploaded; unapproved requests expire automatically after 48 hours and stay available only through our own distribution.

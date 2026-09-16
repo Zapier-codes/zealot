@@ -56,54 +56,99 @@ ever drifts outside it, stop and flag it rather than building it.
 
 ## Current state of `main` (verified by fresh clone, this session)
 
-- HEAD: `ab603383` "Document Handoff Process in handover.md; scaffold task 6
-  (MTProto cold storage)", on top of `4575a31e`. Confirmed landed on
+- HEAD: `c0470e01` "Task 5: org-wide signing key; task 11: start Play
+  approval workflow", on top of `5d54c81e`. Confirmed landed on
   `origin/main` by fresh fetch before starting this session (per the
-  Handoff Process above).
-- **Correction to the above, made this session:** session 8's patch (task 5:
-  `android_signing_key.rb`, `apk_signing_service.rb`, bundletool/job wiring,
-  AR Encryption initializer, two migrations) was described above as "not yet
-  pushed," but a fresh clone this session shows it **is** on `origin/main` as
-  `5d54c81e`, on top of `ab603383`. This is exactly the origin-drift case the
-  Handoff Process warns about — this file's "Current state" had gone stale
-  relative to GitHub. Treat `5d54c81e` as the confirmed current HEAD of
-  `main` going forward, not `ab603383`.
-- **This session's changes (stopped partway through, by operator request —
-  see task #11 above for the full itemization of what's unfinished):**
-  1. Task #5: `AndroidSigningKey` converted from one-per-App to an org-wide
-     singleton (migration `20260917150000_make_android_signing_keys_org_wide.rb`
-     removes `app_id`; `App#android_signing_key` removed;
-     `AndroidSigningKey.current` is the new accessor;
-     `AnthropicAssetDeliveryJob` updated to use it). New
-     `Admin::AndroidSigningKeysController` + `AndroidSigningKeyPolicy`
-     (singular `admin/android_signing_key` route) for uploading/verifying/
-     destroying the key — **views not written, will 500 until they exist.**
-  2. Task #11 (new): Play Store publish-approval bookkeeping started —
-     migration `20260917150001_add_play_approval_fields_to_releases.rb`
-     adds the approval-status columns to `releases`; routes for
-     `admin/play_approvals` added — **but the controller, `Release` model
-     changes, policy methods, views, and the 48h expiry cron job are all
-     still unbuilt.** Do not consider #11 usable yet.
-  3. Locale strings added for both of the above in `en.yml`/`zh-CN.yml`.
-  Nothing in this session was build- or integration-verified (no
-  `ruby`/`bundler` in this sandbox, same as every prior session touching
-  Ruby) — everything above is hand-written/reviewed against existing
-  conventions (`AppleKey`, `AnthropicMtprotoArchiveJob`), not run.
+  Handoff Process above) — local clone matched `origin/main` exactly, no
+  drift this time.
+- **This session (session 11) finished what session 10 left itemized as
+  not-built for #5 and #11:**
+  1. Task #5: wrote the missing `app/views/admin/android_signing_keys/
+     {new,show}.html.slim` (+ a `_form` partial) — the controller/policy
+     from session 10 would 500 without these; they now exist and mirror
+     `AppleKey`'s upload/show shape. Added `simple_form` labels/hints for
+     the five keystore form fields (`en.yml`/`zh-CN.yml`).
+  2. Task #11: built everything session 10 left unbuilt except the actual
+     Play Developer API call (that remains task #7 proper):
+     - `Release` model: `play_approval_status` enum (`not_requested` /
+       `pending` / `approved` / `rejected` / `expired`, prefixed
+       `play_approval_`), `play_store_targeted` / `awaiting_play_approval`
+       / `play_approval_overdue` scopes, and
+       `request_play_approval!` / `approve_play_publish!` /
+       `reject_play_publish!` / `expire_play_approval!` methods. An
+       `after_create :request_play_approval_if_targeted` callback starts
+       the 48h clock automatically when a release is uploaded with
+       `play_store_target` set.
+     - `Admin::PlayApprovalsController` (`index`/`approve`/`reject`) —
+       the routes session 10 added now resolve to something.
+     - `app/views/admin/play_approvals/index.html.slim` — approval queue
+       table using the locale strings session 10 already wrote.
+     - `ReleasePolicy#approve_play_publish?` / `#reject_play_publish?`,
+       gated on `admin?` specifically (not `any_manage?`), per session
+       10's explicit note that this is an org-level decision, not an
+       app-level one.
+     - `AnthropicPlayApprovalExpiryJob`, following
+       `AnthropicMtprotoArchiveJob`'s batch-scan pattern as instructed,
+       wired into `good_job.rb`'s `CRON_JOBS_SETUP` on a 15-minute cron
+       (always-on, no feature flag — unlike the MTProto job this isn't an
+       external integration needing credentials, so there's nothing to
+       gate on; the query is a no-op until releases actually get targeted
+       at Play Store).
+     - `play_store_target` checkbox added to `releases/_form.html.slim`;
+       permitted in `ReleasesController#release_params`. This is the one
+       piece not explicitly itemized by session 10 as "next" but was
+       required for #11 to be usable end-to-end (nothing previously set
+       the column).
+  3. Also added, not itemized by session 10 but needed for reachability:
+     sidebar links (`app/views/layouts/_main_sidebar.html.slim`) to both
+     `admin_android_signing_key_path` and `admin_play_approvals_path` —
+     neither had a nav entry, so both were previously URL-only.
+  4. `zh-CN.yml`/`simple_form.zh-CN.yml` mirrors added for all of the
+     above (session 10 had only added zh-CN entries for the two new
+     *error*-attribute keys, not the view-level strings — this session
+     filled in the rest).
+  5. **Known gap, not fixed this session:** `Release#reject_play_publish!`
+     reuses the `play_approved_at`/`play_approved_by` columns for
+     rejections too, since session 10's migration only added "approved"
+     columns, not separate `rejected_at`/`rejected_by` ones. Flagged
+     in-code; a follow-up migration adding dedicated columns is worth
+     doing if anyone ever needs to distinguish approval history from
+     rejection history at a glance.
+  Task #5 and #11 are now believed feature-complete for what was scoped
+  (see "Not build- or integration-verified" below for what that claim does
+  and doesn't cover).
 - **Not build- or integration-verified** — same posture as every prior
-  session touching Ruby: no `ruby`/`bundler` in this sandbox at all this
-  time (not even for a syntax check), so this was written and reviewed by
-  hand against the existing `AppleKey`/`ReleaseStorage` conventions rather
-  than run. What IS true: this session did have Node, and used it to
-  actually `npm install` + `npx tsc --noEmit` the session-6 sidecar
-  worker's real dependency types, catching and fixing one genuine type
-  error against the library's `.d.ts` files rather than guessing — that
-  was Ruby-unrelated work already landed, noted here only so "not verified"
-  isn't read as "nothing here has ever been verified by any means."
+  session touching Ruby: no `ruby`/`bundler` in this sandbox this session
+  either, so none of the above was actually run or syntax-checked by a
+  Ruby parser. What IS true this session: the four edited/added locale
+  YAML files (`en.yml`, `zh-CN.yml`, `simple_form.en.yml`,
+  `simple_form.zh-CN.yml`) were parsed with Python's `yaml.safe_load` and
+  confirmed to be syntactically valid YAML — that catches indentation/
+  quoting mistakes but says nothing about whether the Ruby files
+  referencing those keys are correct, or whether the keys resolve where
+  each `t('.foo')` call expects. Everything Ruby here (model, controller,
+  policy, job, views' embedded Ruby) is hand-written/reviewed against the
+  existing `AppleKey`/`AnthropicMtprotoArchiveJob`/`Admin::AppleKeysController`
+  conventions, not run. Concretely still needed before trusting this in
+  production, on top of session 10's carried-forward items (AR encryption
+  init, real keystore, real signed build):
+  1. `bin/rails db:migrate`, then actually load `/admin/android_signing_key`
+     and `/admin/play_approvals` in a browser and confirm they render
+     (these are exactly the views this session added to fix the 500).
+  2. Upload one release with `play_store_target` checked and confirm the
+     approval-request flow actually fires (`play_approval_status` flips to
+     `pending`, `play_approval_expires_at` gets set ~48h out).
+  3. Manually set a test release's `play_approval_expires_at` into the
+     past and confirm `AnthropicPlayApprovalExpiryJob` actually flips it
+     to `expired` on its next run (or run it manually via `rails runner`).
+  4. Confirm `admin?`-only gating on approve/reject actually blocks a
+     non-admin developer/collaborator (this was hand-reasoned from
+     `ReleasePolicy`'s existing `any_manage?` pattern, not exercised).
 - `main` has moved upstream between sessions before (5 unrelated upstream
-  commits appeared, then were gone by the time of this session's re-clone —
-  origin drift is possible between sessions). **Every session should
-  re-clone fresh and diff against what it expects before assuming a prior
-  patch's context still matches `main` exactly.**
+  commits appeared, then were gone by the time of a later session's
+  re-clone — origin drift is possible between sessions). **Every session
+  should re-clone fresh and diff against what it expects before assuming a
+  prior patch's context still matches `main` exactly.**
 - Task #2 (Dockerfile build verification) remains blocked; carried-forward
   known risks, still unresolved:
   1. `bsdiff` may not exist as a native Alpine `apk` package (could not
@@ -129,13 +174,13 @@ Each task below is meant to be handed to one session. A session should:
 | 2 | Dockerfile build verification & fix | #1 | 🔲 Blocked on Docker access | Needs a sandbox with real `docker build` capability, or the operator running it and reporting exact failures back. Do not declare success without an actual build log. |
 | 3 | `ReleaseStorage` service (Local + R2 adapters) | — | ✅ Done | Landed on top of `1a3773c5`. `RELEASE_STORAGE_ADAPTER=local\|r2`. See "Current state" below for what's untested. |
 | 4 | Wire pipeline (#1) onto `ReleaseStorage` (#3) once both exist | #1, #3 | ✅ Done (folded into #3) | `AnthropicAssetDeliveryJob` now always uses `ReleaseStorage`; download controller redirects to a presigned R2 URL when available, else fetches-and-streams. |
-| 5 | Signing pipeline for our own AABs | — | 🟡 In progress | **Changed this session by operator decision: `AndroidSigningKey` is now an org-wide singleton, not one-per-App** (every AAB through this pipeline comes from this one org, so one shared key signs all of it). `AndroidSigningKey.current` is the one place that resolves "the current key" — `AnthropicAssetDeliveryJob` now calls that instead of `release.app.android_signing_key`. `App#android_signing_key` association is gone. Model enforces singleton-ness at the app level (`only_one_record` validation on create), deliberately no DB-level constraint for it. Blast-radius tradeoff of one shared key (vs. one per App) was raised and the operator chose shared — worth remembering if this ever gets revisited. `Admin::AndroidSigningKeysController` + `AndroidSigningKeyPolicy` built this session (singular resource `admin/android_signing_key`, mirrors `AppleKey`'s upload/verify/destroy shape, calls `AndroidSigningKey#verify!` via keytool before saving). **Not done: the views** (`app/views/admin/android_signing_keys/{new,show}.html.slim` — locale strings for them exist under `admin.android_signing_keys.*` in both `en.yml`/`zh-CN.yml`, but no `.slim` templates were written, so `new`/`show` will 500 until they exist). Still also needs, before trusted: `bin/rails db:encryption:init` run for real + `ANTHROPIC_AR_ENCRYPTION_*` env vars, a real keystore uploaded through the new controller, one real signed build inspected with `apksigner verify`. Reminder carried from last session: signing with the key does **not** make a sideloaded install show as "from a verified developer" (that's task #10, a separate system). |
+| 5 | Signing pipeline for our own AABs | — | 🟡 In progress (code-complete, unverified) | Org-wide singleton `AndroidSigningKey` (`AndroidSigningKey.current`), `Admin::AndroidSigningKeysController` + policy, and — **as of session 11** — the previously-missing `new`/`show` views (`app/views/admin/android_signing_keys/`) plus a sidebar nav entry, so `/admin/android_signing_key` no longer 500s and is reachable from the UI. Still needs, before trusted: `bin/rails db:encryption:init` run for real + `ANTHROPIC_AR_ENCRYPTION_*` env vars, a real keystore uploaded through the controller, one real signed build inspected with `apksigner verify` — none of that is possible in this sandbox. Reminder carried from earlier sessions: signing with the key does **not** make a sideloaded install show as "from a verified developer" (that's task #10, a separate system). |
 | 6 | Telegram MTProto cold storage for our own large builds | #3 | 🟡 In progress | `Anthropic::MtprotoArchiveService` (Rails HTTP client) + `AnthropicMtprotoArchiveJob` (pre-population cron, flag-gated on `MTPROTO_ARCHIVE_ENABLED`) + `mtproto-worker/` (Node/GramJS sidecar) scaffolded. See `mtproto-worker/README.md` "Status" for what's unverified — not build- or integration-tested (no Node runtime or real Telegram credentials in sandbox). Next: operator generates `TELEGRAM_SESSION_STRING`, provisions the sidecar, runs `npm install && npm run typecheck`, and does one real archive→retrieve round trip before this is trusted. |
 | 7 | Google Play Developer API publishing | #5 | 🔲 Not started (groundwork started) | First listing is manual per Play's own constraints; automate only subsequent releases. **This session added the publish-approval bookkeeping only** (operator decision: a release targeting Play Store needs explicit admin approval, auto-expiring after 48h to internal-distribution-only if nobody acts — see task #11 for the full breakdown of what's built vs. not). The actual Play Developer API publish call itself is still not started. |
 | 8 | CI/CD: GitHub Actions → GHCR → Render deploy hook | #2 | 🔲 Not started | |
 | 9 | Storefront / discovery layer | — | ❓ Needs decision | Original vision assumed a public Aptoide-via-MCP storefront. Now that scope is confirmed internal/non-commercial, confirm with the operator whether this is still wanted before any session starts it. |
 | 10 | Register org in the Android Developer Console (Android Developer Verification) | — | 🔲 Operator action needed | **Not code — an account registration, done outside this repo.** Google is rolling out a requirement, separate from Play Store and separate from APK signing, that an app be registered to an identity-verified developer account to install/update normally on certified Android devices at all. Registration opened March 2026 for developers distributing outside Play Store (our exact case for Zealot's sideload distribution); enforcement started Sept 30 2026 in Brazil/Indonesia/Singapore/Thailand and expands globally through 2027, after which unregistered apps need an "advanced flow" (ADB or a deliberately-frictioned manual install) instead of a normal install. Having an existing Play Console org account does **not** cover this — it's a distinct system/registration. Low-effort to do now rather than waiting for global enforcement to bite. No code dependency on task #5 or #7, but worth doing before #7 (Play publishing) since both concern the same org's Google-facing identity. |
-| 11 | Play Store publish-approval workflow (bookkeeping for #7) | #5 (signing, for context only) | 🟡 Started, incomplete | Operator decision this session: a release with Play Store as a target doesn't auto-publish — it needs explicit admin approval, and if 48h pass with no action it expires and the release stays available only through our own internal distribution (nothing about this ever takes a release down from internal distribution). **Built this session:** migration + hand-updated `schema.rb` adding `play_store_target` (boolean), `play_approval_status` (string, default `not_requested`), `play_approval_requested_at`, `play_approval_expires_at`, `play_approved_at`, `play_approved_by_id` (FK `users`) to `releases`, with indexes; routes for `admin/play_approvals` (`index`, member `approve`/`reject`); locale strings (`admin.play_approvals.*`, both `en.yml`/`zh-CN.yml`). **Not built — this is most of the feature, next session should start here:** (1) `Release` model has no enum/scopes/methods yet for the new columns — no `play_approval_status` enum, no `request_play_approval!`/`approve_play_publish!`/`reject_play_publish!`, nothing computes `play_approval_expires_at` at request time; (2) `Admin::PlayApprovalsController` does not exist yet — the routes added this session point at a controller that isn't there; (3) no views for it either; (4) `ReleasePolicy` has no `approve_play_publish?`/`reject_play_publish?` (should almost certainly gate on `admin?` specifically, not the app-scoped `any_manage?` the rest of that policy uses, since this is an org-level publishing decision, not an app-level one); (5) no cron job for the 48h auto-expiry — should follow `AnthropicMtprotoArchiveJob`'s batch-scan pattern (`app/jobs/anthropic_mtproto_archive_job.rb`) rather than a per-release delayed job, and get wired into `config/initializers/good_job.rb`'s `CRON_JOBS_SETUP`; (6) nothing sets `play_store_target` anywhere — no UI on the release upload form, so as of this session the column exists but nothing ever flips it true; (7) the actual Play Developer API publish call on approval is task #7 proper and is separately not started. Not build/syntax-checked, same caveat as every session touching Ruby in this sandbox. |
+| 11 | Play Store publish-approval workflow (bookkeeping for #7) | #5 (signing, for context only) | ✅ Done (code-complete, unverified) | **As of session 11, everything session 10 itemized as unbuilt now exists:** `Release` enum/scopes/methods (`request_play_approval!`/`approve_play_publish!`/`reject_play_publish!`/`expire_play_approval!`, auto-fired on create via `after_create` when `play_store_target` is set), `Admin::PlayApprovalsController` + index view, `ReleasePolicy#approve_play_publish?`/`#reject_play_publish?` gated on `admin?`, `AnthropicPlayApprovalExpiryJob` (batch-scan, wired into `good_job.rb`'s cron on a 15-minute schedule), a `play_store_target` checkbox on the release upload form (+ permitted param), a sidebar nav entry, and zh-CN mirrors for all locale strings. One known gap: `reject_play_publish!` reuses the `play_approved_at`/`play_approved_by` columns rather than having dedicated rejection columns (see "Current state" above) — functions correctly, just semantically fuzzy in the DB. Task #7 proper (the actual Play Developer API publish call on approval) is still separately not started. **Not build/syntax-checked** — no ruby/bundler in this sandbox; see "Current state" above for exactly what a next session should verify first. |
 
 ## Open questions for the operator (don't guess — ask)
 
@@ -274,3 +319,22 @@ Each task below is meant to be handed to one session. A session should:
   `admin/android_signing_keys/{new,show}` views for task #5 before trying
   to use that controller. One combined patch produced for everything that
   *did* land this session; not pushed by this session (by design).
+- **Session 11 (this session)** — Re-cloned fresh; confirmed `main`
+  matched `origin/main` exactly at `c0470e01` (no drift this time). Picked
+  up directly from session 10's next-session list: wrote the missing
+  `admin/android_signing_keys/{new,show}` views (task #5), then built out
+  everything session 10 had left unbuilt for task #11 (`Release` model
+  methods, `Admin::PlayApprovalsController`, its index view, `ReleasePolicy`
+  gating, the 48h expiry cron job) plus two things not explicitly itemized
+  but needed for either feature to actually be reachable/usable: a
+  `play_store_target` checkbox on the release upload form (nothing
+  previously set that column), and sidebar nav links for both new admin
+  pages (neither had one). Filled in the zh-CN view-level locale strings
+  session 10 had left only partially mirrored. See "Current state" and
+  tasks #5/#11 above for the itemized list of what specifically landed and
+  the known columns-reuse gap in `reject_play_publish!`. Not build- or
+  integration-verified — no ruby/bundler in this sandbox; the four edited
+  locale YAML files were parsed with Python's `yaml.safe_load` and
+  confirmed syntactically valid, which is the only mechanical check this
+  session could actually run. One combined patch produced; not pushed by
+  this session (by design, per the Handoff Process).

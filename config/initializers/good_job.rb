@@ -22,6 +22,11 @@ CRON_JOBS_SETUP = lambda do
       cron: '30 3 * * *',
       class: 'AnthropicMtprotoArchiveJob',
       description: 'Archive old/large release artifacts to Telegram MTProto cold storage'
+    },
+    anthropic_play_approval_expiry: {
+      cron: '*/15 * * * *',
+      class: 'AnthropicPlayApprovalExpiryJob',
+      description: 'Auto-expire Play Store publish-approval requests older than 48h'
     }
   }
 
