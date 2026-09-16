@@ -43,15 +43,15 @@ class AnthropicAssetDeliveryJob < ApplicationJob
     compressed = brotli.compress(result[:apks_path])
 
     pack_type = dominant_pack_type(result[:packs])
+    storage_key = ReleaseStorage.new(release).store_compressed_apks(compressed[:path])
 
     release.update!(
       asset_pack_type: pack_type,
       brotli_compressed: true,
       original_size: compressed[:original_size],
-      compressed_size: compressed[:compressed_size]
+      compressed_size: compressed[:compressed_size],
+      compressed_apks_storage_key: storage_key
     )
-
-    persist_compressed_artifact(release, compressed[:path])
   end
 
   # Best-effort single label for the release's dominant pack type, since
@@ -61,18 +61,5 @@ class AnthropicAssetDeliveryJob < ApplicationJob
     return nil if packs.blank?
 
     %w[on_demand fast_follow install_time].find { |type| packs[type].present? }
-  end
-
-  # Stores the Brotli-compressed .apks alongside the original release file.
-  # Uses ReleaseStorage if a storage abstraction is present in this app
-  # (e.g. after an R2 migration); otherwise falls back to copying next to
-  # the existing CarrierWave-managed file on local/mounted storage.
-  def persist_compressed_artifact(release, compressed_path)
-    if defined?(ReleaseStorage)
-      ReleaseStorage.new(release).store_compressed_apks(compressed_path)
-    else
-      destination = "#{release.file.path}.apks.br"
-      FileUtils.cp(compressed_path, destination)
-    end
   end
 end

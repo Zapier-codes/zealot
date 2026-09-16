@@ -20,18 +20,12 @@ class Download::ReleasesController < ApplicationController
     # 触发 web_hook
     @release.channel.perform_web_hook('download_events', current_user&.id)
 
-    if serve_brotli?
-      headers['Content-Encoding'] = 'br'
-      headers['Content-Length'] = @release.compressed_size || File.size(brotli_path)
-      send_file brotli_path,
-                filename: @release.download_filename,
-                disposition: 'attachment'
-    else
-      headers['Content-Length'] = @release.file.size
-      send_file @release.file.path,
-                filename: @release.download_filename,
-                disposition: 'attachment'
-    end
+    return serve_brotli if serve_brotli?
+
+    headers['Content-Length'] = @release.file.size
+    send_file @release.file.path,
+              filename: @release.download_filename,
+              disposition: 'attachment'
   end
 
   # GET /releases/:id/delta?from_version=1.2.3
@@ -61,15 +55,36 @@ class Download::ReleasesController < ApplicationController
 
   private
 
+  def storage
+    @storage ||= ReleaseStorage.new(@release)
+  end
+
   def serve_brotli?
     return false unless @release.brotli_compressed?
     return false unless request.headers['Accept-Encoding'].to_s.include?('br')
+    return false if @release.compressed_apks_storage_key.blank?
 
-    File.exist?(brotli_path)
+    storage.exist?(@release.compressed_apks_storage_key)
   end
 
-  def brotli_path
-    "#{@release.file.path}.apks.br"
+  # Adapters that can hand back a direct URL (e.g. a presigned R2 URL, with
+  # Content-Encoding: br already set as object metadata at upload time) get
+  # a redirect so the app doesn't proxy the bytes itself. Adapters that
+  # can't (local disk) get fetched and streamed through send_file instead.
+  def serve_brotli
+    key = @release.compressed_apks_storage_key
+    direct_url = storage.url_for(key)
+    return redirect_to(direct_url, allow_other_host: true) if direct_url
+
+    tmp_path = Rails.root.join('tmp', "brotli-#{@release.id}-#{SecureRandom.hex(4)}.apks.br")
+    storage.fetch(key, to: tmp_path)
+    return render_not_found_entity_response unless File.exist?(tmp_path)
+
+    headers['Content-Encoding'] = 'br'
+    headers['Content-Length'] = @release.compressed_size || File.size(tmp_path)
+    send_file tmp_path,
+              filename: @release.download_filename,
+              disposition: 'attachment'
   end
 
   # Patches are cached on disk under tmp/anthropic_deltas, keyed by the
