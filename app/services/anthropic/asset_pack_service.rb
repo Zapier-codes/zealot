@@ -24,13 +24,15 @@ module Anthropic
     # @param output_dir [String]
     # @param pack_config [Hash, nil] e.g.
     #   { "level1" => "install_time", "extra_maps" => "fast_follow", "dlc" => "on_demand" }
+    # @param signing_key [AndroidSigningKey, nil] see BundletoolService#build_apk_set
     # @return [Hash] { apks_path:, packs: { "install_time" => [...], "fast_follow" => [...], "on_demand" => [...] } }
-    def process(output_dir:, pack_config: nil)
+    def process(output_dir:, pack_config: nil, signing_key: nil)
       config_path = pack_config.present? ? write_config(pack_config, output_dir) : nil
 
       apks_path = bundletool_service.build_apk_set(
         output_dir: output_dir,
-        asset_pack_config: config_path
+        asset_pack_config: config_path,
+        signing_key: signing_key
       )
 
       {

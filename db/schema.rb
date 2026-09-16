@@ -10,10 +10,24 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_17_090000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_17_140001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_stat_statements"
+
+  create_table "android_signing_keys", force: :cascade do |t|
+    t.bigint "app_id", null: false
+    t.string "filename", null: false
+    t.string "key_alias", null: false
+    t.string "checksum", null: false
+    t.text "keystore", null: false
+    t.text "keystore_password", null: false
+    t.text "key_password", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["app_id"], name: "index_android_signing_keys_on_app_id", unique: true
+    t.index ["checksum"], name: "index_android_signing_keys_on_checksum", unique: true
+  end
 
   create_table "apple_keys", force: :cascade do |t|
     t.string "checksum", null: false
@@ -293,6 +307,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_17_090000) do
     t.string "compressed_apks_storage_key"
     t.string "mtproto_archived_location"
     t.datetime "mtproto_archived_at"
+    t.boolean "signed", default: false, null: false
+    t.string "signing_key_checksum"
     t.index ["asset_pack_type"], name: "index_releases_on_asset_pack_type"
     t.index ["build_version"], name: "index_releases_on_build_version"
     t.index ["bundle_id"], name: "index_releases_on_bundle_id"
@@ -397,6 +413,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_17_090000) do
     t.index ["url"], name: "index_web_hooks_on_url"
   end
 
+  add_foreign_key "android_signing_keys", "apps"
   add_foreign_key "apple_teams", "apple_keys", on_delete: :cascade
   add_foreign_key "channels", "schemes", on_delete: :cascade
   add_foreign_key "debug_file_metadata", "debug_files"

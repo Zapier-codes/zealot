@@ -34,9 +34,12 @@ class AnthropicAssetDeliveryJob < ApplicationJob
   private
 
   def process_release(release, work_dir, pack_config)
+    signing_key = release.app.android_signing_key
+
     result = Anthropic::AssetPackService.new(release.file.path).process(
       output_dir: work_dir,
-      pack_config: pack_config
+      pack_config: pack_config,
+      signing_key: signing_key
     )
 
     brotli = Anthropic::BrotliService.new
@@ -50,7 +53,9 @@ class AnthropicAssetDeliveryJob < ApplicationJob
       brotli_compressed: true,
       original_size: compressed[:original_size],
       compressed_size: compressed[:compressed_size],
-      compressed_apks_storage_key: storage_key
+      compressed_apks_storage_key: storage_key,
+      signed: signing_key.present?,
+      signing_key_checksum: signing_key&.checksum
     )
   end
 

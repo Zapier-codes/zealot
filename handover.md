@@ -56,24 +56,30 @@ ever drifts outside it, stop and flag it rather than building it.
 
 ## Current state of `main` (verified by fresh clone, this session)
 
-- HEAD: `49c77fc1` "Update handover.md: log operator answers + aetheroll
-  survey for task 6", on top of `f0ee5e25`.
-- This session adds (not yet pushed — see combined patch, session 7):
-  `app/services/anthropic/mtproto_archive_service.rb` (Rails HTTP client),
-  `app/jobs/anthropic_mtproto_archive_job.rb` (pre-population cron,
-  flag-gated on `MTPROTO_ARCHIVE_ENABLED`), cron wiring in
-  `config/initializers/good_job.rb`, migration
-  `20260917090000_add_mtproto_archive_fields_to_releases.rb` +
-  hand-updated `db/schema.rb` (same "no DB access, hand-edit schema.rb"
-  posture as session 5 — **run `bin/rails db:migrate` for real**, don't
-  trust the hand-edit), and `mtproto-worker/` (Node/GramJS sidecar scaffold
-  — see its README "Status" section for exactly what's unverified).
-- **Not build- or integration-verified.** No session has had Node/npm
-  access or real Telegram API credentials. Per the Handoff Process above,
-  verification now happens via GitHub Actions after the operator applies
-  and pushes this patch, plus the manual sidecar setup steps in
-  `mtproto-worker/README.md` (session string generation, one real
-  archive→retrieve round trip) which no session can do unattended.
+- HEAD: `ab603383` "Document Handoff Process in handover.md; scaffold task 6
+  (MTProto cold storage)", on top of `4575a31e`. Confirmed landed on
+  `origin/main` by fresh fetch before starting this session (per the
+  Handoff Process above).
+- This session adds (not yet pushed — see this session's patch):
+  `app/models/android_signing_key.rb` (encrypted keystore, one per App),
+  `app/services/anthropic/apk_signing_service.rb` (keytool-based keystore
+  verification), signing wired into `BundletoolService#build_apk_set` and
+  `AssetPackService#process`, `AnthropicAssetDeliveryJob` now looks up
+  `release.app.android_signing_key` and signs automatically when present,
+  `config/initializers/active_record_encryption.rb` (ENV-driven, not
+  `credentials.yml.enc`), two migrations + hand-updated `schema.rb`
+  (`android_signing_keys` table; `releases.signed` /
+  `releases.signing_key_checksum`).
+- **Not build- or integration-verified** — same posture as every prior
+  session touching Ruby: no `ruby`/`bundler` in this sandbox at all this
+  time (not even for a syntax check), so this was written and reviewed by
+  hand against the existing `AppleKey`/`ReleaseStorage` conventions rather
+  than run. What IS true: this session did have Node, and used it to
+  actually `npm install` + `npx tsc --noEmit` the session-6 sidecar
+  worker's real dependency types, catching and fixing one genuine type
+  error against the library's `.d.ts` files rather than guessing — that
+  was Ruby-unrelated work already landed, noted here only so "not verified"
+  isn't read as "nothing here has ever been verified by any means."
 - `main` has moved upstream between sessions before (5 unrelated upstream
   commits appeared, then were gone by the time of this session's re-clone —
   origin drift is possible between sessions). **Every session should
@@ -104,7 +110,7 @@ Each task below is meant to be handed to one session. A session should:
 | 2 | Dockerfile build verification & fix | #1 | 🔲 Blocked on Docker access | Needs a sandbox with real `docker build` capability, or the operator running it and reporting exact failures back. Do not declare success without an actual build log. |
 | 3 | `ReleaseStorage` service (Local + R2 adapters) | — | ✅ Done | Landed on top of `1a3773c5`. `RELEASE_STORAGE_ADAPTER=local\|r2`. See "Current state" below for what's untested. |
 | 4 | Wire pipeline (#1) onto `ReleaseStorage` (#3) once both exist | #1, #3 | ✅ Done (folded into #3) | `AnthropicAssetDeliveryJob` now always uses `ReleaseStorage`; download controller redirects to a presigned R2 URL when available, else fetches-and-streams. |
-| 5 | Signing pipeline for our own AABs | — | 🔲 Not started | Signs builds produced by our own employees only. No submission-from-outside-parties flow. |
+| 5 | Signing pipeline for our own AABs | — | 🟡 In progress | `AndroidSigningKey` model (encrypted keystore, one per App) + wired into `BundletoolService#build_apk_set` via `--ks`/`--ks-pass file:`/`--key-pass file:` (passwords never hit process argv). Signs automatically in `AnthropicAssetDeliveryJob` when an app has a key configured; `Release#signed`/`signing_key_checksum` record the outcome. Needs, before trusted: `bin/rails db:encryption:init` run for real + the 3 resulting values set as `ANTHROPIC_AR_ENCRYPTION_*` env vars (see `config/initializers/active_record_encryption.rb`), a real keystore uploaded and `AndroidSigningKey#verify!`'d, and one real signed build inspected with `apksigner verify` or equivalent. No UI/controller for uploading a keystore yet — only the model + pipeline wiring. |
 | 6 | Telegram MTProto cold storage for our own large builds | #3 | 🟡 In progress | `Anthropic::MtprotoArchiveService` (Rails HTTP client) + `AnthropicMtprotoArchiveJob` (pre-population cron, flag-gated on `MTPROTO_ARCHIVE_ENABLED`) + `mtproto-worker/` (Node/GramJS sidecar) scaffolded. See `mtproto-worker/README.md` "Status" for what's unverified — not build- or integration-tested (no Node runtime or real Telegram credentials in sandbox). Next: operator generates `TELEGRAM_SESSION_STRING`, provisions the sidecar, runs `npm install && npm run typecheck`, and does one real archive→retrieve round trip before this is trusted. |
 | 7 | Google Play Developer API publishing | #5 | 🔲 Not started | First listing is manual per Play's own constraints; automate only subsequent releases. |
 | 8 | CI/CD: GitHub Actions → GHCR → Render deploy hook | #2 | 🔲 Not started | |
@@ -186,3 +192,27 @@ Each task below is meant to be handed to one session. A session should:
      entrypoint) — not decided this session.
   One combined patch produced for this session (handoff-process doc +
   task #6 scaffold together, per operator's request).
+- **Session 8 (this session)** — Confirmed session 7's patch landed on
+  `main` (`ab603383`). Operator decided credentials (Telegram + AR
+  Encryption) will all be set together once the instance is hosted, so
+  this session picked the other unblocked, credential-independent task:
+  #5, signing pipeline for our own AABs. Built `AndroidSigningKey`
+  (encrypted keystore/passwords via Active Record Encryption, one per
+  App), wired it into the existing PAD pipeline
+  (`BundletoolService`/`AssetPackService`/`AnthropicAssetDeliveryJob`) so
+  a release signs automatically when its app has a key configured, and
+  added `ApkSigningService` for pre-flight keystore verification via
+  `keytool`. Deliberately used bundletool's `--ks-pass file:...` /
+  `--key-pass file:...` (and keytool's `-storepass:file` /
+  `-keypass:file`) rather than the simpler `pass:...` forms, so signing
+  passwords never appear in `ps`/process-argv on a shared host — worth a
+  future session double-checking if this ever gets reviewed by someone
+  with real JDK/bundletool access, since it wasn't runnable here.
+  No `ruby` available in this sandbox this session (not even for a
+  syntax check) — all Ruby here is hand-written/reviewed against existing
+  patterns, not executed. Still needed before trusting this: real
+  `db:encryption:init` + env vars, a real keystore + `verify!` call, one
+  real signed build inspected with `apksigner verify`. No
+  controller/UI for uploading a keystore yet — that's the natural next
+  slice of #5 if it's not already covered by what's wanted from #7
+  (Play publishing) needing something similar for API credentials.
