@@ -60,16 +60,14 @@ ever drifts outside it, stop and flag it rather than building it.
   (MTProto cold storage)", on top of `4575a31e`. Confirmed landed on
   `origin/main` by fresh fetch before starting this session (per the
   Handoff Process above).
-- This session adds (not yet pushed — see this session's patch):
-  `app/models/android_signing_key.rb` (encrypted keystore, one per App),
-  `app/services/anthropic/apk_signing_service.rb` (keytool-based keystore
-  verification), signing wired into `BundletoolService#build_apk_set` and
-  `AssetPackService#process`, `AnthropicAssetDeliveryJob` now looks up
-  `release.app.android_signing_key` and signs automatically when present,
-  `config/initializers/active_record_encryption.rb` (ENV-driven, not
-  `credentials.yml.enc`), two migrations + hand-updated `schema.rb`
-  (`android_signing_keys` table; `releases.signed` /
-  `releases.signing_key_checksum`).
+- **Correction to the above, made this session:** session 8's patch (task 5:
+  `android_signing_key.rb`, `apk_signing_service.rb`, bundletool/job wiring,
+  AR Encryption initializer, two migrations) was described above as "not yet
+  pushed," but a fresh clone this session shows it **is** on `origin/main` as
+  `5d54c81e`, on top of `ab603383`. This is exactly the origin-drift case the
+  Handoff Process warns about — this file's "Current state" had gone stale
+  relative to GitHub. Treat `5d54c81e` as the confirmed current HEAD of
+  `main` going forward, not `ab603383`.
 - **Not build- or integration-verified** — same posture as every prior
   session touching Ruby: no `ruby`/`bundler` in this sandbox at all this
   time (not even for a syntax check), so this was written and reviewed by
@@ -110,11 +108,12 @@ Each task below is meant to be handed to one session. A session should:
 | 2 | Dockerfile build verification & fix | #1 | 🔲 Blocked on Docker access | Needs a sandbox with real `docker build` capability, or the operator running it and reporting exact failures back. Do not declare success without an actual build log. |
 | 3 | `ReleaseStorage` service (Local + R2 adapters) | — | ✅ Done | Landed on top of `1a3773c5`. `RELEASE_STORAGE_ADAPTER=local\|r2`. See "Current state" below for what's untested. |
 | 4 | Wire pipeline (#1) onto `ReleaseStorage` (#3) once both exist | #1, #3 | ✅ Done (folded into #3) | `AnthropicAssetDeliveryJob` now always uses `ReleaseStorage`; download controller redirects to a presigned R2 URL when available, else fetches-and-streams. |
-| 5 | Signing pipeline for our own AABs | — | 🟡 In progress | `AndroidSigningKey` model (encrypted keystore, one per App) + wired into `BundletoolService#build_apk_set` via `--ks`/`--ks-pass file:`/`--key-pass file:` (passwords never hit process argv). Signs automatically in `AnthropicAssetDeliveryJob` when an app has a key configured; `Release#signed`/`signing_key_checksum` record the outcome. Needs, before trusted: `bin/rails db:encryption:init` run for real + the 3 resulting values set as `ANTHROPIC_AR_ENCRYPTION_*` env vars (see `config/initializers/active_record_encryption.rb`), a real keystore uploaded and `AndroidSigningKey#verify!`'d, and one real signed build inspected with `apksigner verify` or equivalent. No UI/controller for uploading a keystore yet — only the model + pipeline wiring. |
+| 5 | Signing pipeline for our own AABs | — | 🟡 In progress | `AndroidSigningKey` model (encrypted keystore, one per App) + wired into `BundletoolService#build_apk_set` via `--ks`/`--ks-pass file:`/`--key-pass file:` (passwords never hit process argv). Signs automatically in `AnthropicAssetDeliveryJob` when an app has a key configured; `Release#signed`/`signing_key_checksum` record the outcome. Needs, before trusted: `bin/rails db:encryption:init` run for real + the 3 resulting values set as `ANTHROPIC_AR_ENCRYPTION_*` env vars (see `config/initializers/active_record_encryption.rb`), a real keystore uploaded and `AndroidSigningKey#verify!`'d, and one real signed build inspected with `apksigner verify` or equivalent. No UI/controller for uploading a keystore yet — only the model + pipeline wiring. Worth noting for whoever reads this: signing with the org's Play Store keystore does **not** make a sideloaded install show as "from a verified developer" — that Play Protect badge is about installation source, not signing identity, and holds true even for a legitimate Play Store cert used outside Play Store. What matching the Play Store key *does* buy is in-place upgradeability (same install, no uninstall, if a sideloaded build and a Play Store release of the same package ever need to swap places). The actual verified-distribution mechanism is task #10. |
 | 6 | Telegram MTProto cold storage for our own large builds | #3 | 🟡 In progress | `Anthropic::MtprotoArchiveService` (Rails HTTP client) + `AnthropicMtprotoArchiveJob` (pre-population cron, flag-gated on `MTPROTO_ARCHIVE_ENABLED`) + `mtproto-worker/` (Node/GramJS sidecar) scaffolded. See `mtproto-worker/README.md` "Status" for what's unverified — not build- or integration-tested (no Node runtime or real Telegram credentials in sandbox). Next: operator generates `TELEGRAM_SESSION_STRING`, provisions the sidecar, runs `npm install && npm run typecheck`, and does one real archive→retrieve round trip before this is trusted. |
 | 7 | Google Play Developer API publishing | #5 | 🔲 Not started | First listing is manual per Play's own constraints; automate only subsequent releases. |
 | 8 | CI/CD: GitHub Actions → GHCR → Render deploy hook | #2 | 🔲 Not started | |
 | 9 | Storefront / discovery layer | — | ❓ Needs decision | Original vision assumed a public Aptoide-via-MCP storefront. Now that scope is confirmed internal/non-commercial, confirm with the operator whether this is still wanted before any session starts it. |
+| 10 | Register org in the Android Developer Console (Android Developer Verification) | — | 🔲 Operator action needed | **Not code — an account registration, done outside this repo.** Google is rolling out a requirement, separate from Play Store and separate from APK signing, that an app be registered to an identity-verified developer account to install/update normally on certified Android devices at all. Registration opened March 2026 for developers distributing outside Play Store (our exact case for Zealot's sideload distribution); enforcement started Sept 30 2026 in Brazil/Indonesia/Singapore/Thailand and expands globally through 2027, after which unregistered apps need an "advanced flow" (ADB or a deliberately-frictioned manual install) instead of a normal install. Having an existing Play Console org account does **not** cover this — it's a distinct system/registration. Low-effort to do now rather than waiting for global enforcement to bite. No code dependency on task #5 or #7, but worth doing before #7 (Play publishing) since both concern the same org's Google-facing identity. |
 
 ## Open questions for the operator (don't guess — ask)
 
@@ -216,3 +215,17 @@ Each task below is meant to be handed to one session. A session should:
   controller/UI for uploading a keystore yet — that's the natural next
   slice of #5 if it's not already covered by what's wanted from #7
   (Play publishing) needing something similar for API credentials.
+- **Session 9 (this session)** — Re-cloned fresh per the Handoff Process and
+  found this file's "Current state" had drifted from `main`: session 8's
+  patch (task 5) was marked "not yet pushed" but is actually already landed
+  as `5d54c81e` — corrected above. No code changes this session (operator
+  brought a correction/new item, not a coding task): clarified in task #5's
+  notes that a matching Play Store signing key does not make sideloaded
+  installs show as "from a verified developer" (that's an install-source
+  signal, not a signing-identity one); added task #10, registering the org
+  in the new Android Developer Console for Android Developer Verification —
+  a separate system from both Play Store distribution and APK signing, and
+  not already covered by the existing Play Console org account. Operator
+  should treat #10 as actionable now (registration is open, enforcement is
+  already live in 4 countries and expanding through 2027) rather than
+  waiting.
