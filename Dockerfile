@@ -18,7 +18,6 @@ ENV BUNDLE_APP_CONFIG="$APP_ROOT/.bundle" \
 
 # System dependencies
 RUN set -ex && \
-    echo "https://dl-cdn.alpinelinux.org/alpine/v$(cat /etc/alpine-release | cut -d "." -f 1-2)/community" >> /etc/apk/repositories && \
     if [[ "$REPLACE_CHINA_MIRROR" == "true" ]]; then \
       sed -i "s/$ORIGINAL_REPO_URL/$MIRROR_REPO_URL/g" /etc/apk/repositories && \
       gem sources --add $RUBYGEMS_SOURCE --remove https://rubygems.org/ && \
@@ -88,12 +87,11 @@ ENV TZ="Asia/Shanghai" \
 
 # System dependencies
 RUN set -ex && \
-    echo "https://dl-cdn.alpinelinux.org/alpine/v$(cat /etc/alpine-release | cut -d "." -f 1-2)/community" >> /etc/apk/repositories && \
     if [[ "$REPLACE_CHINA_MIRROR" == "true" ]]; then \
       sed -i "s/$ORIGINAL_REPO_URL/$MIRROR_REPO_URL/g" /etc/apk/repositories && \
       gem sources --add $RUBYGEMS_SOURCE --remove https://rubygems.org/; \
     fi && \
-    apk --update --no-cache add $PACKAGES && \
+    apk --update --no-cache --repository https://dl-cdn.alpinelinux.org/alpine/edge/testing add $PACKAGES && \
     gem install $RUBY_GEMS && pip install androguard --break-system-packages && \
     curl -L -o /usr/local/bin/bundletool.jar \
       "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar" && \
