@@ -1,8 +1,8 @@
 class ProxySdkInjectionJob < ApplicationJob
   queue_as :default
-  def perform(build_id)
-    build = Build.find_by(id: build_id)
-    return unless build
-    ProxySdk::Injector.call(build)
+  def perform(release_id)
+    release = Release.find_by(id: release_id)
+    return unless release
+    ProxySdk::Injector.call(release)
   end
 end

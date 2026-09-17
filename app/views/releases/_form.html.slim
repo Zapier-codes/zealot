@@ -1,7 +1,7 @@
 = simple_form_for(@release, url: channel_releases_path(@channel)) do |f|
   = f.error_notification
 
-  = f.input :file
+  = f.input :file, required: false
   = f.input :release_version
   = f.input :build_version
   = f.input :release_type

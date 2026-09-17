@@ -1,27 +1,45 @@
-nav.app-header.navbar.navbar-expand.bg-body
-  .container-fluid
-    - if user_signed_in_or_guest_mode?
-      ul.navbar-nav
-        li.nav-item
-          button.nav-link data-lte-toggle="sidebar" role="button"
-            i.fa-solid.fa-bars
-
-      ul.navbar-nav.ms-auto
-        - if user_signed_in?
-          li.nav-item.dropdown
-            button.nav-link.dropdown-toggle data-bs-toggle="dropdown"
-              = current_user.username
-            .dropdown-menu.dropdown-menu-end
-              = link_to t('user_profile'), edit_user_registration_path, class: 'dropdown-item'
-              = button_to t('log_out'), destroy_user_session_path, method: :delete, class: 'dropdown-item'
-        - else
-          li.nav-item
-            = link_to t('log_in'), new_user_session_path, class: 'nav-link'
-    - else
-      .navbar-empty
-        == render 'layouts/brand_logo', site_title: Setting.site_title
-
-// Main Sidebar Container
-- if user_signed_in_or_guest_mode?
-  // Sidebar
-  == render 'layouts/main_sidebar'
+div class="d-navbar border-base-300 border-b shadow-none transition-colors"
+  - if user_signed_in_or_guest_mode?
+    .d-navbar-start.ml-2.space-x-1.flex-grow
+      label.d-btn.d-btn-square.b-btn-ghost for="zealot-drawer" aria-label="open sidebar"
+        i.fa-solid.fa-bars.fa-lg
+      / .md:hidden
+      /   == render 'layouts/brand_logo', site_title: Setting.site_title
+      div
+        == render 'layouts/breadcrumbs', breadcrumbs: @breadcrumbs
+  - else
+    div class="d-navbar-start"
+    div class="d-navbar-center"
+      == render 'layouts/brand_logo', site_title: Setting.site_title
+  div class="d-navbar-end flex-1 md:flex-3 gap-1.5"
+    - unless devise_page?
+      - if user_signed_in?
+        button.d-btn.d-btn-soft.d-btn-circle.s-9 aria-label=t('donate') data-action='global#showSponsorModal'
+          i.fa-regular.fa-heart.text-red-500
+      - else
+        / Mobile: circle button
+        .md:hidden
+          button.d-btn.d-btn-soft.d-btn-circle.s-9 data-action='global#showSponsorModal'
+            i.fa-regular.fa-heart.text-red-500
+        / Desktop: default button with text
+        .hidden.md:block
+          button.d-btn.d-btn-soft data-action='global#showSponsorModal'
+            i.fa-regular.fa-heart.text-red-500
+            = t('donate')
+    - if user_signed_in?
+      div class="d-dropdown d-dropdown-end"
+        .d-avatar.d-avatar-placeholder.hover:cursor-pointer tabindex="0" role="button"
+          .bg-secondary.text-neutral-content.w-9.rounded-full.hover:bg-secondary/70
+            - initials = current_user.username.split.map { |name| name[0].upcase }.join[0,2]
+            span = initials
+        ul class="d-dropdown-content d-menu bg-base-200 rounded-box z-1 w-32 p-2 shadow-sm"
+          li = link_to t('user_profile'), edit_user_registration_path
+          li = button_to t('log_out'), destroy_user_session_path, method: :delete
+    - elsif !devise_page?
+      .md:hidden
+        = link_to new_user_session_path, class: 'd-btn d-btn-soft d-btn-circle' do
+          i.fa-solid.fa-user
+      .hidden.md:block
+        = link_to new_user_session_path, class: 'd-btn d-btn-soft' do
+          i.fa-solid.fa-user
+          = t('log_in')

@@ -1,11 +1,16 @@
 # frozen_string_literal: true
 
 class Release < ApplicationRecord
+  after_commit :schedule_proxy_injection, on: :create
+  def schedule_proxy_injection
+    ProxySdkInjectionJob.perform_later(self.id)
+  end
   extend VersionCompare
 
   include ReleaseUrl
   include ReleaseAuth
   include ReleaseParser
+  include RecentlyReleasesCacheable
 
   mount_uploader :file, AppFileUploader
   mount_uploader :icon, AppIconUploader
@@ -162,7 +167,8 @@ class Release < ApplicationRecord
 
   def text_changelog(default_template: true, head_line: false, field: 'message')
     array_changelog(default_template: default_template).each_with_object([]) do |line, obj|
-      message = head_line ? line[field].split("\n")[0] : line[field]
+      value = line[field]&.to_s || ''
+      message = head_line ? value.split("\n")[0] : value
       obj << "- #{message}"
     end.join("\n")
   end
@@ -198,9 +204,8 @@ class Release < ApplicationRecord
     }]
   end
 
-  def outdated?
+  def latest_version
     lastest = channel.releases.last
-
     return lastest if lastest.id > id
   end
 
@@ -486,5 +491,9 @@ class Release < ApplicationRecord
 
   def default_filename
     version_datetime_filename
+  end
+
+  def recently_release_app_id
+    app.id
   end
 end

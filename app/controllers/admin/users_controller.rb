@@ -41,7 +41,7 @@ class Admin::UsersController < ApplicationController
       return redirect_to admin_users_path, alert: t('errors.messages.invaild_in_demo_mode')
     end
 
-    # 没有设置密码的情况下不更新该字段
+    # Skip password if not set
     params = user_params.dup
     params.delete(:password) if params[:password].blank?
     return render :edit, status: :unprocessable_entity unless @user.update(params)
@@ -57,20 +57,24 @@ class Admin::UsersController < ApplicationController
     if helpers.default_admin_in_demo_mode?(@user)
       return redirect_to admin_users_path, alert: t('errors.messages.invaild_in_demo_mode')
     end
-
     authorize @user
 
     @user.destroy
-
     notice = t('activerecord.success.destroy', key: t('admin.users.title'))
-    flash.now[:notice] = notice
-    respond_to do |format|
-      format.html { redirect_to admin_users_path }
-      format.turbo_stream
-    end
+    redirect_to admin_users_path, status: :see_other, notice: notice
   end
 
   def lock
+    if @user.email == Setting.admin_email
+      alert = t('errors.messages.cannot_lock_default_admin')
+      flash.now[:alert] = alert
+      respond_to do |format|
+        format.html { render :edit, status: :unprocessable_entity }
+        format.turbo_stream { render :edit, status: :unprocessable_entity }
+      end
+      return
+    end
+
     @user.lock_access!(send_instructions: false)
     flash.now[:notice] = t('.message', user: @user.username)
     respond_to do |format|

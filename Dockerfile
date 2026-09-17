@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM ruby:3.4.7-alpine AS builder
+FROM ruby:3.4.8-alpine AS builder
 
 ARG BUILD_PACKAGES="build-base libxml2 libxslt git"
 ARG DEV_PACKAGES="ruby-dev libffi-dev libxml2-dev libxslt-dev yaml-dev postgresql-dev nodejs npm pnpm zlib-dev imagemagick-dev libwebp-dev libpng-dev tiff-dev gcompat"
@@ -27,13 +27,12 @@ RUN set -ex && \
     if [[ "$REPLACE_CHINA_MIRROR" == "true" ]]; then \
       pnpm config set registry $NPM_REGISTRY; \
     fi && \
-    gem install $RUBY_GEMS
-    pip install androguard --break-system-packages
+    gem install $RUBY_GEMS && pip install androguard --break-system-packages
 
 WORKDIR $APP_ROOT
 
 # Node dependencies
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 # Ruby dependencies
@@ -44,10 +43,10 @@ RUN bundle config --global frozen 1 && \
     bundle config set path 'vendor/bundle' && \
     bundle lock --add-platform ruby && \
     bundle config set force_ruby_platform true && \
-    bundle install --jobs `expr $(cat /proc/cpuinfo | grep -c "cpu cores") - 1` --retry 3
+    bundle install --jobs $(nproc) --retry 3
 
 COPY . $APP_ROOT
-RUN SECRET_KEY_BASE=precompile_placeholder bin/rails assets:precompile
+RUN SECRET_KEY_BASE=precompile_placeholder bin/rails vite:build
 
 # Remove folders not needed in resulting image
 RUN rm -rf docker node_modules tmp/cache spec .browserslistrc babel.config.js \
@@ -59,7 +58,7 @@ RUN rm -rf docker node_modules tmp/cache spec .browserslistrc babel.config.js \
 
 ##################################################################################
 
-FROM --platform=$BUILDPLATFORM ruby:3.4.7-alpine
+FROM ruby:3.4.8-alpine
 
 ARG BUILD_DATE
 ARG VCS_REF
@@ -93,8 +92,7 @@ RUN set -ex && \
       gem sources --add $RUBYGEMS_SOURCE --remove https://rubygems.org/; \
     fi && \
     apk --update --no-cache add $PACKAGES && \
-    gem install $RUBY_GEMS && \
-    pip install androguard --break-system-packages
+    gem install $RUBY_GEMS && pip install androguard --break-system-packages && \
     curl -L -o /usr/local/bin/bundletool.jar \
       "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar" && \
     printf '#!/bin/sh\nexec java -jar /usr/local/bin/bundletool.jar "$@"\n' > /usr/local/bin/bundletool && \

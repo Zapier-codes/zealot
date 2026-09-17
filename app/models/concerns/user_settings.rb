@@ -18,10 +18,6 @@ module UserSettings
       Setting.builtin_appearances
     end
 
-    def options_appearances
-      enum_appearances
-    end
-
     def enum_timezones
       ActiveSupport::TimeZone.all.each_with_object({}) do |timezone, obj|
         key = timezone.tzinfo.name

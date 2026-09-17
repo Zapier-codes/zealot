@@ -4,18 +4,23 @@ class ModalsController < ApplicationController
   before_action :available_only
   before_action :prepare_modal
 
-  # Only accept turbo stream requests
+  # Accept both HTML and turbo stream requests
   respond_to :turbo_stream
 
   MODAL_CONFIG = {
     'install-issue' => {
       title_key:   'install_issue.title',
       body_key:    'install_issue.body_html',
-      title_locals: ->(record) { { name: record.name } }
+      # title_locals: ->(record) { { name: record&.name } }
     },
     'cert-expired-issues' => {
       title_key:   'cert_expired_issues.title',
       body_key:    'cert_expired_issues.body_html'
+    },
+    'sponsor' => {
+      title_key: 'sponsor.title',
+      body_key:  'sponsor.body_html',
+      hide_ok: true
     },
     # 'destroy-apple-key' => {
     #   title_key:      'destroy_apple_key.title',
@@ -51,6 +56,7 @@ class ModalsController < ApplicationController
       type: type,
       title: @title,
       body: @body,
+      hide_ok: modal_config[:hide_ok] || false,
       confirm_value: @confirm_value,
       confirm_link: @confirm_link
     }

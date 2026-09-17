@@ -22,11 +22,14 @@ class ModalComponent < ViewComponent::Base
     @type ||= @options.fetch(:type, 'default')
   end
 
+  def hide_ok
+    @hide_ok ||= @options.fetch(:hide_ok, false)
+  end
+
   def default_button
-    tag.button class: 'btn btn-tool', title: tooltip_value, data: { 
-      action: 'click->destroy#click', 
-      bs_toggle: 'tooltip', 
-      bs_custom_class: 'default-tooltip' 
+    tag.button class: 'd-btn d-tooltip', data: {
+      tip: tooltip_value,
+      action: 'click->destroy#click',
     } do
       tag.i class: 'fa-solid fa-trash-alt text-danger'
     end
@@ -55,16 +58,14 @@ class ModalComponent < ViewComponent::Base
   end
   
   def wrapper_tag
-    @wrapper_tag ||= @options.fetch(:wrapper_tag, 'div')
+    @wrapper_tag ||= @options.fetch(:wrapper_tag, 'dialog')
   end
 
   def wrapper_classes
     @wrapper_classes ||= -> {
-      default_classes = 'modal fade'
-      modal_size = @options.fetch(:size, nil)
-      modal_size = [(modal_size ? "modal-#{modal_size}" : nil)].compact.join(' ')
+      default_classes = 'd-modal'
       new_classes = @options.fetch(:wrapper_classes, '')
-      [default_classes, new_classes, modal_size].join(' ')
+      [default_classes, new_classes, modal_position].join(' ')
     }.call
   end
 
@@ -72,5 +73,36 @@ class ModalComponent < ViewComponent::Base
     @wrapper_data ||= @options.fetch(:wrapper_data, {
       controller: 'modal',
     })
+  end
+
+  def modal_size
+    @modal_size ||= case @options.fetch(:size, 'md').to_sym
+                    when :xs
+                      'md:w-11/12 md:max-w-xs'
+                    when :sm
+                      'md:w-11/12 md:max-w-sm'
+                    when :md
+                      # default
+                      ''
+                    when :lg
+                      'md:w-11/12 md:max-w-lg'
+                    when :xl
+                      'md:w-11/12 md:max-w-xl'
+                    when :'2xl'
+                      'md:w-11/12 md:max-w-2xl'
+                    when :'3xl'
+                      'md:w-11/12 md:max-w-3xl'
+                    when :'4xl'
+                      'md:w-11/12 md:max-w-4xl'
+                    when :'5xl'
+                      'md:w-11/12 md:max-w-5xl'
+                    when :'6xl'
+                      'md:w-11/12 md:max-w-6xl'
+                    end
+  end
+
+  def modal_position
+    # default position is bottom on small screens, middle on larger screens
+    @modal_position ||= @options.fetch(:position, 'd-modal-bottom md:d-modal-middle')
   end
 end

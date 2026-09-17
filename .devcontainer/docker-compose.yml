@@ -11,7 +11,7 @@ services:
     image: postgres:18-alpine
     restart: unless-stopped
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data/18
       - ./create-db-user.sql:/docker-entrypoint-initdb.d/create-db-user.sql
     environment:
       POSTGRES_USER: postgres
@@ -20,7 +20,7 @@ services:
   # Tools
   pgweb:
     # no editing function yet, https://github.com/sosedoff/pgweb/issues/656
-    image: sosedoff/pgweb:0.16.2
+    image: sosedoff/pgweb:0.17.0
     restart: unless-stopped
     network_mode: service:db
     environment:

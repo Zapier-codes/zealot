@@ -1,0 +1,7 @@
+- return if breadcrumbs.blank?
+- return unless user_signed_in_or_guest_mode?
+
+ul.breadcrumbs data-controller="breadcrumbs" data-breadcrumbs-target="container"
+  - breadcrumbs.each_with_index do |crumb, index|
+    li data-breadcrumbs-target="item" data-index=index data-label=crumb.label data-path=crumb.path
+      = link_to crumb.label, crumb.path, data: { turbo_frame: "_top" }, class: "text-sm text-base-content hover:no-underline hover:bg-base-300 px-2 py-1 rounded-sm whitespace-nowrap"
