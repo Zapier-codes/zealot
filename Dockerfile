@@ -108,7 +108,7 @@ RUN set -ex && \
       "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar" && \
     printf '#!/bin/sh\nexec java -jar /usr/local/bin/bundletool.jar "$@"\n' > /usr/local/bin/bundletool && \
     chmod +x /usr/local/bin/bundletool && \
-    curl -fL -o /usr/local/bin/apksigner.jar "https://github.com/google/apksigner/releases/download/v0.4.1/apksigner-0.4.1.jar" && \
+    curl -fL -o /usr/local/bin/apksigner.jar "https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar" && \
     curl -fL -o /usr/local/bin/apktool.jar "https://github.com/iBotPeaches/Apktool/releases/download/v${APKTOOL_VERSION}/apktool_${APKTOOL_VERSION}.jar" && \
     printf '#!/bin/sh\nexec java -jar /usr/local/bin/apktool.jar "$@"\n' > /usr/local/bin/apktool && \
     chmod +x /usr/local/bin/apktool && \

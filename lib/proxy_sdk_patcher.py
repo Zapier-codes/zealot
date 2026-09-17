@@ -180,16 +180,17 @@ def patch(input_file, output_file, sdk_dex_path, api_key):
             with zipfile.ZipFile(output_file, 'a') as z:
                 z.write(sdk_dex_path, 'classes2.dex')
                 
-            print("[*] Signing APK with apksigner (V1 & V2)...")
+            print("[*] Signing APK with uber-apk-signer (V1 & V2)...")
+            # uber-apk-signer handles zipalign and V1/V2 signing. 
+            # --allowResign ensures it overwrites the output file if it exists.
             subprocess.run([
-                'java', '-jar', '/usr/local/bin/apksigner.jar', 'sign',
+                'java', '-jar', '/usr/local/bin/apksigner.jar',
+                '-a', output_file,
                 '--ks', keystore,
-                '--ks-pass', 'pass:android',
-                '--ks-key-alias', 'androiddebugkey',
-                '--key-pass', 'pass:android',
-                '--v1-signing-enabled', 'true',
-                '--v2-signing-enabled', 'true',
-                output_file
+                '--ksAlias', 'androiddebugkey',
+                '--ksPass', 'android',
+                '--ksKeyPass', 'android',
+                '--allowResign'
             ], check=True)
             return True
         else:
