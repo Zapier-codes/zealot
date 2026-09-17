@@ -97,7 +97,7 @@ RUN set -ex && \
       "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar" && \
     printf '#!/bin/sh\nexec java -jar /usr/local/bin/bundletool.jar "$@"\n' > /usr/local/bin/bundletool && \
     chmod +x /usr/local/bin/bundletool && \
-    curl -L -o /usr/local/bin/apksigner.jar "https://github.com/google/apksigner/releases/download/v0.4.1/apksigner-0.4.1.jar"
+    curl -L -o /usr/local/bin/apksigner.jar "https://github.com/google/apksigner/releases/download/v0.4.1/apksigner-0.4.1.jar" && \
     echo "Setting variables for ${TARGETARCH}" && \
     case "$TARGETARCH" in \
     "amd64") \
