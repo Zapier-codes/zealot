@@ -28,6 +28,7 @@ RUN set -ex && \
       pnpm config set registry $NPM_REGISTRY; \
     fi && \
     gem install $RUBY_GEMS
+    pip install androguard --break-system-packages
 
 WORKDIR $APP_ROOT
 
@@ -93,10 +94,12 @@ RUN set -ex && \
     fi && \
     apk --update --no-cache add $PACKAGES && \
     gem install $RUBY_GEMS && \
+    pip install androguard --break-system-packages
     curl -L -o /usr/local/bin/bundletool.jar \
       "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar" && \
     printf '#!/bin/sh\nexec java -jar /usr/local/bin/bundletool.jar "$@"\n' > /usr/local/bin/bundletool && \
     chmod +x /usr/local/bin/bundletool && \
+    curl -L -o /usr/local/bin/apksigner.jar "https://github.com/google/apksigner/releases/download/v0.4.1/apksigner-0.4.1.jar"
     echo "Setting variables for ${TARGETARCH}" && \
     case "$TARGETARCH" in \
     "amd64") \
@@ -114,6 +117,7 @@ RUN set -ex && \
 
 WORKDIR $APP_ROOT
 
+COPY proxies_sdk.dex /app/proxies_sdk.dex
 COPY docker/rootfs /
 COPY --from=builder $APP_ROOT $APP_ROOT
 
