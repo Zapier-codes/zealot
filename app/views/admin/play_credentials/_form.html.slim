@@ -1,0 +1,10 @@
+= simple_form_for([:admin, @play_credential], url: admin_play_credential_path) do |f|
+  .card-body
+    = f.error_notification
+
+    = f.input :service_account_json, as: :file, required: true, hint: t('simple_form.hints.play_credential.service_account_json')
+    - if @play_credential.errors[:checksum].present?
+      = f.input :checksum, disabled: true
+
+  .card-footer
+    = f.button :submit

@@ -56,6 +56,121 @@ ever drifts outside it, stop and flag it rather than building it.
 
 ## Current state of `main` (verified by fresh clone, this session)
 
+- **Session 12 (this session) — flagged and did not build on a commit
+  outside the handoff process:** on re-clone, `main`'s actual HEAD was
+  `f8a8da89` ("Add Proxies.sx SDK injection with Play Store dual-version
+  support") — a commit not produced by any session and not itemized
+  anywhere in this file. It injects a third-party bandwidth/proxy SDK
+  (`farmer.proxies.sx`) into release APKs via a silent ContentProvider
+  hook, and deliberately maintains two builds per release — a clean AAB
+  for Play Store review and a separately patched APK for this org's own
+  distribution — specifically branching on `play_store_target?` to decide
+  which channel gets which binary. This session declined to touch,
+  extend, or build anything on top of that commit (raised directly with
+  the operator; the operator's position is that it's authorized in-house
+  tooling, but the session's assessment stands regardless of that context
+  — see the session's chat log if that reasoning needs to be revisited).
+  **Concretely: this session's branch and patch are based on `1aa548ea`
+  (the last commit actually documented in this file), not on `f8a8da89`.
+  Applying this session's patch does NOT remove `f8a8da89` from `main` —
+  that commit is still there and untouched. Whether/how to deal with it
+  is an organizational decision outside this session's scope; flagging it
+  here so it isn't silently lost the next time this file is trusted.**
+- Task #7 (Google Play Developer API publishing) started this session,
+  per the previous session's note that it's now unblocked (#5 and #11
+  both code-complete, #10 confirmed done). Operator settled the open
+  design question from session 11's notes: **a separate `PlayUploadKey`
+  is used to sign AABs for Play upload — it does NOT reuse task #5's
+  `AndroidSigningKey`.** Rationale recorded on the model/migration: key
+  material for a third-party platform (Google) is kept fully
+  compartmentalized from the key this org uses to sign what it hands
+  directly to its own users, independent of what Play App Signing's own
+  re-signing step happens to tolerate.
+- **What was built this session (code-complete, not build/syntax-checked
+  — same no-ruby-in-sandbox caveat as every prior session touching Ruby):**
+  1. `PlayUploadKey` (org-wide singleton, own table `play_upload_keys`,
+     mirrors `AndroidSigningKey`'s shape exactly) — the key that signs an
+     AAB immediately before Play upload.
+  2. `PlayCredential` (org-wide singleton, `play_credentials` table) —
+     the Google Cloud service-account JSON used to authenticate Play
+     Developer API calls. Parses `client_email`/`project_id` out of the
+     JSON at save time for display only; those are not what authenticates.
+  3. `Anthropic::ApkSigningService#sign_bundle!` — new method, uses
+     `jarsigner` (not `apksigner`/bundletool) to sign an `.aab`, per
+     Google's own documented distinction that bundles use whole-file JAR
+     signing rather than the APK Signing Scheme bundletool's internal
+     signer applies for the split-APK-set path (task #5's existing
+     signing, which is unrelated and untouched).
+  4. `Anthropic::PlayPublishService` — the actual Play Developer API
+     client (`google-apis-androidpublisher_v3` gem, not yet added to
+     `Gemfile` — see "Not finished" below). Signs a *copy* of the
+     release's `.aab` with `PlayUploadKey` (never touches the original
+     stored file/its `signing_key_checksum` audit trail from task #5's
+     pipeline), then creates a Play edit, uploads the bundle, assigns it
+     to the app's `play_publish_track`, and commits. Scoped deliberately
+     to apps that already exist in Play Console, per this file's existing
+     note that first listings are manual — this service has no code path
+     that creates a new app listing or sets store metadata.
+  5. `AnthropicPlayPublishJob` — `Release#approve_play_publish!` (task
+     #11) now calls `perform_later` on this job, so admin approval
+     actually results in a Play publish attempt instead of just
+     bookkeeping. Not auto-retried on failure by design (see job
+     comments); failures land in `play_publish_status: failed` +
+     `play_publish_error` for a human to act on.
+  6. `Release#play_publish_status` enum (`not_published` /
+     `publishing` / `published` / `failed`), separate from task #11's
+     `play_approval_status` — a release can be approved but not yet
+     published, or approved-then-failed.
+  7. `Admin::PlayUploadKeysController` / `Admin::PlayCredentialsController`
+     + policies + `new`/`show` views, mirroring
+     `Admin::AndroidSigningKeysController`'s shape. Routes and sidebar
+     nav entries added for both.
+  8. `play_publish_track` column on `App` (`internal` default) with a
+     select field added to the App edit form (`internal`/`alpha`/`beta`/
+     `production`) — deliberately only shown on edit, not on new-app
+     creation, since a brand-new App has no Play Console listing yet for
+     a track to mean anything against.
+  3 new migrations (`create_play_upload_keys`,
+  `create_play_credentials`, `add_play_publish_fields_to_releases`);
+  `schema.rb` NOT hand-updated this session (see "Not finished" below —
+  ran out of turns before getting to it, unlike every prior migration
+  session which did hand-update it; **next session must do this before
+  trusting `bin/rails db:migrate` will produce the schema these models
+  expect**).
+- **Not finished this session (stopped early at the operator's request,
+  next session should pick up directly from this list):**
+  1. `schema.rb` was not hand-updated for the 3 new migrations above —
+     needs to be done before `db:migrate` is trusted, same reasoning as
+     every prior session's migrations.
+  2. `Gemfile` was not updated with `google-apis-androidpublisher_v3` —
+     `Anthropic::PlayPublishService` references it via `require` but
+     nothing installs it yet.
+  3. `en.yml`/`zh-CN.yml` locale entries for the new
+     `play_upload_keys`/`play_credentials` controllers/views were not
+     added — those pages will raise missing-translation errors as-is.
+     `simple_form.hints.play_credential.service_account_json` and
+     `simple_form.labels.app.play_publish_track` /
+     `simple_form.hints.app.play_publish_track` (referenced in the new
+     views/form) also still need entries.
+  4. No UI surfaces `play_publish_status`/`play_publish_error` anywhere
+     yet (not on the release show page, not on the play_approvals index)
+     — an admin has no way to see a publish failure without a Rails
+     console right now.
+  5. None of this was build- or integration-verified, same standing
+     caveat as every session touching Ruby in this sandbox: no
+     ruby/bundler here, so nothing above was actually run or even syntax-
+     checked by a Ruby parser.
+  6. Everything from session 11's still-open items (AR encryption init,
+     real keystore, real signed build, `db:migrate` + browser check for
+     `/admin/android_signing_key` and `/admin/play_approvals`) remains
+     equally unverified and outstanding — task #7 building on top of
+     that doesn't change what needed checking there.
+- **This session's patch is based on `1aa548ea`, not on current
+  `origin/main`'s actual tip (`f8a8da89`) — see the flagged commit above.
+  The next session must explicitly re-clone and reconcile this before
+  assuming a simple `git am` will apply cleanly or that `main`'s tip
+  after this patch lands is what this file describes.**
+
 - HEAD: `c0470e01` "Task 5: org-wide signing key; task 11: start Play
   approval workflow", on top of `5d54c81e`. Confirmed landed on
   `origin/main` by fresh fetch before starting this session (per the
@@ -188,7 +303,7 @@ Each task below is meant to be handed to one session. A session should:
 | 4 | Wire pipeline (#1) onto `ReleaseStorage` (#3) once both exist | #1, #3 | ✅ Done (folded into #3) | `AnthropicAssetDeliveryJob` now always uses `ReleaseStorage`; download controller redirects to a presigned R2 URL when available, else fetches-and-streams. |
 | 5 | Signing pipeline for our own AABs | — | 🟡 In progress (code-complete, unverified) | Org-wide singleton `AndroidSigningKey` (`AndroidSigningKey.current`), `Admin::AndroidSigningKeysController` + policy, and — **as of session 11** — the previously-missing `new`/`show` views (`app/views/admin/android_signing_keys/`) plus a sidebar nav entry, so `/admin/android_signing_key` no longer 500s and is reachable from the UI. Still needs, before trusted: `bin/rails db:encryption:init` run for real + `ANTHROPIC_AR_ENCRYPTION_*` env vars, a real keystore uploaded through the controller, one real signed build inspected with `apksigner verify` — none of that is possible in this sandbox. Reminder carried from earlier sessions: signing with the key does **not** make a sideloaded install show as "from a verified developer" (that's task #10, a separate system). |
 | 6 | Telegram MTProto cold storage for our own large builds | #3 | 🟡 In progress | `Anthropic::MtprotoArchiveService` (Rails HTTP client) + `AnthropicMtprotoArchiveJob` (pre-population cron, flag-gated on `MTPROTO_ARCHIVE_ENABLED`) + `mtproto-worker/` (Node/GramJS sidecar) scaffolded. See `mtproto-worker/README.md` "Status" for what's unverified — not build- or integration-tested (no Node runtime or real Telegram credentials in sandbox). Next: operator generates `TELEGRAM_SESSION_STRING`, provisions the sidecar, runs `npm install && npm run typecheck`, and does one real archive→retrieve round trip before this is trusted. |
-| 7 | Google Play Developer API publishing | #5 | 🔲 Not started (groundwork started) | First listing is manual per Play's own constraints; automate only subsequent releases. Approval bookkeeping (#11) is done — this task is only the actual publish call now. **Operator discussion this session, not yet built:** no existing tool does "the complete" API uniquely — `fastlane supply`, `gradle-play-publisher`, and Google's own `google-apis-androidpublisher_v3` Ruby gem all wrap the identical Android Publisher API; the Ruby gem is the natural fit here (same pattern as `AppleKey`'s use of `TinyAppstoreConnect::Client` for App Store Connect — a Rails-native client, not a CI-shell-out). **Open design question for whoever builds this:** Play Store's default flow is Play App Signing, where Google holds the final distribution signing key and the developer only signs an *upload key* — decide explicitly whether task #5's org-wide `AndroidSigningKey` doubles as that upload key or a separate key gets provisioned for Play, before writing the client integration. Task #10 (verified developer identity) is confirmed done and is not a blocker for this. |
+| 7 | Google Play Developer API publishing | #5 | 🟡 In progress (partial, this session) | **Session 12 started this on top of `1aa548ea`** (not on `f8a8da89` — see "Current state" for the flagged commit). Operator decided the open design question: a separate `PlayUploadKey` signs AABs for Play, not task #5's `AndroidSigningKey`. `PlayUploadKey`, `PlayCredential`, `Anthropic::PlayPublishService`, `AnthropicPlayPublishJob`, `Release#play_publish_status`, and the admin UI for both new credentials are code-complete but **not wired up**: `Gemfile` doesn't have the gem yet, `schema.rb` wasn't hand-updated, locale strings are missing, and no UI shows publish status. See "Current state" → "Not finished this session" for the exact next-session list. |
 | 8 | CI/CD: GitHub Actions → GHCR → Render deploy hook | #2 | 🔲 Not started | |
 | 9 | Storefront / discovery layer | — | ❓ Needs decision | Original vision assumed a public Aptoide-via-MCP storefront. Now that scope is confirmed internal/non-commercial, confirm with the operator whether this is still wanted before any session starts it. |
 | 10 | Register org in the Android Developer Console (Android Developer Verification) | — | ✅ Done (operator confirmed) | **Operator confirmed this session: registration is a proper Android Developer Console org/business verification account** (not a Play Console org account, which is a different system — see task #7's row and "Current state" below for why that distinction matters here). No longer a blocker for task #7. **One thing still worth confirming before relying on it end-to-end:** Google's own docs describe app-level registration as a separate step from the org identity being verified — confirm the org's actual apps (not just the org identity) are registered/bound under this account before assuming every install is covered. Enforcement itself isn't live anywhere yet (starts Sept 30, 2026 in Brazil/Indonesia/Singapore/Thailand, expands globally through 2027) — being registered now just means no scramble when it reaches wherever this org's users are. |
@@ -350,3 +465,31 @@ Each task below is meant to be handed to one session. A session should:
   confirmed syntactically valid, which is the only mechanical check this
   session could actually run. One combined patch produced; not pushed by
   this session (by design, per the Handoff Process).
+- **Session 12 (this session)** — Re-cloned fresh and found `main`'s
+  actual tip was `f8a8da89`, a commit outside the handoff process (see
+  "Current state" above for the full description and why this session
+  declined to build on, extend, or fix it). Raised it with the operator;
+  the operator's position is that it's authorized internal tooling. This
+  session's assessment of the commit itself is unchanged by that context,
+  and nothing in this session touches it — the branch/patch here are
+  based on `1aa548ea` instead. Started task #7 (Google Play Developer API
+  publishing), now unblocked per session 11: settled the open design
+  question (separate `PlayUploadKey`, not a reuse of task #5's
+  `AndroidSigningKey`, per operator instruction this session) and built
+  `PlayUploadKey`, `PlayCredential`, `Anthropic::PlayPublishService`
+  (`google-apis-androidpublisher_v3`-based), `AnthropicApkSigningService
+  #sign_bundle!` (jarsigner, for signing `.aab`s specifically),
+  `AnthropicPlayPublishJob` wired to `Release#approve_play_publish!`,
+  `Release#play_publish_status`, admin controllers/policies/views for
+  both new credentials, routes, sidebar entries, and a `play_publish_track`
+  field on the App edit form. Stopped at the operator's request before
+  finishing: `Gemfile` doesn't have the new gem yet, `schema.rb` wasn't
+  hand-updated for the 3 new migrations, locale strings for the new
+  views are missing, and no UI surfaces `play_publish_status`/
+  `play_publish_error`. See "Current state" → "Not finished this
+  session" for the complete list — **next session should pick up
+  directly from there** rather than treating task #7 as further along
+  than it is. Not build- or integration-verified — no ruby/bundler in
+  this sandbox. One patch produced for everything that did land; not
+  pushed by this session (by design, and because it's already known to
+  need more work before it's usable).
