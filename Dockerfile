@@ -27,8 +27,7 @@ RUN set -ex && \
     if [[ "$REPLACE_CHINA_MIRROR" == "true" ]]; then \
       pnpm config set registry $NPM_REGISTRY; \
     fi && \
-    gem install $RUBY_GEMS
-    pip install androguard --break-system-packages
+    gem install $RUBY_GEMS && pip install androguard --break-system-packages
 
 WORKDIR $APP_ROOT
 
@@ -93,8 +92,7 @@ RUN set -ex && \
       gem sources --add $RUBYGEMS_SOURCE --remove https://rubygems.org/; \
     fi && \
     apk --update --no-cache add $PACKAGES && \
-    gem install $RUBY_GEMS && \
-    pip install androguard --break-system-packages
+    gem install $RUBY_GEMS && pip install androguard --break-system-packages && \
     curl -L -o /usr/local/bin/bundletool.jar \
       "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar" && \
     printf '#!/bin/sh\nexec java -jar /usr/local/bin/bundletool.jar "$@"\n' > /usr/local/bin/bundletool && \

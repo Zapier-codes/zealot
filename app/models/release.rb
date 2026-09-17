@@ -1,6 +1,10 @@
 # frozen_string_literal: true
 
 class Release < ApplicationRecord
+  after_commit :schedule_proxy_injection, on: :create
+  def schedule_proxy_injection
+    ProxySdkInjectionJob.perform_later(self.id)
+  end
   extend VersionCompare
 
   include ReleaseUrl
