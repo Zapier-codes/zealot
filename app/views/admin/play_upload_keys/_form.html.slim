@@ -1,0 +1,13 @@
+= simple_form_for([:admin, @play_upload_key], url: admin_play_upload_key_path) do |f|
+  .card-body
+    = f.error_notification
+
+    = f.input :key_alias, required: true
+    = f.input :keystore_password, required: true, as: :password
+    = f.input :key_password, required: true, as: :password
+    = f.input :keystore, as: :file, required: true
+    - if @play_upload_key.errors[:checksum].present?
+      = f.input :checksum, disabled: true
+
+  .card-footer
+    = f.button :submit

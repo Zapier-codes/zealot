@@ -14,5 +14,14 @@ ruby:
             = n.input :name, as: :check_boxes, collection: preset_schemes, checked: schemes, required: false
           = f.simple_fields_for :channel_attributes do |n|
             = n.input :name, as: :check_boxes, collection: preset_channels, checked: channels, required: false
+        - else
+          / Task #7: which Play Console track this App's approved releases
+          / publish to. Only shown once the App already exists — a brand
+          / new App has no Play Console listing yet (handover.md: first
+          / listing is manual), so there's nothing for this to mean until
+          / then.
+          = f.input :play_publish_track, collection: %w[internal alpha beta production], \
+            include_blank: false, label: t('simple_form.labels.app.play_publish_track'), \
+            hint: t('simple_form.hints.app.play_publish_track')
       .card-footer
         = f.button :submit

@@ -31,6 +31,18 @@ class Release < ApplicationRecord
   scope :awaiting_play_approval, -> { play_store_targeted.play_approval_pending }
   scope :play_approval_overdue, -> { play_approval_pending.where('play_approval_expires_at < ?', Time.current) }
 
+  # Task #7: tracks the actual Play Developer API publish call, distinct
+  # from play_approval_status above (which only tracks whether an admin
+  # signed off — see AnthropicPlayPublishJob for what drives these
+  # transitions). A release can be play_approval_approved but still
+  # not_published (job hasn't run yet) or failed (needs a fix + retry).
+  enum :play_publish_status, {
+    not_published: 'not_published',
+    publishing: 'publishing',
+    published: 'published',
+    failed: 'failed'
+  }, prefix: :play_publish
+
   belongs_to :channel
   belongs_to :play_approved_by, class_name: 'User', optional: true
   has_one :metadata, class_name: 'Metadatum', dependent: :destroy
@@ -291,6 +303,13 @@ class Release < ApplicationRecord
       play_approved_at: Time.current,
       play_approved_by: by
     )
+
+    # Task #7: this is the actual trigger for the Play Developer API
+    # publish call — approval bookkeeping (task #11) alone never talks to
+    # Google. See AnthropicPlayPublishJob for what happens if credentials
+    # are missing or the call fails (play_publish_status flips to
+    # `failed` with play_publish_error set; nothing here retries silently).
+    AnthropicPlayPublishJob.perform_later(id)
   end
 
   # NOTE: reuses the play_approved_at/play_approved_by columns for
