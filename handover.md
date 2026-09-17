@@ -31,27 +31,30 @@ directly. The loop is always:
 Do not deviate from this (no direct pushes from a session, no skipping the
 patch step, no declaring a build verified without an Actions log).
 
-**As of session 13:** the above still governs `main` itself (steps 2–4
-apply verbatim there). But tasks #5, #6, and #7 — the release/signing/
-publishing pipeline — live on `clean/no-sdk-injection`, a permanently
-separate branch the operator has decided not to merge into `main` (see
-"Current state" → Session 13 for why: `main`'s tip has a proxy-SDK
-injection commit, `f8a8da89`, that this branch deliberately excludes).
+**As of session 13:** `main`'s tip had a proxy-SDK injection commit,
+`f8a8da89`, and tasks #5/#6/#7 were moved to a separate
+`clean/no-sdk-injection` branch that deliberately excluded it, with an
+explicit operator decision at the time to keep the two permanently
+separate.
 
-For those tasks, step 2's exact commands are:
-```
-cd ~/zealot
-git checkout -b clean/no-sdk-injection 1aa548ea   # only the first time;
-                                                    # later patches use
-                                                    # `git checkout clean/no-sdk-injection`
-                                                    # instead (no -b, no base commit)
-git am ~/storage/downloads/<n>.patch
-git push -u origin clean/no-sdk-injection          # NOT `git push origin main`
-```
-`-u` on the first push sets upstream tracking, so later pushes on this
-branch can just be `git push`. Step 4 becomes: re-clone and check out
-`origin/clean/no-sdk-injection`, not `origin/main`, before trusting this
-file's task-status table for #5/#6/#7.
+**As of September 17, 2026:** that decision was
+reversed. The operator merged `clean/no-sdk-injection` into `main` with
+`git merge --no-ff` (commit `e46dfaa1`), so `main`'s tip now contains
+*both* `f8a8da89` (still there, untouched — the merge did not remove,
+revert, or fix it) *and* everything tasks #5/#6/#7 built on the
+separate branch. **There is one branch again.** The
+step-2/step-4 branch-specific commands that used to live here (checkout
+`clean/no-sdk-injection` instead of `main`, push to it instead of
+`origin main`, etc.) no longer apply — steps 1–4 above govern
+everything, including tasks #5/#6/#7, same as before session 13 ever
+existed. `clean/no-sdk-injection` itself still exists on the remote as
+of this merge (nothing deleted it) but is no longer the place new work
+on those tasks should target — target `main`. See "Current state" below
+for what this means for `f8a8da89` going forward: it is now simply part
+of `main`'s history like anything else, not a separately-flagged,
+separately-branched-around commit. Whether/how to deal with it (revert,
+keep, something else) is still an open, undecided question — the merge
+resolved the *branch topology*, not that question.
 
 ## Scope, stated plainly
 
@@ -325,7 +328,7 @@ Each task below is meant to be handed to one session. A session should:
 | 4 | Wire pipeline (#1) onto `ReleaseStorage` (#3) once both exist | #1, #3 | ✅ Done (folded into #3) | `AnthropicAssetDeliveryJob` now always uses `ReleaseStorage`; download controller redirects to a presigned R2 URL when available, else fetches-and-streams. |
 | 5 | Signing pipeline for our own AABs | — | 🟡 In progress (code-complete, unverified) | Org-wide singleton `AndroidSigningKey` (`AndroidSigningKey.current`), `Admin::AndroidSigningKeysController` + policy, and — **as of session 11** — the previously-missing `new`/`show` views (`app/views/admin/android_signing_keys/`) plus a sidebar nav entry, so `/admin/android_signing_key` no longer 500s and is reachable from the UI. Still needs, before trusted: `bin/rails db:encryption:init` run for real + `ANTHROPIC_AR_ENCRYPTION_*` env vars, a real keystore uploaded through the controller, one real signed build inspected with `apksigner verify` — none of that is possible in this sandbox. Reminder carried from earlier sessions: signing with the key does **not** make a sideloaded install show as "from a verified developer" (that's task #10, a separate system). |
 | 6 | Telegram MTProto cold storage for our own large builds | #3 | 🟡 In progress (npm install/typecheck now verified, session 13) | `Anthropic::MtprotoArchiveService` (Rails HTTP client) + `AnthropicMtprotoArchiveJob` (pre-population cron, flag-gated on `MTPROTO_ARCHIVE_ENABLED`) + `mtproto-worker/` (Node sidecar, `teleproto` — GramJS's sanctioned successor, see README) scaffolded. **Session 13: this sandbox had Node after all — `npm install` (0 vulnerabilities) and `npm run typecheck` (clean) both actually ran and passed**, closing out two of the three "Next" items below. See `mtproto-worker/README.md` "Status" for the full verification trail, including why `teleproto` (not `telegram`) is the right dependency. Still needed: operator generates a real `TELEGRAM_SESSION_STRING` (requires a live Telegram account, can't be done from a sandbox) and does one real archive→retrieve round trip; a process-supervision decision for the sidecar on Render is also still open. |
-| 7 | Google Play Developer API publishing | #5 | 🟡 In progress (wiring complete, still unverified) | See task #7's detailed row further down and "Current state" → Sessions 13–14 for what's now wired vs. still needing a real Rails runtime to trust. **Lives on `clean/no-sdk-injection`, a permanently separate branch from `main` (operator decision, session 13) — not `main`'s tip.** As of session 14, `play_publish_status`/`play_publish_error` are also surfaced on the release show page itself (previously only on the `play_approvals` index). |
+| 7 | Google Play Developer API publishing | #5 | 🟡 In progress (wiring complete, still unverified) | See task #7's detailed row further down and "Current state" → Sessions 13–14 for what's now wired vs. still needing a real Rails runtime to trust. **Built on `clean/no-sdk-injection`; that branch was merged into `main` on 2026-09-17 (commit `e46dfaa1`) — this work now lives on `main` like everything else, see "Handoff Process" above.** As of session 14, `play_publish_status`/`play_publish_error` are also surfaced on the release show page itself (previously only on the `play_approvals` index). |
 | 8 | CI/CD: GitHub Actions → GHCR → Render deploy hook | #2 | 🔲 Not started | |
 | 9 | Storefront / discovery layer | — | ❓ Needs decision | Original vision assumed a public Aptoide-via-MCP storefront. Now that scope is confirmed internal/non-commercial, confirm with the operator whether this is still wanted before any session starts it. |
 | 10 | Register org in the Android Developer Console (Android Developer Verification) | — | ✅ Done (operator confirmed) | **Operator confirmed this session: registration is a proper Android Developer Console org/business verification account** (not a Play Console org account, which is a different system — see task #7's row and "Current state" below for why that distinction matters here). No longer a blocker for task #7. **One thing still worth confirming before relying on it end-to-end:** Google's own docs describe app-level registration as a separate step from the org identity being verified — confirm the org's actual apps (not just the org identity) are registered/bound under this account before assuming every install is covered. Enforcement itself isn't live anywhere yet (starts Sept 30, 2026 in Brazil/Indonesia/Singapore/Thailand, expands globally through 2027) — being registered now just means no scramble when it reaches wherever this org's users are. |
@@ -558,6 +561,17 @@ Each task below is meant to be handed to one session. A session should:
   real `db:migrate` (or `schema:load`) against a live DB, and a manual
   check that the new `play_approvals#index` section renders.
 
+  **[Superseded 2026-09-17 — see "Handoff Process" above and this
+  session log's own later entry: the operator reversed the
+  "permanently separate" decision above and merged
+  `clean/no-sdk-injection` into `main` via `git merge --no-ff`
+  (`e46dfaa1`). `main` now contains both `f8a8da89` and everything this
+  session and later sessions built on the branch. The bullets
+  immediately above (branch-specific apply commands, "every future
+  session should target `clean/no-sdk-injection`") no longer reflect
+  reality — left in place as the historical record of what was decided
+  at the time, not as current instructions.]**
+
   **Same session, continued — task #6:** this sandbox turned out to
   actually have Node (`node` v22, `npm` v10 on PATH) — the "no Node
   runtime available" caveat every prior session repeated for task #6 was
@@ -674,3 +688,61 @@ Each task below is meant to be handed to one session. A session should:
   `play_approved_at`/`play_approved_by_id` do *not*) — this was hand-
   reasoned from the model change, not exercised. One patch produced this
   session; not pushed, per the Handoff Process.
+
+- **Session 16 (this session) — branch reunification, no code changes.**
+  The operator asked to merge `clean/no-sdk-injection` into `main` "as
+  is." Before handing over a command, flagged that this reverses session
+  13's explicit "stays permanently separate" decision and that
+  `f8a8da89` (the proxy-SDK injection commit) would end up on `main`
+  unchanged — the merge itself does nothing to remove, revert, or
+  otherwise address it. The operator confirmed: merge everything as is.
+  Dry-ran the merge first to find conflicts before handing over a real
+  command: every file auto-merged cleanly except this one
+  (`handover.md`), which was certain to conflict since both branches had
+  been independently extending it since session 13. Diffed both
+  branches' copies to confirm `clean/no-sdk-injection`'s version was a
+  strict superset of `main`'s (every line unique to `main`'s copy was an
+  older, superseded version of something `clean`'s copy already had
+  updated — none of it was content `clean`'s copy was missing), so the
+  correct conflict resolution was `git checkout --theirs handover.md`
+  rather than a line-by-line reconciliation.
+  **The operator ran:**
+  ```
+  git checkout main && git pull origin main
+  git merge --no-ff origin/clean/no-sdk-injection
+  git checkout --theirs handover.md && git add handover.md && git commit
+  git push origin main
+  ```
+  Landed as `e46dfaa1` on `main`. Confirmed via fresh clone: `main`'s tip
+  now contains both `f8a8da89` and everything tasks #5/#6/#7 built on
+  `clean/no-sdk-injection` (sessions 12–15). **This session's own
+  contribution is this handover.md correction pass** — fixed the
+  Handoff Process section (removed the now-obsolete two-branch apply
+  commands, added a dated note that there is one branch again), task
+  #7's table row (no longer says "permanently separate branch"), and
+  added a superseded-notice to session 13's log entry rather than
+  rewriting or deleting it, so the historical record of what was decided
+  at the time stays intact and honest — only what's now stale is
+  flagged as stale, not erased.
+  **What this merge does and does not settle, for the next session:**
+  - `f8a8da89` is now simply part of `main`'s history, no longer
+    branched around. Whether to revert it, keep it, or do something else
+    is still completely undecided — the merge changed the branch
+    topology, not the answer to that question. Don't treat "it's merged
+    now" as "it's been resolved."
+  - `clean/no-sdk-injection` still exists on the remote (the merge
+    didn't delete it) but is no longer where new work on tasks #5/#6/#7
+    should go — target `main`, same as everything else, per the restored
+    single-branch Handoff Process above.
+  - Nothing here re-verifies any of the unverified/uncertain items
+    carried forward from sessions 11–15 (AR encryption init, real
+    keystore, real `db:migrate`, real Play Developer API call, real
+    Telegram session string, etc.) — a merge doesn't run code. All of
+    those standing "needed before trusting this in production" lists
+    are exactly as unverified as they were before the merge.
+  No patch produced this session (the merge and its push were done
+  directly by the operator, not through the patch process — see
+  Handoff Process for why that's the normal loop and why a merge of
+  already-pushed branches doesn't go through it the same way). This
+  session's handover.md correction is provided as a follow-up patch
+  instead, to be applied and pushed the normal way.
