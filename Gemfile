@@ -23,6 +23,7 @@ gem 'active_model_serializers', '~> 0.10.16'
 gem 'graphql', '~> 2.5.16'
 gem 'health_check', '~> 3.1.0'
 gem 'tiny_appstore_connect', '~> 0.1.12'
+gem 'google-apis-androidpublisher_v3', '~> 0.36.0'
 
 # View
 gem 'view_component', '~> 4.1'

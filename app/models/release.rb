@@ -30,6 +30,13 @@ class Release < ApplicationRecord
   scope :play_store_targeted, -> { where(play_store_target: true) }
   scope :awaiting_play_approval, -> { play_store_targeted.play_approval_pending }
   scope :play_approval_overdue, -> { play_approval_pending.where('play_approval_expires_at < ?', Time.current) }
+  # Approved-or-further releases whose Play publish status is worth an
+  # admin's attention — i.e. everything except the steady states of
+  # "never targeted Play" (not_requested) or "sitting in the approval
+  # queue" (still shown by awaiting_play_approval above). Used by the
+  # play_approvals index to also surface publishing/published/failed
+  # releases, not just ones still awaiting a yes/no.
+  scope :play_publish_tracked, -> { play_store_targeted.where.not(play_approval_status: %i[not_requested pending]) }
 
   # Task #7: tracks the actual Play Developer API publish call, distinct
   # from play_approval_status above (which only tracks whether an admin
