@@ -329,7 +329,7 @@ Each task below is meant to be handed to one session. A session should:
 | 8 | CI/CD: GitHub Actions → GHCR → Render deploy hook | #2 | 🔲 Not started | |
 | 9 | Storefront / discovery layer | — | ❓ Needs decision | Original vision assumed a public Aptoide-via-MCP storefront. Now that scope is confirmed internal/non-commercial, confirm with the operator whether this is still wanted before any session starts it. |
 | 10 | Register org in the Android Developer Console (Android Developer Verification) | — | ✅ Done (operator confirmed) | **Operator confirmed this session: registration is a proper Android Developer Console org/business verification account** (not a Play Console org account, which is a different system — see task #7's row and "Current state" below for why that distinction matters here). No longer a blocker for task #7. **One thing still worth confirming before relying on it end-to-end:** Google's own docs describe app-level registration as a separate step from the org identity being verified — confirm the org's actual apps (not just the org identity) are registered/bound under this account before assuming every install is covered. Enforcement itself isn't live anywhere yet (starts Sept 30, 2026 in Brazil/Indonesia/Singapore/Thailand, expands globally through 2027) — being registered now just means no scramble when it reaches wherever this org's users are. |
-| 11 | Play Store publish-approval workflow (bookkeeping for #7) | #5 (signing, for context only) | ✅ Done (code-complete, unverified) | **As of session 11, everything session 10 itemized as unbuilt now exists:** `Release` enum/scopes/methods (`request_play_approval!`/`approve_play_publish!`/`reject_play_publish!`/`expire_play_approval!`, auto-fired on create via `after_create` when `play_store_target` is set), `Admin::PlayApprovalsController` + index view, `ReleasePolicy#approve_play_publish?`/`#reject_play_publish?` gated on `admin?`, `AnthropicPlayApprovalExpiryJob` (batch-scan, wired into `good_job.rb`'s cron on a 15-minute schedule), a `play_store_target` checkbox on the release upload form (+ permitted param), a sidebar nav entry, and zh-CN mirrors for all locale strings. One known gap: `reject_play_publish!` reuses the `play_approved_at`/`play_approved_by` columns rather than having dedicated rejection columns (see "Current state" above) — functions correctly, just semantically fuzzy in the DB. Task #7 proper (the actual Play Developer API publish call on approval) is still separately not started. **Not build/syntax-checked** — no ruby/bundler in this sandbox; see "Current state" above for exactly what a next session should verify first. |
+| 11 | Play Store publish-approval workflow (bookkeeping for #7) | #5 (signing, for context only) | ✅ Done (code-complete, unverified) | **As of session 11, everything session 10 itemized as unbuilt now exists:** `Release` enum/scopes/methods (`request_play_approval!`/`approve_play_publish!`/`reject_play_publish!`/`expire_play_approval!`, auto-fired on create via `after_create` when `play_store_target` is set), `Admin::PlayApprovalsController` + index view, `ReleasePolicy#approve_play_publish?`/`#reject_play_publish?` gated on `admin?`, `AnthropicPlayApprovalExpiryJob` (batch-scan, wired into `good_job.rb`'s cron on a 15-minute schedule), a `play_store_target` checkbox on the release upload form (+ permitted param), a sidebar nav entry, and zh-CN mirrors for all locale strings. **As of session 14, the known gap is fixed:** `reject_play_publish!` now writes dedicated `play_rejected_at`/`play_rejected_by` columns instead of reusing `play_approved_at`/`play_approved_by` — see "Current state" → Session 14. Task #7 proper (the actual Play Developer API publish call on approval) is separately code-complete as of session 13, still unverified. **Not build/syntax-checked** — no ruby/bundler in this sandbox; see "Current state" above for exactly what a next session should verify first. |
 
 ## Open questions for the operator (don't guess — ask)
 
@@ -628,3 +628,49 @@ Each task below is meant to be handed to one session. A session should:
   raising a missing-translation or nil error. One patch produced this
   session (`git format-patch -1 HEAD` after committing); not pushed, per
   the Handoff Process.
+
+- **Session 15 (this session)** — Re-cloned fresh, checked out
+  `origin/clean/no-sdk-injection`, confirmed local HEAD (`fe0b963c`)
+  matched session 14's log here exactly, no drift to reconcile. Picked up
+  the next-session item session 14 flagged: **dedicated
+  `play_rejected_at`/`play_rejected_by` columns**, so
+  `Release#reject_play_publish!` stops reusing `play_approved_at`/
+  `play_approved_by` (a gap flagged since session 11).
+  1. New migration `AddPlayRejectionFieldsToReleases` (adds
+     `play_rejected_at` datetime + `play_rejected_by_id` reference to
+     `users`, indexed) — hand-updated `db/schema.rb` for it in the same
+     commit (columns, index, foreign key, bumped schema version to
+     `2026_09_17_170000`), same as every prior session's migrations.
+  2. `Release` model: added `belongs_to :play_rejected_by`;
+     `reject_play_publish!` now writes `play_rejected_at`/
+     `play_rejected_by` instead of `play_approved_at`/`play_approved_by`;
+     `request_play_approval!` now also resets `play_rejected_at`/
+     `play_rejected_by` to `nil` (mirroring how it already reset the
+     approved-columns) so re-requesting approval on a previously-rejected
+     release doesn't leave stale rejection data next to a fresh pending
+     request.
+  3. Deliberately did **not** backfill existing rows or add any
+     history-migration script — a release rejected before this migration
+     keeps its old `play_approved_at`/`play_approved_by` values under the
+     ambiguous pre-fix scheme (documented in the model comment); this
+     only changes how *new* rejections are recorded from here on. Flagging
+     this explicitly so nobody assumes `play_rejected_at.present?` is a
+     reliable way to find historically-rejected releases before this
+     migration ran.
+  4. Grepped the whole repo for every other reference to
+     `play_approved_at`/`play_approved_by` to confirm nothing else (views,
+     other services, specs) depended on rejections being stored there —
+     nothing did; the only call sites were the three `Release` methods
+     already covered above.
+  **Not build- or integration-verified**, same standing sandbox caveat:
+  no ruby/bundler here. What I could check: the new migration and the
+  edited `db/schema.rb` region were checked for `do`/`end` balance (30
+  `do`-openers / 30 `end`s across the whole schema file, matching before
+  my edit plus the two lines I added), and the edited `Release` methods
+  were re-read in full to confirm every `update!(...)` call still closes
+  correctly. **Concretely still needed before trusting this:** a real
+  `bin/rails db:migrate`, then reject a test release and confirm
+  `play_rejected_at`/`play_rejected_by_id` actually populate (and
+  `play_approved_at`/`play_approved_by_id` do *not*) — this was hand-
+  reasoned from the model change, not exercised. One patch produced this
+  session; not pushed, per the Handoff Process.

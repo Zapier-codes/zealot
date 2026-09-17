@@ -52,6 +52,7 @@ class Release < ApplicationRecord
 
   belongs_to :channel
   belongs_to :play_approved_by, class_name: 'User', optional: true
+  belongs_to :play_rejected_by, class_name: 'User', optional: true
   has_one :metadata, class_name: 'Metadatum', dependent: :destroy
   has_and_belongs_to_many :devices, dependent: :destroy
 
@@ -300,7 +301,9 @@ class Release < ApplicationRecord
       play_approval_requested_at: Time.current,
       play_approval_expires_at: Time.current + PLAY_APPROVAL_WINDOW,
       play_approved_at: nil,
-      play_approved_by: nil
+      play_approved_by: nil,
+      play_rejected_at: nil,
+      play_rejected_by: nil
     )
   end
 
@@ -319,18 +322,18 @@ class Release < ApplicationRecord
     AnthropicPlayPublishJob.perform_later(id)
   end
 
-  # NOTE: reuses the play_approved_at/play_approved_by columns for
-  # rejections too — the migration landed by the prior session only added
-  # "approved" columns, not separate rejected_at/rejected_by ones. Read
-  # both as "who/when this request was last reviewed", not literally
-  # "approved", for either outcome. Worth a follow-up migration adding
-  # dedicated columns if this ambiguity ever bites (e.g. an admin wants to
-  # see rejection history distinct from approval history).
+  # As of the play_rejected_at/play_rejected_by migration (fixing the gap
+  # flagged since session 11), rejection has its own columns and no longer
+  # touches play_approved_at/play_approved_by — those two now mean exactly
+  # what their names say for every release reviewed from here on. Releases
+  # rejected before this migration keep whatever play_approved_at/by value
+  # was written under the old scheme; this method does not backfill history,
+  # it only changes how new rejections are recorded.
   def reject_play_publish!(by)
     update!(
       play_approval_status: :rejected,
-      play_approved_at: Time.current,
-      play_approved_by: by
+      play_rejected_at: Time.current,
+      play_rejected_by: by
     )
   end
 

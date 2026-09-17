@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_17_160002) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_17_170000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_stat_statements"
@@ -340,6 +340,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_17_160002) do
     t.text "play_publish_error"
     t.datetime "play_published_at"
     t.string "play_publish_status", default: "not_published", null: false
+    t.datetime "play_rejected_at"
+    t.bigint "play_rejected_by_id"
     t.index ["asset_pack_type"], name: "index_releases_on_asset_pack_type"
     t.index ["build_version"], name: "index_releases_on_build_version"
     t.index ["bundle_id"], name: "index_releases_on_bundle_id"
@@ -349,6 +351,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_17_160002) do
     t.index ["play_approval_status"], name: "index_releases_on_play_approval_status"
     t.index ["play_approved_by_id"], name: "index_releases_on_play_approved_by_id"
     t.index ["play_publish_status"], name: "index_releases_on_play_publish_status"
+    t.index ["play_rejected_by_id"], name: "index_releases_on_play_rejected_by_id"
     t.index ["release_type"], name: "index_releases_on_release_type"
     t.index ["release_version", "build_version"], name: "index_releases_on_release_version_and_build_version"
     t.index ["source"], name: "index_releases_on_source"
@@ -456,6 +459,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_17_160002) do
   add_foreign_key "metadata", "users", on_delete: :cascade
   add_foreign_key "releases", "channels", on_delete: :cascade
   add_foreign_key "releases", "users", column: "play_approved_by_id"
+  add_foreign_key "releases", "users", column: "play_rejected_by_id"
   add_foreign_key "schemes", "apps", on_delete: :cascade
   add_foreign_key "user_providers", "users", on_delete: :cascade
   add_foreign_key "web_hooks", "channels", on_delete: :cascade
