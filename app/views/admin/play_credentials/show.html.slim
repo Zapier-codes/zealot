@@ -1,0 +1,33 @@
+- content_for :section_title do
+  = t('.title')
+
+- content_for :title do
+  = t('.title')
+
+- content_for :section_rightpanel do
+  = button_link_to '', admin_play_credential_path, 'trash-alt', \
+    class: 'btn btn-outline-secondary btn-icon', title: t('modals.buttons.destroy'), \
+    data: { turbo_method: :delete, turbo_confirm: t('.destroy_warning'), bs_toggle: :tooltip, bs_custom_class: 'default-tooltip' }
+
+.row
+  .col-md-12
+    .card
+      .card-header
+        h3.card-title = t('.key_metadata')
+      .card-body.p-0
+        .d-flex.px-3.py-2.border-bottom
+          .fw-bold.flex-fill = t('.service_account_email')
+          .text-end = @play_credential.service_account_email
+        .d-flex.px-3.py-2.border-bottom
+          .fw-bold.flex-fill = t('.project_id')
+          .text-end = @play_credential.project_id
+        .d-flex.px-3.py-2.border-bottom
+          .fw-bold.flex-fill = t('.checksum')
+          .text-end = @play_credential.checksum
+        .d-flex.px-3.py-2
+          .fw-bold.flex-fill = t('.created_at')
+          .text-end
+            span title="#{l(@play_credential.created_at, format: :nice)}" data-bs-toggle="tooltip" data-bs-custom-class="default-tooltip" data-bs-placement="right"
+              = time_ago_in_words(@play_credential.created_at)
+      .card-footer
+        small.text-muted = t('.destroy_warning')

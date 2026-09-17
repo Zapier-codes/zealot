@@ -171,6 +171,7 @@ class AppsController < ApplicationController
     @app_params ||= params.require(:app)
                           .permit(
                             :name,
+                            :play_publish_track,
                             scheme_attributes: { name: [] },
                             channel_attributes: { name: [] },
                           )

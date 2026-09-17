@@ -22,7 +22,8 @@ gem 'lograge', '~> 0.15.0'
 gem 'active_model_serializers', '~> 0.10.16'
 gem 'graphql', '~> 2.6.10'
 gem 'health_check', '~> 3.1.0'
-gem 'tiny_appstore_connect', '~> 0.1.13'
+gem 'tiny_appstore_connect', '~> 0.1.12'
+gem 'google-apis-androidpublisher_v3', '~> 0.36.0'
 
 # View
 gem 'view_component', '~> 4.15.0'
@@ -36,7 +37,8 @@ gem 'rswag-ui', '~> 2.17.0'
 # Model
 gem 'friendly_id', '~> 5.7.0'
 gem 'kaminari', '~> 1.2.2'
-gem 'carrierwave', '~> 3.1.4'
+gem 'carrierwave', '~> 3.1.2'
+gem 'aws-sdk-s3', '~> 1.145', require: false
 gem 'webp-ffi', '~> 0.4.0'
 
 # Helper

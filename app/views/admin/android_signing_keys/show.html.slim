@@ -1,0 +1,33 @@
+- content_for :section_title do
+  = t('.title')
+
+- content_for :title do
+  = t('.title')
+
+- content_for :section_rightpanel do
+  = button_link_to '', admin_android_signing_key_path, 'trash-alt', \
+    class: 'btn btn-outline-secondary btn-icon', title: t('modals.buttons.destroy'), \
+    data: { turbo_method: :delete, turbo_confirm: t('.destroy_warning'), bs_toggle: :tooltip, bs_custom_class: 'default-tooltip' }
+
+.row
+  .col-md-12
+    .card
+      .card-header
+        h3.card-title = t('.key_metadata')
+      .card-body.p-0
+        .d-flex.px-3.py-2.border-bottom
+          .fw-bold.flex-fill = t('.filename')
+          .text-end = @android_signing_key.filename
+        .d-flex.px-3.py-2.border-bottom
+          .fw-bold.flex-fill = t('.key_alias')
+          .text-end = @android_signing_key.key_alias
+        .d-flex.px-3.py-2.border-bottom
+          .fw-bold.flex-fill = t('.checksum')
+          .text-end = @android_signing_key.checksum
+        .d-flex.px-3.py-2
+          .fw-bold.flex-fill = t('.created_at')
+          .text-end
+            span title="#{l(@android_signing_key.created_at, format: :nice)}" data-bs-toggle="tooltip" data-bs-custom-class="default-tooltip" data-bs-placement="right"
+              = time_ago_in_words(@android_signing_key.created_at)
+      .card-footer
+        small.text-muted = t('.destroy_warning')

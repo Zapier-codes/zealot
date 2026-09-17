@@ -98,6 +98,7 @@ Rails.application.routes.draw do
     resources :releases, only: :show do
       member do
         get ':filename', action: :download, filename: /.+/, as: 'filename'
+        get :delta, action: :delta
       end
     end
 
@@ -154,6 +155,28 @@ Rails.application.routes.draw do
           get :private_key
         end
       end
+
+      # Org-wide (task #5) — singular resource, not resources: there is at
+      # most one AndroidSigningKey record. See AndroidSigningKey#current.
+      resource :android_signing_key, except: %i[ edit update ]
+
+      # Play Store publish-approval queue (task #11). Acts on Release
+      # records that have play_store_target set, not a model of its own —
+      # see Admin::PlayApprovalsController.
+      resources :play_approvals, only: %i[ index ] do
+        member do
+          put :approve
+          put :reject
+        end
+      end
+
+      # Task #7: two deliberately separate org-wide singletons — the key
+      # that signs an AAB for Play (PlayUploadKey) and the credential that
+      # authenticates the API call that uploads it (PlayCredential). See
+      # both models' comments for why these aren't merged with each other
+      # or with AndroidSigningKey above.
+      resource :play_upload_key, except: %i[ edit update ]
+      resource :play_credential, except: %i[ edit update ]
 
       resources :logs, only: %i[ index ] do
         collection do

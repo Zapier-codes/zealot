@@ -1,0 +1,79 @@
+- content_for :title do
+  = t('.title')
+
+- content_for :section_title do
+  = t('.title')
+
+.row
+  .col-md-12
+    - if @releases.present?
+      .card
+        .card-header
+          h3.card-title
+            i.icon.fa-solid.fa-store
+            = t('.title')
+        .card-body.p-0
+          table.table.table-bottom-borderless
+            thead
+              tr
+                th = t('.number')
+                th = t('.app')
+                th = t('.release')
+                th = t('.requested_at')
+                th = t('.expires_at')
+                th.d-none.d-sm-table-cell = t('.action')
+            tbody
+              - @releases.each_with_index do |release, i|
+                tr
+                  td = i + 1
+                  td = link_to release.app_name, friendly_channel_release_path(release.channel, release)
+                  td = "#{release.release_version} (#{release.build_version})"
+                  td
+                    span title="#{l(release.play_approval_requested_at, format: :nice)}" data-bs-toggle="tooltip" data-bs-custom-class="default-tooltip"
+                      = time_ago_in_words(release.play_approval_requested_at)
+                  td
+                    - if release.play_approval_overdue?
+                      span.badge.text-bg-danger = t('.expired_badge')
+                    - else
+                      span title="#{l(release.play_approval_expires_at, format: :nice)}" data-bs-toggle="tooltip" data-bs-custom-class="default-tooltip"
+                        = time_ago_in_words(release.play_approval_expires_at)
+                  td.d-none.d-sm-table-cell
+                    .btn-group
+                      = button_to t('.approve'), approve_admin_play_approval_path(release), method: :put, class: 'btn btn-success btn-sm'
+                      = button_to t('.reject'), reject_admin_play_approval_path(release), method: :put, \
+                        class: 'btn btn-outline-danger btn-sm', form: { data: { turbo_confirm: t('modals.confirm.body') } }
+    - else
+      .card.card-outline.card-warning
+        .card-header.card-border
+          h3.card-title = t('.not_found.title')
+        .card-body = t('.not_found.body')
+
+    - if @published_releases.present?
+      .card.mt-3
+        .card-header
+          h3.card-title
+            i.icon.fa-solid.fa-cloud-arrow-up
+            = t('.publish_status_title')
+        .card-body.p-0
+          table.table.table-bottom-borderless
+            thead
+              tr
+                th = t('.number')
+                th = t('.app')
+                th = t('.release')
+                th = t('.publish_status')
+                th = t('.publish_error')
+            tbody
+              - @published_releases.each_with_index do |release, i|
+                tr
+                  td = i + 1
+                  td = link_to release.app_name, friendly_channel_release_path(release.channel, release)
+                  td = "#{release.release_version} (#{release.build_version})"
+                  td
+                    - badge_class = { 'not_published' => 'secondary', 'publishing' => 'info', 'published' => 'success', 'failed' => 'danger' }[release.play_publish_status] || 'secondary'
+                    span.badge class="text-bg-#{badge_class}" = t(".publish_status_badges.#{release.play_publish_status}")
+                  td
+                    - if release.play_publish_status == 'failed' && release.play_publish_error.present?
+                      span.text-danger.small = truncate(release.play_publish_error, length: 140)
+                    - else
+                      span.text-muted "—"

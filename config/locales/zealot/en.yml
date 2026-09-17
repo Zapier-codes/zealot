@@ -104,6 +104,78 @@ en:
         udid_created_at: Created at
       create:
         successful: Created Apple Developer successfully
+    android_signing_keys:
+      title: Android Signing Key
+      new:
+        title: New Android Signing Key
+        already_configured: A signing key is already configured. Destroy it first to replace it.
+      show:
+        title: :admin.android_signing_keys.title
+        key_metadata: Key
+        filename: Filename
+        key_alias: Key alias
+        checksum: Checksum
+        created_at: Created at
+        destroy_warning: "Destroying this key does not re-sign or unsign any release already built with it, it only stops new releases from being signed automatically."
+      create:
+        successful: Android signing key uploaded and verified successfully
+    play_upload_keys:
+      title: Play Upload Key
+      new:
+        title: New Play Upload Key
+        already_configured: A Play upload key is already configured. Destroy it first to replace it.
+      show:
+        title: :admin.play_upload_keys.title
+        key_metadata: Key
+        filename: Filename
+        key_alias: Key alias
+        checksum: Checksum
+        created_at: Created at
+        destroy_warning: "Destroying this key does not affect any AAB already signed and uploaded with it, it only stops new Play Store uploads from being signed automatically."
+      create:
+        successful: Play upload key uploaded and verified successfully
+    play_credentials:
+      title: Play API Credential
+      new:
+        title: New Play API Credential
+        already_configured: A Play API credential is already configured. Destroy it first to replace it.
+      show:
+        title: :admin.play_credentials.title
+        key_metadata: Credential
+        service_account_email: Service account email
+        project_id: Project ID
+        checksum: Checksum
+        created_at: Created at
+        destroy_warning: "Destroying this credential stops new releases from being published to Google Play; it does not unpublish anything already live."
+      create:
+        successful: Play API credential uploaded successfully
+    play_approvals:
+      title: Play Store Publish Approvals
+      index:
+        title: :admin.play_approvals.title
+        number: "#"
+        app: App
+        release: Release
+        requested_at: Requested at
+        expires_at: Expires at
+        action: Action
+        approve: Approve
+        reject: Reject
+        expired_badge: Expired
+        not_found:
+          title: No releases awaiting Play Store publish approval.
+          body: Releases show up here when a release with Play Store as a target is uploaded; unapproved requests expire automatically after 48 hours and stay available only through our own distribution.
+        publish_status_title: Play Publish Status
+        publish_status: Status
+        publish_error: Last error
+        publish_status_badges:
+          not_published: Not published
+          publishing: Publishing
+          published: Published
+          failed: Failed
+      messages:
+        approved: "%{name} approved for Play Store publishing"
+        rejected: "%{name} rejected for Play Store publishing"
     apple_teams:
       edit:
         title: Edit team metadata
@@ -482,7 +554,14 @@ en:
       source: Source
       metadata: Metadata
       certificate_expired_date: Certificate expired at %{date}
-      teardown_metadata: Teardown
+      teardown_metadata: More metadata
+      play_publish_status: Play Store publish status
+      play_publish_error: "Last Play publish error: %{error}"
+      play_publish_status_badges:
+        not_published: Not published
+        publishing: Publishing
+        published: Published
+        failed: Failed
       install: Install
       download: Download
       installing: Installing ...
@@ -1090,6 +1169,14 @@ en:
               unknown: "Unknown error: %{message}"
             checksum:
               taken: matched, the private key was existed
+        android_signing_key:
+          attributes:
+            base:
+              singleton: "Only one signing key is allowed, destroy the existing key before adding a new one"
+              keytool_unavailable: "Could not verify the keystore: %{message}"
+              verification_failed: "Keystore verification failed: %{message}"
+            checksum:
+              taken: matched, the keystore was already stored
         udid:
           attributes:
             name:

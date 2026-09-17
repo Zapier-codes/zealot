@@ -17,11 +17,22 @@ CRON_JOBS_SETUP = lambda do
       cron: '0 0 * * *',
       class: 'ResetForDemoModeJob',
       description: 'Reset demo data everyday'
+    },
+    anthropic_mtproto_archive: {
+      cron: '30 3 * * *',
+      class: 'AnthropicMtprotoArchiveJob',
+      description: 'Archive old/large release artifacts to Telegram MTProto cold storage'
+    },
+    anthropic_play_approval_expiry: {
+      cron: '*/15 * * * *',
+      class: 'AnthropicPlayApprovalExpiryJob',
+      description: 'Auto-expire Play Store publish-approval requests older than 48h'
     }
   }
 
   cron_jobs.delete(:clean_old_releases) if Setting.keep_uploads
   cron_jobs.delete(:reset_for_demo_mode) unless Setting.demo_mode
+  cron_jobs.delete(:anthropic_mtproto_archive) unless Anthropic::MtprotoArchiveService.enabled?
 
   begin
     Backup.enabled_jobs.each do |backup|

@@ -10,10 +10,22 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2025_12_18_081921) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_17_170000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
+
+  create_table "android_signing_keys", force: :cascade do |t|
+    t.string "filename", null: false
+    t.string "key_alias", null: false
+    t.string "checksum", null: false
+    t.text "keystore", null: false
+    t.text "keystore_password", null: false
+    t.text "key_password", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["checksum"], name: "index_android_signing_keys_on_checksum", unique: true
+  end
 
   create_table "apple_keys", force: :cascade do |t|
     t.string "checksum", null: false
@@ -50,6 +62,7 @@ ActiveRecord::Schema[8.1].define(version: 2025_12_18_081921) do
     t.datetime "created_at", null: false
     t.string "description"
     t.string "name", null: false
+    t.string "play_publish_track", default: "internal", null: false
     t.datetime "updated_at", null: false
     t.index ["name"], name: "index_apps_on_name"
   end
@@ -267,6 +280,28 @@ ActiveRecord::Schema[8.1].define(version: 2025_12_18_081921) do
     t.index ["user_id"], name: "index_metadata_on_user_id"
   end
 
+  create_table "play_credentials", force: :cascade do |t|
+    t.string "checksum", null: false
+    t.datetime "created_at", null: false
+    t.string "project_id"
+    t.string "service_account_email", null: false
+    t.text "service_account_json", null: false
+    t.datetime "updated_at", null: false
+    t.index ["checksum"], name: "index_play_credentials_on_checksum", unique: true
+  end
+
+  create_table "play_upload_keys", force: :cascade do |t|
+    t.string "checksum", null: false
+    t.datetime "created_at", null: false
+    t.string "filename", null: false
+    t.string "key_alias", null: false
+    t.text "key_password", null: false
+    t.text "keystore", null: false
+    t.text "keystore_password", null: false
+    t.datetime "updated_at", null: false
+    t.index ["checksum"], name: "index_play_upload_keys_on_checksum", unique: true
+  end
+
   create_table "releases", force: :cascade do |t|
     t.string "branch"
     t.string "build_version"
@@ -286,9 +321,37 @@ ActiveRecord::Schema[8.1].define(version: 2025_12_18_081921) do
     t.string "source"
     t.datetime "updated_at", null: false
     t.integer "version", null: false
+    t.string "asset_pack_type"
+    t.boolean "brotli_compressed", default: false, null: false
+    t.bigint "original_size"
+    t.bigint "compressed_size"
+    t.string "compressed_apks_storage_key"
+    t.string "mtproto_archived_location"
+    t.datetime "mtproto_archived_at"
+    t.boolean "signed", default: false, null: false
+    t.string "signing_key_checksum"
+    t.boolean "play_store_target", default: false, null: false
+    t.string "play_approval_status", default: "not_requested", null: false
+    t.datetime "play_approval_requested_at"
+    t.datetime "play_approval_expires_at"
+    t.datetime "play_approved_at"
+    t.bigint "play_approved_by_id"
+    t.string "play_edit_id"
+    t.text "play_publish_error"
+    t.datetime "play_published_at"
+    t.string "play_publish_status", default: "not_published", null: false
+    t.datetime "play_rejected_at"
+    t.bigint "play_rejected_by_id"
+    t.index ["asset_pack_type"], name: "index_releases_on_asset_pack_type"
     t.index ["build_version"], name: "index_releases_on_build_version"
     t.index ["bundle_id"], name: "index_releases_on_bundle_id"
     t.index ["channel_id", "version"], name: "index_releases_on_channel_id_and_version", unique: true
+    t.index ["mtproto_archived_at"], name: "index_releases_on_mtproto_archived_at"
+    t.index ["play_approval_expires_at"], name: "index_releases_on_play_approval_expires_at"
+    t.index ["play_approval_status"], name: "index_releases_on_play_approval_status"
+    t.index ["play_approved_by_id"], name: "index_releases_on_play_approved_by_id"
+    t.index ["play_publish_status"], name: "index_releases_on_play_publish_status"
+    t.index ["play_rejected_by_id"], name: "index_releases_on_play_rejected_by_id"
     t.index ["release_type"], name: "index_releases_on_release_type"
     t.index ["release_version", "build_version"], name: "index_releases_on_release_version_and_build_version"
     t.index ["source"], name: "index_releases_on_source"
@@ -397,6 +460,8 @@ ActiveRecord::Schema[8.1].define(version: 2025_12_18_081921) do
   add_foreign_key "metadata", "releases", on_delete: :cascade
   add_foreign_key "metadata", "users", on_delete: :cascade
   add_foreign_key "releases", "channels", on_delete: :cascade
+  add_foreign_key "releases", "users", column: "play_approved_by_id"
+  add_foreign_key "releases", "users", column: "play_rejected_by_id"
   add_foreign_key "schemes", "apps", on_delete: :cascade
   add_foreign_key "user_providers", "users", on_delete: :cascade
   add_foreign_key "web_hooks", "channels", on_delete: :cascade
