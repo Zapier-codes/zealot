@@ -37,12 +37,21 @@ publishing pipeline — live on `clean/no-sdk-injection`, a permanently
 separate branch the operator has decided not to merge into `main` (see
 "Current state" → Session 13 for why: `main`'s tip has a proxy-SDK
 injection commit, `f8a8da89`, that this branch deliberately excludes).
-For those tasks, step 2 becomes `git checkout -b clean/no-sdk-injection
-1aa548ea` (only once, if the branch doesn't already exist locally) or
-`git checkout clean/no-sdk-injection` (if it does) before `git am`, and
-`git push origin clean/no-sdk-injection` instead of `origin main`. Step 4
-becomes: re-clone and check out `origin/clean/no-sdk-injection`, not
-`origin/main`, before trusting this file's task-status table for #5/#6/#7.
+
+For those tasks, step 2's exact commands are:
+```
+cd ~/zealot
+git checkout -b clean/no-sdk-injection 1aa548ea   # only the first time;
+                                                    # later patches use
+                                                    # `git checkout clean/no-sdk-injection`
+                                                    # instead (no -b, no base commit)
+git am ~/storage/downloads/<n>.patch
+git push -u origin clean/no-sdk-injection          # NOT `git push origin main`
+```
+`-u` on the first push sets upstream tracking, so later pushes on this
+branch can just be `git push`. Step 4 becomes: re-clone and check out
+`origin/clean/no-sdk-injection`, not `origin/main`, before trusting this
+file's task-status table for #5/#6/#7.
 
 ## Scope, stated plainly
 
@@ -315,7 +324,7 @@ Each task below is meant to be handed to one session. A session should:
 | 3 | `ReleaseStorage` service (Local + R2 adapters) | — | ✅ Done | Landed on top of `1a3773c5`. `RELEASE_STORAGE_ADAPTER=local\|r2`. See "Current state" below for what's untested. |
 | 4 | Wire pipeline (#1) onto `ReleaseStorage` (#3) once both exist | #1, #3 | ✅ Done (folded into #3) | `AnthropicAssetDeliveryJob` now always uses `ReleaseStorage`; download controller redirects to a presigned R2 URL when available, else fetches-and-streams. |
 | 5 | Signing pipeline for our own AABs | — | 🟡 In progress (code-complete, unverified) | Org-wide singleton `AndroidSigningKey` (`AndroidSigningKey.current`), `Admin::AndroidSigningKeysController` + policy, and — **as of session 11** — the previously-missing `new`/`show` views (`app/views/admin/android_signing_keys/`) plus a sidebar nav entry, so `/admin/android_signing_key` no longer 500s and is reachable from the UI. Still needs, before trusted: `bin/rails db:encryption:init` run for real + `ANTHROPIC_AR_ENCRYPTION_*` env vars, a real keystore uploaded through the controller, one real signed build inspected with `apksigner verify` — none of that is possible in this sandbox. Reminder carried from earlier sessions: signing with the key does **not** make a sideloaded install show as "from a verified developer" (that's task #10, a separate system). |
-| 6 | Telegram MTProto cold storage for our own large builds | #3 | 🟡 In progress | `Anthropic::MtprotoArchiveService` (Rails HTTP client) + `AnthropicMtprotoArchiveJob` (pre-population cron, flag-gated on `MTPROTO_ARCHIVE_ENABLED`) + `mtproto-worker/` (Node/GramJS sidecar) scaffolded. See `mtproto-worker/README.md` "Status" for what's unverified — not build- or integration-tested (no Node runtime or real Telegram credentials in sandbox). Next: operator generates `TELEGRAM_SESSION_STRING`, provisions the sidecar, runs `npm install && npm run typecheck`, and does one real archive→retrieve round trip before this is trusted. |
+| 6 | Telegram MTProto cold storage for our own large builds | #3 | 🟡 In progress (npm install/typecheck now verified, session 13) | `Anthropic::MtprotoArchiveService` (Rails HTTP client) + `AnthropicMtprotoArchiveJob` (pre-population cron, flag-gated on `MTPROTO_ARCHIVE_ENABLED`) + `mtproto-worker/` (Node sidecar, `teleproto` — GramJS's sanctioned successor, see README) scaffolded. **Session 13: this sandbox had Node after all — `npm install` (0 vulnerabilities) and `npm run typecheck` (clean) both actually ran and passed**, closing out two of the three "Next" items below. See `mtproto-worker/README.md` "Status" for the full verification trail, including why `teleproto` (not `telegram`) is the right dependency. Still needed: operator generates a real `TELEGRAM_SESSION_STRING` (requires a live Telegram account, can't be done from a sandbox) and does one real archive→retrieve round trip; a process-supervision decision for the sidecar on Render is also still open. |
 | 7 | Google Play Developer API publishing | #5 | 🟡 In progress (wiring complete this session, still unverified) | See task #7's detailed row further down and "Current state" → Session 13 for what's now wired vs. still needing a real Rails runtime to trust. **Lives on `clean/no-sdk-injection`, a permanently separate branch from `main` (operator decision, session 13) — not `main`'s tip.** |
 | 8 | CI/CD: GitHub Actions → GHCR → Render deploy hook | #2 | 🔲 Not started | |
 | 9 | Storefront / discovery layer | — | ❓ Needs decision | Original vision assumed a public Aptoide-via-MCP storefront. Now that scope is confirmed internal/non-commercial, confirm with the operator whether this is still wanted before any session starts it. |
@@ -547,8 +556,29 @@ Each task below is meant to be handed to one session. A session should:
   brace-count script, neither of which is a substitute for a real Rails
   boot. Needed before trusting this in production: `bundle install`, a
   real `db:migrate` (or `schema:load`) against a live DB, and a manual
-  check that the new `play_approvals#index` section renders. Two patches
-  produced this session: one for the `clean/no-sdk-injection` branch's
-  task-#7 completion work, one for this handover.md update — not pushed
+  check that the new `play_approvals#index` section renders.
+
+  **Same session, continued — task #6:** this sandbox turned out to
+  actually have Node (`node` v22, `npm` v10 on PATH) — the "no Node
+  runtime available" caveat every prior session repeated for task #6 was
+  never re-checked until now. Ran `npm install` and `npm run typecheck`
+  in `mtproto-worker/` for real: install succeeded (0 vulnerabilities),
+  typecheck passed clean. Before trusting that, checked whether
+  `package.json`'s `teleproto` dependency (not the more commonly-referenced
+  `telegram` package) was legitimate — initially looked like a possible
+  typosquat (new-looking package, single maintainer) — and confirmed via
+  web search + Socket.dev that it's GramJS's own official, sanctioned
+  successor (GramJS's site itself says so, ~28K weekly downloads, created
+  a year ago, not malware-flagged). Documented that verification trail in
+  `mtproto-worker/README.md`'s Status section so a future session doesn't
+  have to redo it from scratch or, worse, skip it. Also fixed a stale
+  comment in `mtproto_client.ts` that still said "GramJS (`telegram` npm
+  package)". **Still not end-to-end verified** — generating a real
+  `TELEGRAM_SESSION_STRING` requires an operator with a live Telegram
+  account and interactive login, which can't happen from this sandbox;
+  the archive→retrieve round trip and the Render process-supervision
+  decision are both still open, per task #6's row above.
+  One combined patch produced for this whole session (task #7 completion
+  + this handover.md update + task #6's verification work) — not pushed
   by this session (by design, per the Handoff Process, and because the
   branch-vs-main question above needs an operator decision first anyway).

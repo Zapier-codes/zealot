@@ -1,6 +1,9 @@
-// Thin wrapper around GramJS (`telegram` npm package) implementing the two
-// operations this worker needs: archive a local file into our own private
-// Telegram archive chat, and retrieve it back by location.
+// Thin wrapper around GramJS's successor (`teleproto` npm package — GramJS
+// itself was archived upstream in 2025 in favor of this fork; see
+// mtproto-worker/README.md "Status" for the verification trail on that)
+// implementing the two operations this worker needs: archive a local file
+// into our own private Telegram archive chat, and retrieve it back by
+// location.
 //
 // Pattern follows the reference architecture in
 // github.com/ShivaReddyVanja/aetheroll (docs/CACHING_AND_DATA_FETCHING_ARCHITECTURE.md):
