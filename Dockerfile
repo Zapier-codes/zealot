@@ -35,9 +35,8 @@ RUN set -ex && \
     mkdir -p /tmp/bsdiff && tar -xzf /tmp/bsdiff.tar.gz -C /tmp/bsdiff --strip-components=1 && \
     cd /tmp/bsdiff && \
     sed -i '/#include <sys\/cdefs.h>/d' bsdiff/bsdiff.c bspatch/bspatch.c && \
-    gcc -O2 -o bsdiff bsdiff/bsdiff.c -lbz2 && \
-    gcc -O2 -o bspatch bspatch/bspatch.c -lbz2 && \
-    cp bsdiff bspatch /usr/local/bin/ && \
+    gcc -O2 -o /usr/local/bin/bsdiff bsdiff/bsdiff.c -lbz2 && \
+    gcc -O2 -o /usr/local/bin/bspatch bspatch/bspatch.c -lbz2 && \
     cd / && rm -rf /tmp/bsdiff /tmp/bsdiff.tar.gz
 
 WORKDIR $APP_ROOT
