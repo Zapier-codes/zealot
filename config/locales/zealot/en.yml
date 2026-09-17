@@ -561,6 +561,13 @@ en:
       metadata: Metadata
       certificate_expired_date: Certificate expired at %{date}
       teardown_metadata: More metadata
+      play_publish_status: Play Store publish status
+      play_publish_error: "Last Play publish error: %{error}"
+      play_publish_status_badges:
+        not_published: Not published
+        publishing: Publishing
+        published: Published
+        failed: Failed
       install: Install
       download: Download
       installing: Installing ...

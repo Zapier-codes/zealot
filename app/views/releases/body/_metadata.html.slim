@@ -66,5 +66,13 @@
         li title="#{t('releases.show.metadata')}" data-bs-toggle="tooltip" data-bs-custom-class="default-tooltip"
           i.fa-solid.fa-layer-group
           = link_to_if user_signed_in_or_guest_mode?, t('releases.show.teardown_metadata'), teardown_path(release.metadata), data: { turbo: false }
+      - if release.play_store_target? && user_signed_in_or_guest_mode?
+        li title="#{t('releases.show.play_publish_status')}" data-bs-toggle="tooltip" data-bs-custom-class="default-tooltip"
+          i.fa-brands.fa-google-play
+          - badge_class = { 'not_published' => 'secondary', 'publishing' => 'info', 'published' => 'success', 'failed' => 'danger' }[release.play_publish_status] || 'secondary'
+          span.badge class="text-bg-#{badge_class}" = t("releases.show.play_publish_status_badges.#{release.play_publish_status}")
+          - if release.play_publish_status == 'failed' && release.play_publish_error.present?
+            span.text-danger.small title="#{t('releases.show.play_publish_error', error: release.play_publish_error)}" data-bs-toggle="tooltip" data-bs-custom-class="default-tooltip"
+              = " #{truncate(release.play_publish_error, length: 60)}"
 
     == render 'releases/body/install_app', release: release, app: release.app

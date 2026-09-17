@@ -325,7 +325,7 @@ Each task below is meant to be handed to one session. A session should:
 | 4 | Wire pipeline (#1) onto `ReleaseStorage` (#3) once both exist | #1, #3 | ✅ Done (folded into #3) | `AnthropicAssetDeliveryJob` now always uses `ReleaseStorage`; download controller redirects to a presigned R2 URL when available, else fetches-and-streams. |
 | 5 | Signing pipeline for our own AABs | — | 🟡 In progress (code-complete, unverified) | Org-wide singleton `AndroidSigningKey` (`AndroidSigningKey.current`), `Admin::AndroidSigningKeysController` + policy, and — **as of session 11** — the previously-missing `new`/`show` views (`app/views/admin/android_signing_keys/`) plus a sidebar nav entry, so `/admin/android_signing_key` no longer 500s and is reachable from the UI. Still needs, before trusted: `bin/rails db:encryption:init` run for real + `ANTHROPIC_AR_ENCRYPTION_*` env vars, a real keystore uploaded through the controller, one real signed build inspected with `apksigner verify` — none of that is possible in this sandbox. Reminder carried from earlier sessions: signing with the key does **not** make a sideloaded install show as "from a verified developer" (that's task #10, a separate system). |
 | 6 | Telegram MTProto cold storage for our own large builds | #3 | 🟡 In progress (npm install/typecheck now verified, session 13) | `Anthropic::MtprotoArchiveService` (Rails HTTP client) + `AnthropicMtprotoArchiveJob` (pre-population cron, flag-gated on `MTPROTO_ARCHIVE_ENABLED`) + `mtproto-worker/` (Node sidecar, `teleproto` — GramJS's sanctioned successor, see README) scaffolded. **Session 13: this sandbox had Node after all — `npm install` (0 vulnerabilities) and `npm run typecheck` (clean) both actually ran and passed**, closing out two of the three "Next" items below. See `mtproto-worker/README.md` "Status" for the full verification trail, including why `teleproto` (not `telegram`) is the right dependency. Still needed: operator generates a real `TELEGRAM_SESSION_STRING` (requires a live Telegram account, can't be done from a sandbox) and does one real archive→retrieve round trip; a process-supervision decision for the sidecar on Render is also still open. |
-| 7 | Google Play Developer API publishing | #5 | 🟡 In progress (wiring complete this session, still unverified) | See task #7's detailed row further down and "Current state" → Session 13 for what's now wired vs. still needing a real Rails runtime to trust. **Lives on `clean/no-sdk-injection`, a permanently separate branch from `main` (operator decision, session 13) — not `main`'s tip.** |
+| 7 | Google Play Developer API publishing | #5 | 🟡 In progress (wiring complete, still unverified) | See task #7's detailed row further down and "Current state" → Sessions 13–14 for what's now wired vs. still needing a real Rails runtime to trust. **Lives on `clean/no-sdk-injection`, a permanently separate branch from `main` (operator decision, session 13) — not `main`'s tip.** As of session 14, `play_publish_status`/`play_publish_error` are also surfaced on the release show page itself (previously only on the `play_approvals` index). |
 | 8 | CI/CD: GitHub Actions → GHCR → Render deploy hook | #2 | 🔲 Not started | |
 | 9 | Storefront / discovery layer | — | ❓ Needs decision | Original vision assumed a public Aptoide-via-MCP storefront. Now that scope is confirmed internal/non-commercial, confirm with the operator whether this is still wanted before any session starts it. |
 | 10 | Register org in the Android Developer Console (Android Developer Verification) | — | ✅ Done (operator confirmed) | **Operator confirmed this session: registration is a proper Android Developer Console org/business verification account** (not a Play Console org account, which is a different system — see task #7's row and "Current state" below for why that distinction matters here). No longer a blocker for task #7. **One thing still worth confirming before relying on it end-to-end:** Google's own docs describe app-level registration as a separate step from the org identity being verified — confirm the org's actual apps (not just the org identity) are registered/bound under this account before assuming every install is covered. Enforcement itself isn't live anywhere yet (starts Sept 30, 2026 in Brazil/Indonesia/Singapore/Thailand, expands globally through 2027) — being registered now just means no scramble when it reaches wherever this org's users are. |
@@ -582,3 +582,49 @@ Each task below is meant to be handed to one session. A session should:
   + this handover.md update + task #6's verification work) — not pushed
   by this session (by design, per the Handoff Process, and because the
   branch-vs-main question above needs an operator decision first anyway).
+
+- **Session 14 (this session)** — Re-cloned fresh, checked out
+  `origin/clean/no-sdk-injection`, confirmed local HEAD (`70ec5a0e`)
+  matched what session 13 documented here exactly, and confirmed
+  `f8a8da89` is not in this branch's history (`git log` on this branch
+  shows no such commit) — nothing to reconcile before starting. Picked up
+  task #7's remaining documented gap: **"No UI surfaces
+  `play_publish_status`/`play_publish_error` anywhere yet" was only
+  half-true after session 13 (the `play_approvals` index covers it) — the
+  release show page itself, which is what most people actually look at
+  for a given release, still didn't.** Added a
+  `releases/body/_metadata.html.slim` item (gated on
+  `release.play_store_target? && user_signed_in_or_guest_mode?`, so it
+  never appears for releases never targeted at Play or to unauthenticated
+  guests) showing the same status-badge pattern already used on the
+  `play_approvals` index, plus a truncated, tooltip-expandable
+  `play_publish_error` when the status is `failed`. Added matching
+  `releases.show.play_publish_status` / `play_publish_error` /
+  `play_publish_status_badges.*` keys to both `en.yml` and `zh-CN.yml`
+  (kept as their own namespace rather than reusing
+  `admin.play_approvals.index.publish_status_badges`, to avoid coupling
+  the public release page's locale to an admin-namespace key). Verified
+  what this sandbox can actually verify: both edited locale files parse
+  with `yaml.safe_load`, the edited `.slim` file's indentation is a
+  consistent 2-space step matching the rest of the file (checked with a
+  small Python script — this is not a substitute for an actual Slim
+  parser, which isn't available here), and the `play_store_target` /
+  `play_publish_status` / `play_publish_error` columns referenced all
+  exist in `db/schema.rb` exactly as named. **Not build- or
+  integration-verified** — same standing caveat as every session touching
+  Ruby/Slim here: no ruby/bundler/slim gem in this sandbox, so the ERB-
+  style interpolation and the `t()` calls were hand-reviewed against the
+  file's existing patterns, not executed. Did not touch task #6's open
+  items (real `TELEGRAM_SESSION_STRING` + round trip, Render supervision
+  decision) or task #7's other still-open items (a real `db:migrate`,
+  actually calling the Play Developer API against a real service
+  account) — those still need an operator with real credentials/a real
+  Rails runtime, not a sandbox session. **Next session should pick up:**
+  (a) dedicated `play_rejected_at`/`play_rejected_by` columns so
+  `reject_play_publish!` stops reusing the `play_approved_*` columns (the
+  gap flagged since session 11, still not fixed); (b) once an operator
+  has run a real `bin/rails db:migrate` and loaded `/admin/releases/:id`
+  in a browser, confirm the new metadata item actually renders instead of
+  raising a missing-translation or nil error. One patch produced this
+  session (`git format-patch -1 HEAD` after committing); not pushed, per
+  the Handoff Process.
