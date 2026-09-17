@@ -88,6 +88,8 @@ jobs:
           labels: ${{ steps.metadata.outputs.labels }}
           tags: ${{ steps.metadata.outputs.tags }}
           platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           build-args: |
             REPLACE_CHINA_MIRROR=false
             VCS_REF=${{ github.sha }}
