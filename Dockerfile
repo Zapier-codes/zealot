@@ -1,6 +1,6 @@
 FROM --platform=$BUILDPLATFORM ruby:3.4.7-alpine AS builder
 
-ARG BUILD_PACKAGES="build-base libxml2 libxslt git bzip2-dev"
+ARG BUILD_PACKAGES="build-base libxml2 libxslt git curl bzip2-dev"
 ARG DEV_PACKAGES="ruby-dev libffi-dev libxml2-dev libxslt-dev yaml-dev postgresql-dev nodejs npm pnpm zlib-dev imagemagick-dev libwebp-dev libpng-dev tiff-dev gcompat"
 ARG RUBY_PACKAGES="tzdata"
 
