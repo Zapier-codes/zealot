@@ -31,9 +31,11 @@ RUN set -ex && \
 
 # Compile bsdiff from source for state-of-the-art delta patching
 RUN set -ex && \
-    curl -L -o /tmp/bsdiff.tar.gz "https://github.com/log0/bsdiff/archive/refs/heads/master.tar.gz" && \
+    curl -fL -o /tmp/bsdiff.tar.gz "https://www.daemonology.net/bsdiff/bsdiff-4.3.tar.gz" && \
     mkdir -p /tmp/bsdiff && tar -xzf /tmp/bsdiff.tar.gz -C /tmp/bsdiff --strip-components=1 && \
-    cd /tmp/bsdiff && make && \
+    cd /tmp/bsdiff && \
+    cc -O2 bsdiff.c -lbz2 -o bsdiff && \
+    cc -O2 bspatch.c -lbz2 -o bspatch && \
     cp bsdiff bspatch /usr/local/bin/ && \
     cd / && rm -rf /tmp/bsdiff /tmp/bsdiff.tar.gz
 
@@ -103,12 +105,12 @@ RUN set -ex && \
     fi && \
     apk --update --no-cache add $PACKAGES && \
     gem install $RUBY_GEMS && pip install androguard --break-system-packages && \
-    curl -L -o /usr/local/bin/bundletool.jar \
+    curl -fL -o /usr/local/bin/bundletool.jar \
       "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar" && \
     printf '#!/bin/sh\nexec java -jar /usr/local/bin/bundletool.jar "$@"\n' > /usr/local/bin/bundletool && \
     chmod +x /usr/local/bin/bundletool && \
-    curl -L -o /usr/local/bin/apksigner.jar "https://github.com/google/apksigner/releases/download/v0.4.1/apksigner-0.4.1.jar" && \
-    curl -L -o /usr/local/bin/apktool.jar "https://github.com/iBotPeaches/Apktool/releases/download/v${APKTOOL_VERSION}/apktool_${APKTOOL_VERSION}.jar" && \
+    curl -fL -o /usr/local/bin/apksigner.jar "https://github.com/google/apksigner/releases/download/v0.4.1/apksigner-0.4.1.jar" && \
+    curl -fL -o /usr/local/bin/apktool.jar "https://github.com/iBotPeaches/Apktool/releases/download/v${APKTOOL_VERSION}/apktool_${APKTOOL_VERSION}.jar" && \
     printf '#!/bin/sh\nexec java -jar /usr/local/bin/apktool.jar "$@"\n' > /usr/local/bin/apktool && \
     chmod +x /usr/local/bin/apktool && \
     echo "Setting variables for ${TARGETARCH}" && \
@@ -124,7 +126,7 @@ RUN set -ex && \
         exit 1 \
     ;; \
     esac && \
-    curl -L -s https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_OVERLAY_ARCH}.tar.gz | tar xvzf - -C /
+    curl -fL -s https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_OVERLAY_ARCH}.tar.gz | tar xvzf - -C /
 
 WORKDIR $APP_ROOT
 
