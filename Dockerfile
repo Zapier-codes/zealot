@@ -29,11 +29,12 @@ RUN set -ex && \
     fi && \
     gem install $RUBY_GEMS
 
-# Compile bsdiff from source for state-of-the-art delta patching
+# Compile bsdiff from source for state-of-the-art delta patching (musl compatible)
 RUN set -ex && \
     curl -fL -o /tmp/bsdiff.tar.gz "https://github.com/aburgh/bsdiff/archive/refs/heads/master.tar.gz" && \
     mkdir -p /tmp/bsdiff && tar -xzf /tmp/bsdiff.tar.gz -C /tmp/bsdiff --strip-components=1 && \
     cd /tmp/bsdiff && \
+    sed -i '/#include <sys\/cdefs.h>/d' bsdiff/bsdiff.c bspatch/bspatch.c && \
     gcc -O2 -o bsdiff bsdiff/bsdiff.c -lbz2 && \
     gcc -O2 -o bspatch bspatch/bspatch.c -lbz2 && \
     cp bsdiff bspatch /usr/local/bin/ && \
@@ -79,7 +80,6 @@ ARG REPLACE_CHINA_MIRROR="true"
 ARG ORIGINAL_REPO_URL="dl-cdn.alpinelinux.org"
 ARG MIRROR_REPO_URL="mirrors.ustc.edu.cn"
 ARG RUBYGEMS_SOURCE="https://gems.ruby-china.com/"
-# Removed apktool and bsdiff from here, replaced bzip2-libs with bzip2
 ARG PACKAGES="tzdata curl logrotate postgresql-client postgresql-dev imagemagick imagemagick-dev libwebp-dev libpng-dev tiff-dev openssl openssl-dev caddy gcompat openjdk17-jre-headless brotli bzip2 python3 py3-pip build-base python3-dev"
 ARG RUBY_GEMS="bundler"
 ARG APP_ROOT=/app
