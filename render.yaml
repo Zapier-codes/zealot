@@ -5,12 +5,45 @@ databases:
 services:
 - type: web
   name: zealot-web
-  env: docker
+  # Anthropic (handover.md task #8): switched from `env: docker` (Render
+  # builds the Dockerfile itself on every push) to `runtime: image` (Render
+  # pulls a prebuilt image instead). The actual build now happens in
+  # .github/workflows/anthropic_deploy_main.yml, which pushes to GHCR and
+  # then calls this service's deploy hook — see that workflow for why.
+  # `image.url` below is only the *default* image (what a manual
+  # dashboard "Deploy latest reference" or an unparameterized deploy-hook
+  # call would pull); the deploy-hook workflow overrides it per-deploy
+  # with an immutable `imgURL=...deploy-<sha>` so the image Render runs
+  # always matches an exact commit.
+  #
+  # NOTE this changes the service's runtime type. Per Render's own docs,
+  # switching an *existing* service between `docker` and `image` runtime
+  # via a Blueprint re-sync is not guaranteed to apply in place — this may
+  # require deleting and recreating the service in the Render dashboard
+  # rather than a simple `render blueprint deploy`. Not something this
+  # sandbox session can verify; flagging so the operator checks the sync
+  # result rather than assuming it took effect silently. Also needed
+  # before this actually works: a Container Registry credential in the
+  # Render workspace (Workspace Settings -> Registry Credentials) able to
+  # pull from ghcr.io if this repo's GHCR package stays private, wired up
+  # via `creds.fromRegistryCreds.name` below (placeholder name -- create
+  # the credential first, then this name must match it exactly).
+  runtime: image
+  image:
+    # Lowercased: GHCR (like all OCI registries) rejects uppercase
+    # repository names, and this repo's GitHub path has one
+    # ("Zapier-codes/zealot") -- see anthropic_deploy_main.yml's own note
+    # on the same issue where it computes the per-deploy imgURL override.
+    url: ghcr.io/zapier-codes/zealot:deploy-latest
+    creds:
+      fromRegistryCreds:
+        name: ghcr-zealot
   plan: free
   region: singapore
-  dockerfilePath: Dockerfile
-  dockerContext: .
-  autoDeploy: true
+  # autoDeploy has no effect on an image-backed service (Render does not
+  # poll external registries for new images) -- left out deliberately
+  # rather than kept as a no-op `true` that implies otherwise. Deploys are
+  # driven entirely by the GitHub Actions workflow's deploy-hook call.
   # disk:
   #   name: zealot-data
   #   mountPath: /app/public/uploads

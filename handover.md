@@ -329,7 +329,7 @@ Each task below is meant to be handed to one session. A session should:
 | 5 | Signing pipeline for our own AABs | — | 🟡 In progress (code-complete, unverified) | Org-wide singleton `AndroidSigningKey` (`AndroidSigningKey.current`), `Admin::AndroidSigningKeysController` + policy, and — **as of session 11** — the previously-missing `new`/`show` views (`app/views/admin/android_signing_keys/`) plus a sidebar nav entry, so `/admin/android_signing_key` no longer 500s and is reachable from the UI. Still needs, before trusted: `bin/rails db:encryption:init` run for real + `ANTHROPIC_AR_ENCRYPTION_*` env vars, a real keystore uploaded through the controller, one real signed build inspected with `apksigner verify` — none of that is possible in this sandbox. Reminder carried from earlier sessions: signing with the key does **not** make a sideloaded install show as "from a verified developer" (that's task #10, a separate system). |
 | 6 | Telegram MTProto cold storage for our own large builds | #3 | 🟡 In progress (npm install/typecheck now verified, session 13) | `Anthropic::MtprotoArchiveService` (Rails HTTP client) + `AnthropicMtprotoArchiveJob` (pre-population cron, flag-gated on `MTPROTO_ARCHIVE_ENABLED`) + `mtproto-worker/` (Node sidecar, `teleproto` — GramJS's sanctioned successor, see README) scaffolded. **Session 13: this sandbox had Node after all — `npm install` (0 vulnerabilities) and `npm run typecheck` (clean) both actually ran and passed**, closing out two of the three "Next" items below. See `mtproto-worker/README.md` "Status" for the full verification trail, including why `teleproto` (not `telegram`) is the right dependency. Still needed: operator generates a real `TELEGRAM_SESSION_STRING` (requires a live Telegram account, can't be done from a sandbox) and does one real archive→retrieve round trip; a process-supervision decision for the sidecar on Render is also still open. |
 | 7 | Google Play Developer API publishing | #5 | 🟡 In progress (wiring complete, still unverified) | See task #7's detailed row further down and "Current state" → Sessions 13–14 for what's now wired vs. still needing a real Rails runtime to trust. **Built on `clean/no-sdk-injection`; that branch was merged into `main` on 2026-09-17 (commit `e46dfaa1`) — this work now lives on `main` like everything else, see "Handoff Process" above.** As of session 14, `play_publish_status`/`play_publish_error` are also surfaced on the release show page itself (previously only on the `play_approvals` index). |
-| 8 | CI/CD: GitHub Actions → GHCR → Render deploy hook | #2 | 🔲 Not started | |
+| 8 | CI/CD: GitHub Actions → GHCR → Render deploy hook | #2 | 🟡 In progress (workflow + Blueprint scaffolded, session 17, not exercised) | New `.github/workflows/anthropic_deploy_main.yml` (push to `main` → build linux/amd64 image → push to GHCR tagged `deploy-<short-sha>`/`deploy-latest` → call Render's deploy hook with `imgURL` pinned to that exact tag) plus `render.yaml`'s `zealot-web` service switched from `env: docker`/`dockerfilePath` (Render builds itself) to `runtime: image` (Render pulls the GHCR image instead). See "Current state" → Session 17 for the full prerequisite list (a `RENDER_DEPLOY_HOOK_URL` repo secret, a Render registry credential for GHCR or a public package, and confirming the Blueprint's runtime-type change actually applies to an already-existing service) — none of which a sandbox session can create or verify. Deliberately doesn't touch task #2's own concern (whether the Dockerfile builds cleanly at all) or the upstream `publish_release.yml`/`publish_nighty.yml`/`publish_preview.yml` workflows this fork still carries. |
 | 9 | Storefront / discovery layer | — | ❓ Needs decision | Original vision assumed a public Aptoide-via-MCP storefront. Now that scope is confirmed internal/non-commercial, confirm with the operator whether this is still wanted before any session starts it. |
 | 10 | Register org in the Android Developer Console (Android Developer Verification) | — | ✅ Done (operator confirmed) | **Operator confirmed this session: registration is a proper Android Developer Console org/business verification account** (not a Play Console org account, which is a different system — see task #7's row and "Current state" below for why that distinction matters here). No longer a blocker for task #7. **One thing still worth confirming before relying on it end-to-end:** Google's own docs describe app-level registration as a separate step from the org identity being verified — confirm the org's actual apps (not just the org identity) are registered/bound under this account before assuming every install is covered. Enforcement itself isn't live anywhere yet (starts Sept 30, 2026 in Brazil/Indonesia/Singapore/Thailand, expands globally through 2027) — being registered now just means no scramble when it reaches wherever this org's users are. |
 | 11 | Play Store publish-approval workflow (bookkeeping for #7) | #5 (signing, for context only) | ✅ Done (code-complete, unverified) | **As of session 11, everything session 10 itemized as unbuilt now exists:** `Release` enum/scopes/methods (`request_play_approval!`/`approve_play_publish!`/`reject_play_publish!`/`expire_play_approval!`, auto-fired on create via `after_create` when `play_store_target` is set), `Admin::PlayApprovalsController` + index view, `ReleasePolicy#approve_play_publish?`/`#reject_play_publish?` gated on `admin?`, `AnthropicPlayApprovalExpiryJob` (batch-scan, wired into `good_job.rb`'s cron on a 15-minute schedule), a `play_store_target` checkbox on the release upload form (+ permitted param), a sidebar nav entry, and zh-CN mirrors for all locale strings. **As of session 14, the known gap is fixed:** `reject_play_publish!` now writes dedicated `play_rejected_at`/`play_rejected_by` columns instead of reusing `play_approved_at`/`play_approved_by` — see "Current state" → Session 14. Task #7 proper (the actual Play Developer API publish call on approval) is separately code-complete as of session 13, still unverified. **Not build/syntax-checked** — no ruby/bundler in this sandbox; see "Current state" above for exactly what a next session should verify first. |
@@ -746,3 +746,87 @@ Each task below is meant to be handed to one session. A session should:
   already-pushed branches doesn't go through it the same way). This
   session's handover.md correction is provided as a follow-up patch
   instead, to be applied and pushed the normal way.
+
+- **Session 17 (this session)** — Re-cloned fresh, confirmed `main`'s tip
+  matched session 16's log exactly (`a1e15b81`), no drift. Operator chose
+  task #8 (CI/CD: GitHub Actions → GHCR → Render) as this session's task.
+  Looked at the repo's existing `.github/workflows/` first rather than
+  building from scratch: this fork already carries Zealot upstream's own
+  `publish_release.yml` (tags → GHCR + Docker Hub), `publish_nighty.yml`
+  (`develop` branch → GHCR), and `publish_preview.yml` (`release/*`
+  branches → GHCR) — none of which trigger on `main`, which is the
+  branch this org actually works on per every session's log above. So
+  the actual gap wasn't "no GHCR publishing exists" (it does, for
+  upstream's own release cadence) — it was "nothing publishes on our
+  `main` and nothing deploys anywhere after."
+  1. Added `.github/workflows/anthropic_deploy_main.yml` — deliberately
+     separate from the three upstream workflows above (which stay
+     untouched and keep serving upstream's own release process).
+     Triggers on push to `main`; builds `linux/amd64` only (Render is
+     x86_64-only; the upstream workflows' multi-arch amd64+arm64 builds
+     would roughly double this job's time for an architecture nothing
+     here runs on — flagged in-file as worth revisiting only if that
+     stops being true); pushes to `ghcr.io/<repo>` tagged `deploy-latest`
+     and `deploy-<short-sha>`; then calls Render's documented deploy-hook
+     pattern (confirmed against Render's own current docs via web search
+     rather than assumed from training data, since this is exactly the
+     kind of platform-API detail that drifts) with an `imgURL` query
+     param pinned to the immutable short-sha tag, so the Render deploy
+     log and this workflow run always point at the same unambiguous
+     image rather than relying on a floating tag.
+  2. Updated `render.yaml`'s `zealot-web` service from `env: docker` +
+     `dockerfilePath` (Render builds the Dockerfile itself on every push)
+     to `runtime: image` + `image.url`/`image.creds.fromRegistryCreds`
+     (Render pulls the prebuilt GHCR image instead). Removed `autoDeploy:
+     true`, which Render's own docs say does nothing for an image-backed
+     service (they don't poll external registries) — left out rather
+     than kept as a misleading no-op.
+  3. **Caught and fixed one real bug before it shipped, not after:**
+     `github.repository` for this repo is `Zapier-codes/zealot`
+     (case-preserved), but GHCR — like all OCI registries — rejects
+     uppercase repository names. The existing upstream workflows get this
+     for free because `docker/metadata-action` normalizes its own
+     `images`/`tags` outputs to lowercase internally, but the new
+     workflow's second job builds an image reference by hand (to pin the
+     exact short-sha tag for the deploy-hook call) and does not go
+     through that action, so it would have silently constructed a
+     reference that 404s against whatever was actually pushed. Fixed with
+     an explicit `tr '[:upper:]' '[:lower:]'`; same fix applied to
+     `render.yaml`'s hardcoded default `image.url`. Worth a second set of
+     eyes given this was only caught by chance during review, not by any
+     tooling available here.
+  **Prerequisites this session flagged but cannot itself create or
+  verify** (all require operator access this sandbox doesn't have):
+  1. A `RENDER_DEPLOY_HOOK_URL` repository secret (Render dashboard →
+     `zealot-web` → Settings → Deploy Hook). The workflow fails loudly
+     with an explicit `::error::` if this is missing, rather than
+     silently no-op-ing.
+  2. A Render Container Registry credential able to pull from `ghcr.io`
+     (Workspace Settings → Registry Credentials), wired up via the
+     `ghcr-zealot` name referenced in `render.yaml` — or, alternatively,
+     making this repo's GHCR package public, which would remove the need
+     for a credential entirely. Neither decided nor set up this session;
+     operator's call.
+  3. **Whether Render's Blueprint sync can actually flip an
+     already-existing service's runtime from `docker` to `image` in
+     place, or whether this requires deleting and recreating the
+     service.** Render's own docs describe the two runtimes as
+     alternative ways to create a service; nothing found this session
+     confirms in-place conversion is supported for a service that
+     already exists (as `zealot-web` presumably does, if `render.yaml`
+     was ever actually applied). This is the biggest open risk in this
+     session's work and should be checked in the Render dashboard before
+     assuming a blueprint re-sync "just works."
+  4. Everything about whether the underlying Dockerfile build itself
+     succeeds is still task #2's open concern, completely untouched by
+     this session — this workflow will fail at the build step exactly
+     the same way `test_docker_build.yml` would if `bsdiff`/
+     `openjdk17-jre-headless` turn out to be unavailable on the Alpine
+     base image.
+  **Not build- or integration-verified in any way** — no Docker, no
+  GHCR/Render network access, and no GitHub Actions runner available in
+  this sandbox (network egress here doesn't include `ghcr.io` or
+  `render.com`). What was checked: both new/edited YAML files parse with
+  `yaml.safe_load`, and the Render deploy-hook mechanics were confirmed
+  against Render's own current documentation rather than assumed. One
+  patch produced this session; not pushed, per the Handoff Process.
