@@ -766,12 +766,14 @@ GEM
 
 PLATFORMS
   aarch64-linux
+  aarch64-linux-android
   arm-linux
   arm64-darwin
   arm64-darwin-20
   arm64-darwin-21
   arm64-darwin-22
   arm64-darwin-23
+  ruby
   x86_64-darwin-18
   x86_64-darwin-19
   x86_64-darwin-20
