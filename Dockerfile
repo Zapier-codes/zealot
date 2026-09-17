@@ -31,11 +31,11 @@ RUN set -ex && \
 
 # Compile bsdiff from source for state-of-the-art delta patching
 RUN set -ex && \
-    curl -fL -o /tmp/bsdiff.tar.gz "https://www.daemonology.net/bsdiff/bsdiff-4.3.tar.gz" && \
+    curl -fL -o /tmp/bsdiff.tar.gz "https://github.com/aburgh/bsdiff/archive/refs/heads/master.tar.gz" && \
     mkdir -p /tmp/bsdiff && tar -xzf /tmp/bsdiff.tar.gz -C /tmp/bsdiff --strip-components=1 && \
     cd /tmp/bsdiff && \
-    cc -O2 bsdiff.c -lbz2 -o bsdiff && \
-    cc -O2 bspatch.c -lbz2 -o bspatch && \
+    gcc -O2 -o bsdiff bsdiff/bsdiff.c -lbz2 && \
+    gcc -O2 -o bspatch bspatch/bspatch.c -lbz2 && \
     cp bsdiff bspatch /usr/local/bin/ && \
     cd / && rm -rf /tmp/bsdiff /tmp/bsdiff.tar.gz
 
