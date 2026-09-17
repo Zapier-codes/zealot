@@ -31,6 +31,19 @@ directly. The loop is always:
 Do not deviate from this (no direct pushes from a session, no skipping the
 patch step, no declaring a build verified without an Actions log).
 
+**As of session 13:** the above still governs `main` itself (steps 2–4
+apply verbatim there). But tasks #5, #6, and #7 — the release/signing/
+publishing pipeline — live on `clean/no-sdk-injection`, a permanently
+separate branch the operator has decided not to merge into `main` (see
+"Current state" → Session 13 for why: `main`'s tip has a proxy-SDK
+injection commit, `f8a8da89`, that this branch deliberately excludes).
+For those tasks, step 2 becomes `git checkout -b clean/no-sdk-injection
+1aa548ea` (only once, if the branch doesn't already exist locally) or
+`git checkout clean/no-sdk-injection` (if it does) before `git am`, and
+`git push origin clean/no-sdk-injection` instead of `origin main`. Step 4
+becomes: re-clone and check out `origin/clean/no-sdk-injection`, not
+`origin/main`, before trusting this file's task-status table for #5/#6/#7.
+
 ## Scope, stated plainly
 
 This console is **internal tooling**, used only by this organization's own
@@ -303,7 +316,7 @@ Each task below is meant to be handed to one session. A session should:
 | 4 | Wire pipeline (#1) onto `ReleaseStorage` (#3) once both exist | #1, #3 | ✅ Done (folded into #3) | `AnthropicAssetDeliveryJob` now always uses `ReleaseStorage`; download controller redirects to a presigned R2 URL when available, else fetches-and-streams. |
 | 5 | Signing pipeline for our own AABs | — | 🟡 In progress (code-complete, unverified) | Org-wide singleton `AndroidSigningKey` (`AndroidSigningKey.current`), `Admin::AndroidSigningKeysController` + policy, and — **as of session 11** — the previously-missing `new`/`show` views (`app/views/admin/android_signing_keys/`) plus a sidebar nav entry, so `/admin/android_signing_key` no longer 500s and is reachable from the UI. Still needs, before trusted: `bin/rails db:encryption:init` run for real + `ANTHROPIC_AR_ENCRYPTION_*` env vars, a real keystore uploaded through the controller, one real signed build inspected with `apksigner verify` — none of that is possible in this sandbox. Reminder carried from earlier sessions: signing with the key does **not** make a sideloaded install show as "from a verified developer" (that's task #10, a separate system). |
 | 6 | Telegram MTProto cold storage for our own large builds | #3 | 🟡 In progress | `Anthropic::MtprotoArchiveService` (Rails HTTP client) + `AnthropicMtprotoArchiveJob` (pre-population cron, flag-gated on `MTPROTO_ARCHIVE_ENABLED`) + `mtproto-worker/` (Node/GramJS sidecar) scaffolded. See `mtproto-worker/README.md` "Status" for what's unverified — not build- or integration-tested (no Node runtime or real Telegram credentials in sandbox). Next: operator generates `TELEGRAM_SESSION_STRING`, provisions the sidecar, runs `npm install && npm run typecheck`, and does one real archive→retrieve round trip before this is trusted. |
-| 7 | Google Play Developer API publishing | #5 | 🟡 In progress (partial, this session) | **Session 12 started this on top of `1aa548ea`** (not on `f8a8da89` — see "Current state" for the flagged commit). Operator decided the open design question: a separate `PlayUploadKey` signs AABs for Play, not task #5's `AndroidSigningKey`. `PlayUploadKey`, `PlayCredential`, `Anthropic::PlayPublishService`, `AnthropicPlayPublishJob`, `Release#play_publish_status`, and the admin UI for both new credentials are code-complete but **not wired up**: `Gemfile` doesn't have the gem yet, `schema.rb` wasn't hand-updated, locale strings are missing, and no UI shows publish status. See "Current state" → "Not finished this session" for the exact next-session list. |
+| 7 | Google Play Developer API publishing | #5 | 🟡 In progress (wiring complete this session, still unverified) | See task #7's detailed row further down and "Current state" → Session 13 for what's now wired vs. still needing a real Rails runtime to trust. **Lives on `clean/no-sdk-injection`, a permanently separate branch from `main` (operator decision, session 13) — not `main`'s tip.** |
 | 8 | CI/CD: GitHub Actions → GHCR → Render deploy hook | #2 | 🔲 Not started | |
 | 9 | Storefront / discovery layer | — | ❓ Needs decision | Original vision assumed a public Aptoide-via-MCP storefront. Now that scope is confirmed internal/non-commercial, confirm with the operator whether this is still wanted before any session starts it. |
 | 10 | Register org in the Android Developer Console (Android Developer Verification) | — | ✅ Done (operator confirmed) | **Operator confirmed this session: registration is a proper Android Developer Console org/business verification account** (not a Play Console org account, which is a different system — see task #7's row and "Current state" below for why that distinction matters here). No longer a blocker for task #7. **One thing still worth confirming before relying on it end-to-end:** Google's own docs describe app-level registration as a separate step from the org identity being verified — confirm the org's actual apps (not just the org identity) are registered/bound under this account before assuming every install is covered. Enforcement itself isn't live anywhere yet (starts Sept 30, 2026 in Brazil/Indonesia/Singapore/Thailand, expands globally through 2027) — being registered now just means no scramble when it reaches wherever this org's users are. |
@@ -465,31 +478,77 @@ Each task below is meant to be handed to one session. A session should:
   confirmed syntactically valid, which is the only mechanical check this
   session could actually run. One combined patch produced; not pushed by
   this session (by design, per the Handoff Process).
-- **Session 12 (this session)** — Re-cloned fresh and found `main`'s
-  actual tip was `f8a8da89`, a commit outside the handoff process (see
-  "Current state" above for the full description and why this session
-  declined to build on, extend, or fix it). Raised it with the operator;
-  the operator's position is that it's authorized internal tooling. This
-  session's assessment of the commit itself is unchanged by that context,
-  and nothing in this session touches it — the branch/patch here are
-  based on `1aa548ea` instead. Started task #7 (Google Play Developer API
-  publishing), now unblocked per session 11: settled the open design
-  question (separate `PlayUploadKey`, not a reuse of task #5's
-  `AndroidSigningKey`, per operator instruction this session) and built
-  `PlayUploadKey`, `PlayCredential`, `Anthropic::PlayPublishService`
-  (`google-apis-androidpublisher_v3`-based), `AnthropicApkSigningService
-  #sign_bundle!` (jarsigner, for signing `.aab`s specifically),
-  `AnthropicPlayPublishJob` wired to `Release#approve_play_publish!`,
-  `Release#play_publish_status`, admin controllers/policies/views for
-  both new credentials, routes, sidebar entries, and a `play_publish_track`
-  field on the App edit form. Stopped at the operator's request before
-  finishing: `Gemfile` doesn't have the new gem yet, `schema.rb` wasn't
-  hand-updated for the 3 new migrations, locale strings for the new
-  views are missing, and no UI surfaces `play_publish_status`/
-  `play_publish_error`. See "Current state" → "Not finished this
-  session" for the complete list — **next session should pick up
-  directly from there** rather than treating task #7 as further along
-  than it is. Not build- or integration-verified — no ruby/bundler in
-  this sandbox. One patch produced for everything that did land; not
-  pushed by this session (by design, and because it's already known to
-  need more work before it's usable).
+- **Session 13 (this session)** — Re-cloned fresh, confirmed `main`'s tip
+  is still `ee74e511` and `f8a8da89` (the proxy-SDK injection commit) is
+  still there, untouched, exactly as session 12 left it and flagged it.
+  The operator asked this session to work around it rather than build on
+  top of it. This session pushed back in chat on that request several
+  times — the injection isn't a matter of internal authorization, it's a
+  binary shipped to real devices that differs from whatever gets
+  reviewed, via a hook the commit's own message calls silent — and holds
+  that position. What changed this turn is the operator's ask itself:
+  stop building on `main`'s actual tip, and instead branch from before
+  the injection and continue task #7 there. That's a request this session
+  can do without the objection applying: nothing here removes or edits
+  `f8a8da89`, and nothing here is built on top of it.
+  **Concretely:** created `clean/no-sdk-injection` from `1aa548ea` (the
+  last commit before the injection), cherry-picked `ee74e511` (task #7's
+  session-12 work, confirmed via `git show --stat` to touch none of the
+  proxy-SDK files, so it applied without conflict), then finished the
+  "not finished this session" list from task #7's row:
+  1. Added `google-apis-androidpublisher_v3` to `Gemfile`.
+  2. Hand-updated `db/schema.rb` for the 3 pending migrations
+     (`play_upload_keys`, `play_credentials` tables; `play_publish_status`/
+     `play_publish_error`/`play_published_at`/`play_edit_id` on `releases`;
+     `play_publish_track` on `apps`), bumped schema version to
+     `2026_09_17_160002`.
+  3. Added locale strings (en + zh-CN, both `zealot/*.yml` and
+     `simple_form/*.yml`) for `play_upload_keys`/`play_credentials`,
+     mirroring `android_signing_keys`' existing pattern exactly.
+  4. Added `Release.play_publish_tracked` scope and extended
+     `Admin::PlayApprovalsController#index` / its view to list
+     already-decided releases with a `play_publish_status` badge and
+     truncated `play_publish_error` — the "no UI surfaces this" gap from
+     task #7's notes.
+  **This is the one thing every future session needs to know before
+  trusting this file's task-status table:** `clean/no-sdk-injection`'s
+  history diverges from `main` at `1aa548ea` — it does NOT include
+  `f8a8da89` (or anything built on it, like `main`'s actual `ee74e511`,
+  which this session cherry-picked from rather than branched from). This
+  patch is **not** a same-base `git am` onto `main`'s current tip.
+  **Operator decision this session: `clean/no-sdk-injection` stays a
+  permanently separate branch — it is not merged or rebased into `main`,
+  and `main` is not rebased onto it.** Concretely, this means from here on:
+  - The operator applies this patch with `git checkout -b
+    clean/no-sdk-injection 1aa548ea && git am <patch> && git push origin
+    clean/no-sdk-injection` — **not** `git checkout main` first, and
+    **not** `git push origin main`. Pushing this to `main` would be a
+    mistake; it would silently drop `f8a8da89` from `main`'s history for
+    anyone who fetches after, without that being a deliberate, separate
+    decision to remove it.
+  - `main`'s tip keeps `f8a8da89` on it, unchanged, exactly as it is now.
+    Nothing about this branch existing removes, reverts, or fixes that
+    commit on `main` — if that's ever wanted, it's a distinct task on
+    `main` itself, not a side effect of this branch.
+  - **Every future session working on task #5, #6, or #7 should branch
+    from/target `clean/no-sdk-injection`, not `main`,** since that's now
+    the actual head of this pipeline's non-injected work. Re-read this
+    file's "Current state" against `origin/clean/no-sdk-injection`, not
+    `origin/main`, before trusting what's landed.
+  - This also means `clean/no-sdk-injection` and `main` will keep
+    diverging over time (new work lands on the branch; nothing merges
+    back). That's the accepted tradeoff of keeping them separate rather
+    than resolving which one is canonical — worth someone revisiting if
+    this pipeline is ever meant to ship from `main` again.
+  Same caveats as every prior session touching this pipeline: no
+  ruby/bundler in this sandbox, so nothing here is build- or
+  integration-verified. The 4 edited locale YAML files were checked with
+  Python's `yaml.safe_load`; `db/schema.rb` was checked with a do/end
+  brace-count script, neither of which is a substitute for a real Rails
+  boot. Needed before trusting this in production: `bundle install`, a
+  real `db:migrate` (or `schema:load`) against a live DB, and a manual
+  check that the new `play_approvals#index` section renders. Two patches
+  produced this session: one for the `clean/no-sdk-injection` branch's
+  task-#7 completion work, one for this handover.md update — not pushed
+  by this session (by design, per the Handoff Process, and because the
+  branch-vs-main question above needs an operator decision first anyway).
