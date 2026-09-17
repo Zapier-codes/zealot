@@ -12,6 +12,12 @@ class Admin::PlayApprovalsController < ApplicationController
   def index
     @releases = Release.awaiting_play_approval.includes(channel: { scheme: :app }).order(play_approval_requested_at: :asc)
     authorize @releases if @releases.present?
+
+    # Task #7: separate from the approval queue above — these are releases
+    # already approved (or rejected) whose actual Play Developer API publish
+    # attempt is worth showing status/error for. See Release#play_publish_status.
+    @published_releases = Release.play_publish_tracked.includes(channel: { scheme: :app }).order(updated_at: :desc)
+    authorize @published_releases if @published_releases.present?
   end
 
   # PUT /admin/play_approvals/1/approve

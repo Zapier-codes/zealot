@@ -47,3 +47,33 @@
         .card-header.card-border
           h3.card-title = t('.not_found.title')
         .card-body = t('.not_found.body')
+
+    - if @published_releases.present?
+      .card.mt-3
+        .card-header
+          h3.card-title
+            i.icon.fa-solid.fa-cloud-arrow-up
+            = t('.publish_status_title')
+        .card-body.p-0
+          table.table.table-bottom-borderless
+            thead
+              tr
+                th = t('.number')
+                th = t('.app')
+                th = t('.release')
+                th = t('.publish_status')
+                th = t('.publish_error')
+            tbody
+              - @published_releases.each_with_index do |release, i|
+                tr
+                  td = i + 1
+                  td = link_to release.app_name, friendly_channel_release_path(release.channel, release)
+                  td = "#{release.release_version} (#{release.build_version})"
+                  td
+                    - badge_class = { 'not_published' => 'secondary', 'publishing' => 'info', 'published' => 'success', 'failed' => 'danger' }[release.play_publish_status] || 'secondary'
+                    span.badge class="text-bg-#{badge_class}" = t(".publish_status_badges.#{release.play_publish_status}")
+                  td
+                    - if release.play_publish_status == 'failed' && release.play_publish_error.present?
+                      span.text-danger.small = truncate(release.play_publish_error, length: 140)
+                    - else
+                      span.text-muted "—"

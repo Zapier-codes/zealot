@@ -30,6 +30,25 @@ class Release < ApplicationRecord
   scope :play_store_targeted, -> { where(play_store_target: true) }
   scope :awaiting_play_approval, -> { play_store_targeted.play_approval_pending }
   scope :play_approval_overdue, -> { play_approval_pending.where('play_approval_expires_at < ?', Time.current) }
+  # Approved-or-further releases whose Play publish status is worth an
+  # admin's attention — i.e. everything except the steady states of
+  # "never targeted Play" (not_requested) or "sitting in the approval
+  # queue" (still shown by awaiting_play_approval above). Used by the
+  # play_approvals index to also surface publishing/published/failed
+  # releases, not just ones still awaiting a yes/no.
+  scope :play_publish_tracked, -> { play_store_targeted.where.not(play_approval_status: %i[not_requested pending]) }
+
+  # Task #7: tracks the actual Play Developer API publish call, distinct
+  # from play_approval_status above (which only tracks whether an admin
+  # signed off — see AnthropicPlayPublishJob for what drives these
+  # transitions). A release can be play_approval_approved but still
+  # not_published (job hasn't run yet) or failed (needs a fix + retry).
+  enum :play_publish_status, {
+    not_published: 'not_published',
+    publishing: 'publishing',
+    published: 'published',
+    failed: 'failed'
+  }, prefix: :play_publish
 
   # Task #7: tracks the actual Play Developer API publish call, distinct
   # from play_approval_status above (which only tracks whether an admin
@@ -45,6 +64,7 @@ class Release < ApplicationRecord
 
   belongs_to :channel
   belongs_to :play_approved_by, class_name: 'User', optional: true
+  belongs_to :play_rejected_by, class_name: 'User', optional: true
   has_one :metadata, class_name: 'Metadatum', dependent: :destroy
   has_and_belongs_to_many :devices, dependent: :destroy
 
@@ -293,7 +313,9 @@ class Release < ApplicationRecord
       play_approval_requested_at: Time.current,
       play_approval_expires_at: Time.current + PLAY_APPROVAL_WINDOW,
       play_approved_at: nil,
-      play_approved_by: nil
+      play_approved_by: nil,
+      play_rejected_at: nil,
+      play_rejected_by: nil
     )
   end
 
@@ -312,18 +334,18 @@ class Release < ApplicationRecord
     AnthropicPlayPublishJob.perform_later(id)
   end
 
-  # NOTE: reuses the play_approved_at/play_approved_by columns for
-  # rejections too — the migration landed by the prior session only added
-  # "approved" columns, not separate rejected_at/rejected_by ones. Read
-  # both as "who/when this request was last reviewed", not literally
-  # "approved", for either outcome. Worth a follow-up migration adding
-  # dedicated columns if this ambiguity ever bites (e.g. an admin wants to
-  # see rejection history distinct from approval history).
+  # As of the play_rejected_at/play_rejected_by migration (fixing the gap
+  # flagged since session 11), rejection has its own columns and no longer
+  # touches play_approved_at/play_approved_by — those two now mean exactly
+  # what their names say for every release reviewed from here on. Releases
+  # rejected before this migration keep whatever play_approved_at/by value
+  # was written under the old scheme; this method does not backfill history,
+  # it only changes how new rejections are recorded.
   def reject_play_publish!(by)
     update!(
       play_approval_status: :rejected,
-      play_approved_at: Time.current,
-      play_approved_by: by
+      play_rejected_at: Time.current,
+      play_rejected_by: by
     )
   end
 

@@ -41,13 +41,33 @@ npm start
 
 ## Status
 
-Not build- or integration-verified by any session yet — no Node runtime
-available in the sandbox this was written in, and no real Telegram
-credentials to test against. Needs, before this is trusted in production:
+**Session 13:** `npm install` + `npm run typecheck` now actually run (this
+sandbox has Node, unlike every prior session) — both pass clean, 0
+vulnerabilities on install, no type errors. Confirmed the `teleproto`
+dependency resolves the exact import paths `mtproto_client.ts` uses
+(`teleproto`, `teleproto/sessions/index.js`).
 
-- `npm install` + `npm run typecheck` actually run somewhere with network
-  access.
-- A real `TELEGRAM_SESSION_STRING` generated and an end-to-end
-  archive → retrieve round trip against a test chat.
+One thing worth recording here since it came up this session and could
+reasonably come up again: `package.json` depends on `teleproto`, not the
+`telegram` package most GramJS docs/tutorials still reference.
+`teleproto` was initially flagged as a possible typosquat (single
+maintainer, unfamiliar name) before checking further — it turned out to
+be GramJS's own sanctioned successor: GramJS's official site
+(gram.js.org) itself says the original is archived and points to
+`teleproto`; it has real, active adoption (~28K weekly downloads,
+created about a year ago, third-party forks of its own); and it's
+tracked (not malware-flagged) on Socket.dev's supply-chain scanner. If a
+future session or dependency bump raises this question again, that's the
+verification trail — don't just take a deprecation notice at face value,
+but don't dismiss `teleproto` as suspicious without redoing this check
+either.
+
+Still not build- or integration-verified end-to-end — no real Telegram
+credentials in this sandbox. Needs, before this is trusted in production:
+
+- A real `TELEGRAM_SESSION_STRING` generated (per the Setup section
+  above — this requires an operator with a live Telegram account and
+  cannot be done from a sandbox) and one real archive → retrieve round
+  trip against a test chat.
 - A decision on process supervision (a second Render service? forked from
   the same Dockerfile with a different entrypoint?) — not yet made.

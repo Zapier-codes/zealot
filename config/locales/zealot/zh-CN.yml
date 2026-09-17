@@ -119,6 +119,36 @@ zh-CN:
         destroy_warning: "删除此密钥不会重新签名或撤销任何已使用它构建的版本，仅会停止后续版本的自动签名。"
       create:
         successful: Android 签名密钥上传并验证成功
+    play_upload_keys:
+      title: Play 上传密钥
+      new:
+        title: 新增 Play 上传密钥
+        already_configured: Play 上传密钥已配置，如需更换请先删除现有密钥
+      show:
+        title: :'admin.play_upload_keys.title'
+        key_metadata: 密钥信息
+        filename: 文件名
+        key_alias: 密钥别名
+        checksum: 校验码
+        created_at: 创建时间
+        destroy_warning: "删除此密钥不会影响任何已使用它签名并上传的 AAB，仅会停止后续 Play Store 上传的自动签名。"
+      create:
+        successful: Play 上传密钥上传并验证成功
+    play_credentials:
+      title: Play API 凭据
+      new:
+        title: 新增 Play API 凭据
+        already_configured: Play API 凭据已配置，如需更换请先删除现有凭据
+      show:
+        title: :'admin.play_credentials.title'
+        key_metadata: 凭据信息
+        service_account_email: 服务账号邮箱
+        project_id: 项目 ID
+        checksum: 校验码
+        created_at: 创建时间
+        destroy_warning: "删除此凭据将停止向 Google Play 发布新版本，但不会撤回任何已发布的版本。"
+      create:
+        successful: Play API 凭据上传成功
     play_approvals:
       title: Play Store 发布审批
       index:
@@ -135,6 +165,14 @@ zh-CN:
         not_found:
           title: 暂无等待 Play Store 发布审批的版本
           body: 当上传的版本以 Play Store 为发布目标时会显示在这里；未处理的申请会在 48 小时后自动过期，过期后该版本仍可通过我们自己的分发渠道下载。
+        publish_status_title: Play 发布状态
+        publish_status: 状态
+        publish_error: 最近一次错误
+        publish_status_badges:
+          not_published: 未发布
+          publishing: 发布中
+          published: 已发布
+          failed: 失败
       messages:
         approved: "%{name} 已通过 Play Store 发布审批"
         rejected: "%{name} 已被拒绝 Play Store 发布"
@@ -515,6 +553,13 @@ zh-CN:
       metadata: 更多信息
       certificate_expired_date: 证书过期时间 %{date}
       teardown_metadata: 解包信息
+      play_publish_status: Play 商店发布状态
+      play_publish_error: "最近一次 Play 发布错误：%{error}"
+      play_publish_status_badges:
+        not_published: 未发布
+        publishing: 发布中
+        published: 已发布
+        failed: 失败
       install: 安装
       download: 下载
       installing: 安装中 ...

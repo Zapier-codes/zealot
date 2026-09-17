@@ -84,6 +84,16 @@ en:
         keystore: Keystore file
         filename: Filename
         checksum: Keystore Hash Verification
+      play_upload_key:
+        key_alias: Key alias
+        keystore_password: Keystore password
+        key_password: Key password
+        keystore: Keystore file
+        filename: Filename
+        checksum: Keystore Hash Verification
+      play_credential:
+        service_account_json: Service account JSON key file
+        checksum: Credential Hash Verification
       backup:
         general: General settings
         key: Key
@@ -128,6 +138,8 @@ en:
         branch: Git branch. In general either main or develop
         git_commit: 40 bit length SHA value of git commit
         ci_url: The CI URL specific like Jenkins, Gitlab CI, Github Action etc
+      play_credential:
+        service_account_json: Google Cloud service account JSON key, scoped to the Play Developer API
         play_store_target: Mark this release as bound for Google Play Store distribution. It stays available through our own internal distribution immediately either way — this only gates whether it also goes through the Play Store publish-approval queue
       web_hook:
         body: Custom JSON struct body to apply the third party notification services. Use <a href="https://zealot.ews.im/docs/user-guide/webhooks">default structure</a> by leave it empty
