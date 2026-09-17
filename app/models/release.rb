@@ -55,18 +55,6 @@ class Release < ApplicationRecord
     failed: 'failed'
   }, prefix: :play_publish
 
-  # Task #7: tracks the actual Play Developer API publish call, distinct
-  # from play_approval_status above (which only tracks whether an admin
-  # signed off — see AnthropicPlayPublishJob for what drives these
-  # transitions). A release can be play_approval_approved but still
-  # not_published (job hasn't run yet) or failed (needs a fix + retry).
-  enum :play_publish_status, {
-    not_published: 'not_published',
-    publishing: 'publishing',
-    published: 'published',
-    failed: 'failed'
-  }, prefix: :play_publish
-
   belongs_to :channel
   belongs_to :play_approved_by, class_name: 'User', optional: true
   belongs_to :play_rejected_by, class_name: 'User', optional: true
