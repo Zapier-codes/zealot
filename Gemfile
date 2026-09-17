@@ -129,3 +129,4 @@ group :development, :test do
   gem 'rspec-rails'
   gem 'rswag-specs'
 end
+gem "mini_magick", "~> 5.0"
