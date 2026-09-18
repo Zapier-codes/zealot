@@ -1,21 +1,15 @@
-name: Anthropic - Build & Deploy main
+name: Anthropic - Build & Deploy develop
 
-# Internal deploy pipeline for this org's own hosted instance (handover.md
-# task #8). Deliberately separate from Zealot upstream's own
-# publish_release.yml / publish_nighty.yml / publish_preview.yml, which
-# this fork still carries and which serve the public project (Docker Hub
-# + GHCR images tagged by git tag / develop / release branches for anyone
-# self-hosting Zealot). Those are untouched by this workflow and should
-# stay that way. This one is purely "our own main branch -> our own
-# GHCR image -> our own Render service", triggered on the branch this
-# org actually works on (per handover.md, work lands on `main` directly,
-# not `develop`).
+# Internal deploy pipeline for this org's own hosted instance. Deliberately
+# separate from Zealot upstream's own publish_release.yml / publish_nighty.yml
+# / publish_preview.yml, which this fork still carries and which serve the
+# public project (Docker Hub + GHCR images tagged by git tag / develop /
+# release branches for anyone self-hosting Zealot). Those are untouched by
+# this workflow and should stay that way. This one is purely "our own
+# develop branch -> our own GHCR image -> our own Render service", triggered
+# on the branch this org actually works on (develop is the default branch).
 #
-# What this does NOT do (see handover.md task #8/#2 for why):
-#   - It does not replace task #2's Dockerfile build-verification concerns
-#     (bsdiff/openjdk17-jre-headless on Alpine). If the image genuinely
-#     fails to build, this workflow fails the same way test_docker_build.yml
-#     would; it doesn't add new verification for that.
+# What this does NOT do:
 #   - It builds linux/amd64 only, not the multi-arch (amd64+arm64) builds
 #     upstream's release/nightly workflows produce. Render's compute is
 #     x86_64-only, and multi-arch buildx (QEMU-emulated arm64) roughly
@@ -23,13 +17,13 @@ name: Anthropic - Build & Deploy main
 #     ever run on. Worth revisiting only if this image is ever pulled
 #     somewhere non-x86_64.
 #   - It does not itself prove the deploy succeeded end-to-end (Render
-#     actually serving traffic, migrations having run, etc.) — see the
-#     final step's comment and handover.md's "Current state" for what
-#     still needs an operator with real Render access to confirm.
+#     actually serving traffic, migrations having run, etc.) -- that needs
+#     an operator with real Render access to confirm.
+
 on:
   push:
     branches:
-      - main
+      - develop
     paths-ignore:
       - "**.md"
       - ".devcontainer/**"
@@ -37,9 +31,9 @@ on:
       - "LICENSE"
 
 concurrency:
-  # Only one in-flight deploy of main at a time; a newer push supersedes
+  # Only one in-flight deploy of develop at a time; a newer push supersedes
   # an older one still building rather than racing it to Render.
-  group: anthropic-deploy-main
+  group: anthropic-deploy-develop
   cancel-in-progress: true
 
 jobs:
@@ -122,15 +116,13 @@ jobs:
     steps:
       # Requires a `RENDER_DEPLOY_HOOK_URL` repo secret (Render dashboard ->
       # zealot-web service -> Settings -> Deploy Hook). This is an operator
-      # setup step, not something this workflow can create for you -- see
-      # handover.md task #8 for the full prerequisite list, including that
-      # Render also needs a Container Registry credential configured (or
-      # the GHCR package made public) before it can actually pull a
-      # private ghcr.io image.
+      # setup step -- Render also needs a Container Registry credential
+      # configured (or the GHCR package made public) before it can actually
+      # pull a private ghcr.io image.
       - name: Trigger Render deploy of the image just pushed
         run: |
           if [ -z "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" ]; then
-            echo "::error::RENDER_DEPLOY_HOOK_URL secret is not set -- see handover.md task #8 prerequisites."
+            echo "::error::RENDER_DEPLOY_HOOK_URL secret is not set."
             exit 1
           fi
           IMG_URL_ENCODED=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "${{ needs.build-and-push.outputs.image_ref }}")
@@ -138,6 +130,4 @@ jobs:
             "${{ secrets.RENDER_DEPLOY_HOOK_URL }}&imgURL=${IMG_URL_ENCODED}"
           # A 200 here only means Render *accepted* the deploy request, not
           # that the deploy finished or the app is healthy -- this
-          # workflow does not poll Render's API for deploy status. See
-          # handover.md for why (no Render API key available to a
-          # sandbox session to build/test that polling step against).
+          # workflow does not poll Render's API for deploy status.
