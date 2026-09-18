@@ -1,7 +1,7 @@
 - if user_signed_in_or_guest_mode?
   label class="d-drawer-overlay" for="zealot-drawer" aria-label="close sidebar"
   aside[
-    class="flex min-h-full flex-col items-start bg-base-200 d-is-drawer-close:w-18 d-is-drawer-open:w-60"
+    class="console-sidebar flex min-h-full flex-col items-start bg-base-200/80 backdrop-blur-md border-r border-base-300/60 d-is-drawer-close:w-18 d-is-drawer-open:w-60"
   ]
     .m-3
       == render 'layouts/brand_logo', site_title: Setting.site_title

@@ -5,5 +5,6 @@
 @import "./components/property";
 @import "./components/auth";
 @import "./components/landing";
+@import "./components/console";
 
 @import "./apps";

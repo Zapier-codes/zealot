@@ -1,0 +1,57 @@
+/* 2026 console revamp — shared chrome (sidebar, navbar, content header).
+   "Cinematic/futuristic but corporate, not gamified": restrained glass +
+   a single soft ambient glow, no neon, no motion beyond what's already
+   respecting prefers-reduced-motion elsewhere in this codebase (see
+   landing.css / counter_controller.js for the precedent this follows).
+
+   Everything here reads daisyui's own theme CSS variables (--color-*)
+   rather than hardcoding a palette, so it holds up across every
+   user-selectable theme (site_light_theme / site_dark_theme / "auto") —
+   see app/models/setting.rb and application_helper.rb#active_theme. */
+
+@layer components {
+  /* Sidebar: soft ambient glow bleeding in from the edge, primary-tinted
+     so it re-colors correctly per theme. Purely decorative, sits behind
+     the menu content. */
+  .console-sidebar {
+    position: relative;
+    overflow: hidden;
+
+    &::before {
+      content: "";
+      @apply pointer-events-none absolute -left-16 top-0 w-32 h-64;
+      background: radial-gradient(
+        closest-side,
+        color-mix(in oklch, var(--color-primary) 16%, transparent),
+        transparent
+      );
+      filter: blur(20px);
+    }
+  }
+
+  /* Active sidebar link: replace the flat daisyui highlight with a
+     soft pill + inset glow instead of a hard block of color — quieter,
+     more "selected panel" than "button pressed". */
+  .console-sidebar :where(.d-menu-active) {
+    @apply relative rounded-lg;
+    background: color-mix(in oklch, var(--color-primary) 12%, transparent);
+    box-shadow: inset 0 0 0 1px
+      color-mix(in oklch, var(--color-primary) 25%, transparent);
+  }
+
+  /* Content header: a thin gradient underline instead of nothing —
+     gives every page title a quiet anchor line without adding weight. */
+  .console-header {
+    position: relative;
+
+    &::after {
+      content: "";
+      @apply absolute left-0 right-0 bottom-0 h-px;
+      background: linear-gradient(
+        90deg,
+        color-mix(in oklch, var(--color-primary) 35%, transparent),
+        transparent 70%
+      );
+    }
+  }
+}

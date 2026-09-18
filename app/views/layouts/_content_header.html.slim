@@ -5,9 +5,9 @@ ruby:
 
 // Content Header (Page header)
 - if section_title.present?
-  .app-container-header class="flex min-w-0 items-center justify-between py-4"
+  .app-container-header class="console-header flex min-w-0 items-center justify-between py-4"
     div class="min-w-0 items-center"
-      h2 class="text-2xl font-bold" = yield :section_title
+      h2 class="text-2xl font-bold tracking-tight" = yield :section_title
 
     - if right_panel.present?
       div class="flex items-center"

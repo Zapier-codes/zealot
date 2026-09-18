@@ -8,13 +8,31 @@
 
 .card {
   @layer components {
-    @apply bg-base-100 flex flex-col relative;
-    @apply rounded-md shadow-sm shadow-black/18;
-    @apply border border-base-300;
+    /* 2026 console revamp: same bordered-box structure, refined into a
+       quiet glass panel — backdrop-blur + a soft inset top highlight
+       instead of a flat border, so it reads as "surface with depth"
+       rather than "box with a stroke". Uses only existing daisyui
+       theme tokens (base-100/base-300, base-content) so every
+       user-selected theme (light/dark/any daisyui theme) still works
+       automatically — nothing here is a hardcoded color. */
+    @apply bg-base-100/90 backdrop-blur-md flex flex-col relative isolate;
+    @apply rounded-xl shadow-lg shadow-black/10;
+    @apply border border-base-300/70;
+
+    &::before {
+      content: "";
+      @apply absolute inset-x-0 top-0 h-px rounded-t-xl pointer-events-none;
+      background: linear-gradient(
+        90deg,
+        transparent,
+        color-mix(in oklch, var(--color-base-content) 14%, transparent),
+        transparent
+      );
+    }
 
     .card-header {
       @apply flex flex-row justify-between items-center p-3;
-      @apply border-b border-base-300;
+      @apply border-b border-base-300/70;
 
       .card-title {
         @apply text-lg font-semibold;
@@ -38,15 +56,15 @@
     }
 
     .card-body {
-      @apply flex flex-col gap-2 p-3 rounded-b-md;
+      @apply flex flex-col gap-2 p-3 rounded-b-xl;
       :where(p) {
         @apply grow;
       }
     }
 
     .card-footer {
-      @apply bg-base-200 rounded-b-md px-3 py-2;
-      @apply border-t border-base-300;
+      @apply bg-base-200/80 rounded-b-xl px-3 py-2;
+      @apply border-t border-base-300/70;
     }
 
     &:has(> .card-footer) {
@@ -60,7 +78,7 @@
 .card.card-primary {
   @layer components {
     .card-header {
-      @apply bg-primary rounded-t-md;
+      @apply bg-primary rounded-t-xl;
     }
 
     &.card-outline {
@@ -74,7 +92,7 @@
 .card.card-secondary {
   @layer components {
     .card-header {
-      @apply bg-secondary rounded-t-md;
+      @apply bg-secondary rounded-t-xl;
     }
 
     &.card-outline {
@@ -88,7 +106,7 @@
 .card.card-neutral {
   @layer components {
     .card-header {
-      @apply bg-neutral rounded-t-md;
+      @apply bg-neutral rounded-t-xl;
     }
 
     &.card-outline {
@@ -102,7 +120,7 @@
 .card.card-info {
   @layer components {
     .card-header {
-      @apply bg-info rounded-t-md;
+      @apply bg-info rounded-t-xl;
     }
 
     &.card-outline {
@@ -116,7 +134,7 @@
 .card.card-success {
   @layer components {
     .card-header {
-      @apply bg-success rounded-t-md;
+      @apply bg-success rounded-t-xl;
     }
 
     &.card-outline {
@@ -130,7 +148,7 @@
 .card.card-warning {
   @layer components {
     .card-header {
-      @apply bg-warning rounded-t-md;
+      @apply bg-warning rounded-t-xl;
     }
 
     &.card-outline {
@@ -144,7 +162,7 @@
 .card.card-error {
   @layer components {
     .card-header {
-      @apply bg-error rounded-t-md;
+      @apply bg-error rounded-t-xl;
     }
 
     &.card-outline {

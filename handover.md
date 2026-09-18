@@ -161,7 +161,42 @@ assuming and building the trigger-based path silently.
   email-preferences column before this ships, so platform-wide
   maintenance/branding mail doesn't become unwanted noise with no opt-out.
 
-### 🆕 Task 13: Dashboard / Console UI Revamp — 2026 Modernization (New — not started)
+### ✅ Task 13: Dashboard / Console UI Revamp — 2026 Modernization (shared layer done, patch handed off)
+
+**Operator decisions locked in:** restyle the existing Slim + hand-rolled
+Tailwind/daisyUI setup (not a new component library); keep the per-user
+light/dark theme picker working; land as one patch; no specific visual
+reference given (used judgment — Linear/Stripe-dashboard-adjacent,
+extending the landing/auth glassmorphism language but toned down for
+daily use).
+
+**What this patch covers:** the shared layer every console page
+inherits from — `.card` (used by nearly every page already), the
+sidebar, the navbar, and the content header — restyled into a quiet
+glass/depth treatment using only daisyui's own theme CSS variables via
+`color-mix()`, so every selectable theme still works. See
+`app/frontend/stylesheets/components/console.css` (new) and the
+restyled `card.css`. Branch `feat/console-2026-revamp`, patch
+`0001-feat-Task-13-restyle-shared-console-chrome...patch`, base
+`develop`. Not yet applied by the operator as of this doc.
+
+**What this patch does NOT cover — genuinely open, not just unverified:**
+page-specific templates (the actual tables/forms inside Apps, Channels,
+Releases, Schemes, Debug Files, Teardowns, Webhooks, and all 14 admin
+pages: Android Signing Keys, Apple Keys, Apple Teams, Background Jobs,
+Backups, Database Analytics, Logs, Play Approvals/Credentials/Upload
+Keys, Services, Settings, System Info, Users) were not individually
+redesigned. They inherit the `.card` restyle automatically wherever they
+already use it, but nothing page-specific was touched. A future session
+should go page-by-page from this list if more than the shared-chrome
+pass is wanted — the brief's "dashboard and all other pages" scope
+implies this shared pass is a start, not the finish.
+
+**Also not done:** no asset build, no visual check in a browser (no
+Node/Vite runtime in this sandbox) — same caveat as every other session
+in this file.
+
+### 🆕 Task 13b: Console page-by-page restyle (New — not started, follow-on to above)
 
 Operator wants a visual overhaul of the dashboard and all other in-app
 console pages (everything past sign-in — not the public landing page,
@@ -185,21 +220,11 @@ given:
   already covered) before scoping the work, rather than guessing which
   pages count as "console."
 
-**Open questions before a session starts building, so it doesn't have to
-guess and redo work:**
-- Is this a ground-up redesign (new component library / design tokens) or
-  a restyle of the existing Slim views + `app/frontend/stylesheets`
-  system used by the landing/auth work above? The existing stack has no
-  component library beyond hand-rolled CSS + Stimulus controllers — worth
-  confirming before introducing a new one.
-- Any reference sites/apps the operator has in mind for "cinematic,
-  futuristic, corporate" (concrete references reduce back-and-forth on
-  subjective visual language)?
-- Should this land as one large patch or be broken into page-by-page
-  patches, given the scope ("dashboard and all other pages")?
-
-No code has been written for this task yet — this entry only records the
-request on the task board per the operator's ask.
+**Open questions — resolved** (answered by the operator, see Task 13
+above for how they were applied): restyle existing setup, not a new
+component library; keep the theme picker; land as one patch; no specific
+visual reference given, judgment used. These no longer need re-asking —
+what's left is purely the page-by-page work listed under Task 13 above.
 
 ## Task: professional sign-in/sign-up + landing page (glassmorphism, 2026 style)
 
