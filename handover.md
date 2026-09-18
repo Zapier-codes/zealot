@@ -1,23 +1,29 @@
 # Zealot — Session Handover
 
-This file tracks only the current in-progress task. A prior `handover.md`
+This file tracks the task board for this repo. A prior `handover.md`
 existed in this repo's history but was removed (commit `4996098`, "Remove
-handover.md") and is not carried forward here — this is a clean start
-scoped to the task below.
+handover.md") and is not carried forward here — task statuses below for
+Tasks 6, 7 and 9 are as reported by the operator, not re-derived from that
+removed file or independently re-verified against the code.
 
 ## Handoff process (unchanged repo convention)
 
 1. Session does the work on a branch, never pushes directly to `develop`/`main`.
 2. Session runs `git format-patch -1 HEAD` (or `-N` for N commits) to produce
    a `.patch` file and hands it off — no push from the session.
-3. Operator applies it themselves. **Exact command for this session's patch**
-   (adjust the filename below to match whatever your download actually
-   saved it as, if it differs):
+3. Operator applies it themselves. **Outstanding patches, apply in this
+   order** (adjust filenames below to match whatever your download
+   actually saved them as, if different):
    ```
    cd ~/zealot
    git am ~/storage/downloads/zealot-landing-page-auth-glassmorphism.patch
+   git am ~/storage/downloads/zealot-handover-task-board-update.patch
    git push
    ```
+   The second patch (task-board doc update) is commit-stacked directly on
+   top of the first in this session's branch — apply them in that order,
+   not the reverse. Both are single commits, so each `git am` call applies
+   exactly one.
    This session's patch is a single commit on top of `develop` (branch
    `feat/landing-page-and-auth-glassmorphism`), so `git am` applies
    directly to whatever branch you're currently on — check `git status`
@@ -31,6 +37,90 @@ scoped to the task below.
    was run through Ruby/Node locally (no Ruby/Node runtime in the sandbox
    this was written in), so treat everything below as **code-complete,
    not syntax- or build-checked**.
+
+## Task board
+
+Status markers: 🟢 done and merged · ✅ code-complete, patch handed off,
+awaiting operator apply/verify · 🟡 in progress, needs live config/creds ·
+🆕 newly requested, not started · ❓ needs an operator decision before any
+session should start building.
+
+### ✅ Landing page + auth glassmorphism (this session's patch)
+
+See "What was built this session" below for the full breakdown. Patch
+`zealot-landing-page-auth-glassmorphism.patch` generated, not yet applied
+by the operator as of this doc.
+
+### 🟡 Task 6: Telegram MTProto Cold Storage (In Progress)
+The code and Node.js typechecking are done, but it requires live credentials and a deployment decision.
+1. **Operator Action:** Generate a real `TELEGRAM_SESSION_STRING` using a live Telegram account.
+2. **Environment Variables:** Set `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, and `TELEGRAM_SESSION_STRING` on Render.
+3. **Render Configuration:** Decide how to run the Node.js sidecar (`mtproto-worker`) alongside the Rails app on Render (e.g., as a separate Background Worker service).
+4. **Verification:** Do one real archive → retrieve round trip against a test chat.
+
+> Status above is as reported by the operator — not independently
+> re-verified against the code in this session (no Node runtime in this
+> sandbox to re-run the typecheck).
+
+### 🟡 Task 7: Google Play Developer API Publishing (In Progress)
+The code is complete, but it requires live configuration and verification on your Render server.
+1. **Database Migration:** Run `bin/rails db:migrate` on Render to create the `play_upload_keys`, `play_credentials` tables, and the `play_rejection_fields` columns.
+2. **Credentials:** Create a Google Cloud Service Account, link it to your Play Console, and upload the `service_account.json` via the Zealot Admin UI (`/admin/play_credential`).
+3. **Upload Key:** Upload a `PlayUploadKey` (keystore) via the Zealot Admin UI (`/admin/play_upload_key`).
+4. **Verification:** Test the end-to-end flow: upload a release, check the `play_store_target` box, approve it, and verify it actually publishes to the Google Play Store.
+
+> Same caveat as Task 6 — status as reported, not re-verified this session.
+
+### ❓ Task 9: Storefront / Discovery Layer (Needs Decision)
+This was deferred until the console was successfully hosted. Now that Zealot is live on Render, the operator needs to decide:
+- Do you want a public-facing Aptoide-style storefront?
+- Or will you keep it strictly internal for your employees?
+If you want it, a session needs to be started to build the public discovery layer UI.
+
+### 🆕 Task 12: Automated Email Infrastructure (New — not started)
+
+Four transactional/campaign emails, sent to platform users, triggered via
+Supabase RPC triggers on the Postgres side:
+
+1. **App deploy notification** — sent when a user deploys/publishes an app.
+2. **Custom branding campaign** — a platform marketing/branding campaign
+   email (broadcast-style, not per-event).
+3. **Payment receipt/invoice** — sent when a user pays for publishing;
+   needs to include the invoice and the receipt.
+4. **Errors / maintenance / app notices** — sent on platform errors,
+   scheduled maintenance, or notices about a specific user's app.
+
+**Open design question before a session starts building this:** the app
+already has `ActionMailer` configured over SMTP
+(`config/environments/production.rb`), existing mailers
+(`app/mailers/application_mailer.rb`, `user_mailer.rb`,
+`devise_mailer.rb`), and `good_job` (Postgres-backed background jobs,
+already in the `Gemfile`, already the queue for everything else in this
+app). Routing these four emails through **Supabase RPC triggers** instead
+means a second, parallel trigger/delivery path that lives outside Rails
+entirely (e.g. Postgres Database Webhooks + `pg_net` calling out to a
+Supabase Edge Function or an external mail API), rather than a Rails
+`after_commit` callback enqueuing a `GoodJob`-backed mailer the normal way.
+That's not necessarily wrong — it can make sense if the intent is for
+emails to survive even if the Rails app itself is down, or if a separate
+Supabase project already owns this — but it is a second delivery
+mechanism next to one that already exists, so the operator should confirm
+that's actually wanted before a session builds it, rather than a session
+assuming and building the trigger-based path silently.
+
+**Known gaps to resolve first, regardless of which path is chosen:**
+- **No payment/invoice data model exists yet** — `db/schema.rb` has no
+  `payments`, `invoices`, or `receipts` table (checked the full model
+  list: no such model in `app/models/`). Email #3 needs that built (or an
+  existing external payment provider's webhook as the trigger source)
+  before it can fire on anything real.
+- **"Deploy" event** likely maps to `Release` creation/status changes,
+  which does already exist — email #1 is the most immediately buildable
+  of the four.
+- **Recipient/notification preferences** — none of the four should be
+  unsubscribable-proof by default; check whether `User` needs an
+  email-preferences column before this ships, so platform-wide
+  maintenance/branding mail doesn't become unwanted noise with no opt-out.
 
 ## Task: professional sign-in/sign-up + landing page (glassmorphism, 2026 style)
 
