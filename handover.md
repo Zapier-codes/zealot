@@ -40,6 +40,69 @@ removed file or independently re-verified against the code.
 
 ## Task board
 
+### ✅ Landing page: live+migrated stats, logo marquee, 3D globe (this session)
+
+**Branch:** `feat/landing-globe-live-stats-logos`, base `develop`.
+**Status:** code-complete, not build-verified. Patches:
+`0001-feat-landing-page-live-migrated-stats-brand-logo-mar.patch` and
+`0002-docs-update-handover-landing-globe-stats-logos-task-.patch`
+(stacked, apply in that order).
+
+Three things the operator asked for on the already-live landing page:
+
+1. **"Zero numbers" fix.** The prior session's stat counters used only
+   live `App.count` / `Release.count` / `User.count` — correct and
+   honest, but this Zealot instance is a fresh migration target, so on
+   a near-empty DB the page showed 0/0/0, which undersells an org that
+   (per the operator) has run millions of app distributions on a prior
+   Aptoide-based setup under the same organization. Fix: added three
+   `MIGRATED_*_BASELINE` constants to `HomeController` (apps: 5,000,000,
+   releases: 10,000,000, collaborators: 100,000 — operator-reported in
+   this session, not independently verified, documented as such
+   in-code) and the displayed stat is now baseline + live count. If
+   the org gets firmer/audited historical numbers later, those three
+   constants are the only place to change.
+   - **Also found and fixed a real, unrelated bug while in this code:**
+     the counter `<span>` had a stray literal `0` as Slim tag content
+     (`data-counter-count-value=stat[:value] 0` — the trailing `0`
+     parses as the span's text, not part of the attribute), so every
+     counter statically showed "0" whenever JS didn't run (no-JS,
+     crawlers, failed asset load), independent of the zero-DB issue
+     above. Now server-renders the real formatted value; JS still
+     animates from zero on top of that for users who do have JS.
+2. **Icons/logos on the partner/sponsor marquees.** Previously plain
+   text pills. `landing_partners`/`landing_sponsors` now carry a
+   simple-icons slug per entry, rendered as `<img
+   src="cdn.simpleicons.org/{slug}">` next to the name — no new npm
+   dependency for this part.
+3. **3D globe with country flag pins**, replacing the flat flag-code
+   badge grid. New `globe_controller.js` (Stimulus) lazy-loads
+   `globe.gl` (added to `package.json`) only once its container
+   scrolls into view, plots one HTML pin per country (flag via
+   flagcdn.com + a glow dot) at each country's approximate
+   capital-city lat/lng, auto-rotates unless
+   `prefers-reduced-motion`. The old flag-pill grid is kept as a
+   `<noscript>` fallback (also shown if the dynamic import throws).
+
+**Not done / needs operator action:**
+- `pnpm-lock.yaml` was **not** regenerated — no Node/pnpm-with-network
+  runtime in this sandbox to run `pnpm install` against the new
+  `globe.gl` dependency safely. Run `pnpm install` before building/
+  deploying or the lockfile will be stale relative to `package.json`.
+- No asset build, no browser check — same standing caveat as every
+  session in this file (no Node/Vite runtime here). First thing after
+  applying: `pnpm install && pnpm build` (or `vite dev`), then load
+  `/` signed out and confirm the globe actually renders and the
+  stats/logos look right.
+- No Slim/Ruby gem-based lint was possible (`rubygems.org` isn't on
+  this sandbox's network allowlist) — `home_controller.rb` passed
+  `ruby -c` (Ruby *was* installable via apt here); the Slim template
+  edit is manually reviewed only, not gem-linted.
+- The migration baseline numbers are a business/PR decision the
+  operator owns — flag it to them again if those three constants ever
+  need to move.
+
+
 Status markers: 🟢 done and merged · ✅ code-complete, patch handed off,
 awaiting operator apply/verify · 🟡 in progress, needs live config/creds ·
 🆕 newly requested, not started · ❓ needs an operator decision before any
