@@ -71,10 +71,22 @@
   }
 
   /* ---------------------------------------------------------------- */
-  /* Global reach flag pills                                           */
+  /* Global reach — 3D globe + flag pins                                */
   /* ---------------------------------------------------------------- */
   .landing-reach-section {
     @apply bg-base-200/40;
+  }
+
+  .landing-globe-wrap {
+    @apply relative mx-auto w-full max-w-md aspect-square;
+  }
+
+  /* Hide the no-JS fallback grid once the globe controller has actually
+     mounted a <canvas> into the wrapper; if globe.gl failed to load
+     (see globe_controller.js's catch block), .landing-globe-failed is
+     added back and this rule stops applying so the fallback re-shows. */
+  .landing-globe-wrap:has(canvas):not(.landing-globe-failed) noscript {
+    @apply hidden;
   }
 
   .landing-flag-grid {
@@ -85,8 +97,25 @@
     @apply inline-flex items-center gap-1.5 rounded-full border border-base-content/10 bg-base-100/70 px-3 py-1.5 text-base-content/70;
   }
 
+  .landing-flag-icon {
+    @apply rounded-[2px] shadow-sm;
+  }
+
   .landing-flag-dot {
     @apply size-1.5 rounded-full bg-primary;
+  }
+
+  /* Per-country HTML pin rendered by globe.gl's htmlElement() */
+  .landing-globe-pin {
+    @apply flex flex-col items-center gap-1 -translate-x-1/2 -translate-y-full pointer-events-none;
+  }
+
+  .landing-globe-pin-flag {
+    @apply rounded-[2px] shadow-md shadow-black/30 ring-1 ring-base-100/70;
+  }
+
+  .landing-globe-pin-dot {
+    @apply size-1.5 rounded-full bg-primary shadow-[0_0_6px_2px] shadow-primary/70;
   }
 
   /* ---------------------------------------------------------------- */
@@ -110,11 +139,18 @@
   }
 
   .landing-marquee-pill {
-    @apply shrink-0 rounded-full border border-base-content/10 bg-base-100/60 backdrop-blur-md px-5 py-2.5 text-sm font-medium text-base-content/70 whitespace-nowrap;
+    @apply shrink-0 inline-flex items-center gap-2 rounded-full border border-base-content/10 bg-base-100/60 backdrop-blur-md px-5 py-2.5 text-sm font-medium text-base-content/70 whitespace-nowrap;
   }
 
   .landing-marquee-pill-accent {
     @apply text-secondary-content bg-secondary/10 border-secondary/20;
+  }
+
+  .landing-marquee-logo {
+    @apply size-[18px] shrink-0 object-contain opacity-90;
+    /* simpleicons.org's CDN serves brand-colored SVGs by default (no
+       ?color= sets each icon's own brand color), which reads better
+       here than forcing a single monochrome tint across every logo. */
   }
 }
 

@@ -33,4 +33,7 @@ application.register("breadcrumbs", BreadcrumbsController)
 import CounterController from "./counter_controller"
 application.register("counter", CounterController)
 
+import GlobeController from "./globe_controller"
+application.register("globe", GlobeController)
+
 import "./admin"

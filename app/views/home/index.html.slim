@@ -36,23 +36,26 @@
       - @stats.each do |stat|
         div class="landing-stat-card"
           div class="flex items-baseline justify-center gap-1"
-            span class="landing-counter text-3xl md:text-5xl font-bold tabular-nums" data-controller="counter" data-counter-count-value=stat[:value] 0
+            span class="landing-counter text-3xl md:text-5xl font-bold tabular-nums" data-controller="counter" data-counter-count-value=stat[:value]
+              = number_with_delimiter(stat[:value])
             span class="text-3xl md:text-5xl font-bold text-primary" = stat[:suffix]
           p class="mt-2 text-sm md:text-base text-base-content/60 text-center" = stat[:label]
 
   / ---------------------------------------------------------------------
-  / Global reach
+  / Global reach — 3D globe with country pins
   / ---------------------------------------------------------------------
   section class="relative py-14 md:py-20 landing-reach-section"
     div class="mx-auto max-w-5xl px-4 md:px-6 text-center"
       h2 class="text-2xl md:text-3xl font-semibold" = t('home.reach.title')
       p class="mt-3 text-base-content/60 max-w-xl mx-auto" = t('home.reach.description')
 
-      div class="landing-flag-grid mt-8"
-        - @countries.each do |code|
-          span class="landing-flag-pill" title=code
-            span class="landing-flag-dot"
-            span class="text-xs font-semibold tracking-wide" = code
+      div class="landing-globe-wrap mt-8" data-controller="globe" data-globe-points-value=@countries.to_json
+        noscript
+          div class="landing-flag-grid"
+            - @countries.each do |country|
+              span class="landing-flag-pill" title=country[:name]
+                img class="landing-flag-icon" src="https://flagcdn.com/24x18/#{country[:code].downcase}.png" alt=country[:code] width="24" height="18"
+                span class="text-xs font-semibold tracking-wide" = country[:code]
 
   / ---------------------------------------------------------------------
   / Partners marquee (scrolls left) + Sponsors marquee (scrolls right)
@@ -62,13 +65,17 @@
       p class="text-center text-sm uppercase tracking-widest text-base-content/50 mb-6" = t('home.partners.title')
       div class="landing-marquee-mask"
         div class="landing-marquee landing-marquee-left"
-          - (@partners + @partners).each do |name|
-            span class="landing-marquee-pill" = name
+          - (@partners + @partners).each do |partner|
+            span class="landing-marquee-pill"
+              img class="landing-marquee-logo" src="https://cdn.simpleicons.org/#{partner[:icon]}" alt="" loading="lazy" width="18" height="18"
+              = partner[:name]
 
   section class="relative pb-20 md:pb-28"
     div class="mx-auto max-w-6xl px-4 md:px-6"
       p class="text-center text-sm uppercase tracking-widest text-base-content/50 mb-6" = t('home.sponsors.title')
       div class="landing-marquee-mask"
         div class="landing-marquee landing-marquee-right"
-          - (@sponsors + @sponsors).each do |name|
-            span class="landing-marquee-pill landing-marquee-pill-accent" = name
+          - (@sponsors + @sponsors).each do |sponsor|
+            span class="landing-marquee-pill landing-marquee-pill-accent"
+              img class="landing-marquee-logo" src="https://cdn.simpleicons.org/#{sponsor[:icon]}" alt="" loading="lazy" width="18" height="18"
+              = sponsor[:name]
