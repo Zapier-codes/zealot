@@ -28,4 +28,11 @@ fi
 
 echo "Starting mtproto-worker (Telegram MTProto cold-storage sidecar)"
 cd /app/mtproto-worker
-exec node dist/index.js 2>&1 | tee -a /app/log/mtproto-worker.log
+# PORT is already set container-wide (Render sets it to 80 for Caddy, which
+# has it hardcoded in the Caddyfile regardless). s6 services inherit the
+# full container env, so without this override the worker would inherit
+# that same PORT=80 and race Caddy for the same bind — whichever of the two
+# starts second fails. Pin the worker to its own port explicitly; must
+# match MTPROTO_WORKER_URL on the Rails side (see
+# app/services/anthropic/mtproto_archive_service.rb).
+exec env PORT=8081 node dist/index.js 2>&1 | tee -a /app/log/mtproto-worker.log
