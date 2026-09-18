@@ -12,7 +12,7 @@ class Setting < RailsSettings::Base
   cache_prefix { 'v2' }
 
   scope :general do
-    field :site_title, default: 'Zealot', type: :string, display: true,
+    field :site_title, default: 'Anthropic', type: :string, display: true,
           validates: { presence: true, length: { in: 3..16 } }
     field :site_https, default: site_https, type: :boolean, readonly: true, display: true
     field :site_domain, default: (ENV['ZEALOT_DOMAIN'] || default_domain), type: :string,
