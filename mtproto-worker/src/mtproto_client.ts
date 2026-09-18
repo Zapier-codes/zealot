@@ -61,15 +61,19 @@ export class MtprotoClient {
     );
   }
 
-  // Call once at worker boot. Reused for the lifetime of the process — do
-  // not construct a new MtprotoClient per request.
-  async connect(): Promise<void> {
+  // Idempotent — safe to call before every operation. Connects on first
+  // use rather than at worker boot, so the worker never has to hold a live
+  // MTProto session open just to be "ready"; the connection only exists
+  // once something actually needs archiving/retrieving. Reused for the
+  // rest of the process's lifetime once opened.
+  async ensureConnected(): Promise<void> {
     if (this.connected) return;
     await this.client.connect();
     this.connected = true;
   }
 
   async archive(localPath: string, archiveKey: string): Promise<ArchiveLocation> {
+    await this.ensureConnected();
     const fileName = path.basename(archiveKey);
     const result = await this.client.sendFile(this.archiveChatId, {
       file: localPath,
@@ -89,6 +93,7 @@ export class MtprotoClient {
   // message can no longer be found (e.g. deleted upstream in the archive
   // chat), so the caller can surface a 404 rather than a hard error.
   async retrieve(location: ArchiveLocation, destPath: string): Promise<boolean> {
+    await this.ensureConnected();
     const messages = await this.client.getMessages(location.chatId, { ids: [location.messageId] });
     const message = messages[0];
     if (!message || !message.media) return false;

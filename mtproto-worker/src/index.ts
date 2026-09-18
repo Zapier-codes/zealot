@@ -96,16 +96,16 @@ app.get('/retrieve', auth, async (req, res) => {
 
 const port = Number(process.env.PORT || 8081);
 
-client
-  .connect()
-  .then(() => {
-    app.listen(port, () => {
-      // eslint-disable-next-line no-console
-      console.log(`mtproto-worker listening on :${port}`);
-    });
-  })
-  .catch((err) => {
-    // eslint-disable-next-line no-console
-    console.error('mtproto-worker failed to connect to Telegram:', err);
-    process.exit(1);
-  });
+// Intentionally does NOT connect to Telegram before listening. The
+// MtprotoClient connects lazily on first archive()/retrieve() call
+// instead (see mtproto_client.ts's ensureConnected()) — opening an MTProto
+// session at boot meant this worker's heaviest startup cost landed in the
+// same window Puma is doing its own heaviest allocation (Rails init,
+// Bootsnap, etc.), which OOM-killed the whole container on Render's Free
+// tier every time. Starting the HTTP server immediately, with the
+// Telegram connection deferred until actually needed, avoids that
+// collision entirely.
+app.listen(port, () => {
+  // eslint-disable-next-line no-console
+  console.log(`mtproto-worker listening on :${port}`);
+});
