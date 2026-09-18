@@ -71,6 +71,10 @@ yarn-debug.log*
 .yarn-integrity
 .pnpm-store
 
+# mtproto-worker (task #6) build output — compiled by the Dockerfile's
+# builder stage via `npm run build`, not committed source
+mtproto-worker/dist/
+
 # Environment files that may contain sensitive data
 .*env
 .powenv

@@ -60,6 +60,26 @@ RUN bundle lock --add-platform ruby
 RUN bundle exec bootsnap precompile --gemfile app/ lib/
 RUN SECRET_KEY_BASE=precompile_placeholder bin/rails assets:precompile
 
+# Anthropic (handover.md task #6): build the mtproto-worker sidecar here too.
+# Decision (session 22): run it as a peer process inside this same image,
+# supervised by s6 alongside caddy/job/zealot, rather than as a second
+# Render service. Render's Free plan (what render.yaml uses for zealot-web
+# and zealot-db) only covers web services, static sites and cron jobs — a
+# private service or background worker needs Starter ($7/mo) or above, per
+# Render's own current instance-type docs (confirmed this session via web
+# search, since this is exactly the kind of platform-pricing detail that
+# drifts). A same-container sidecar costs nothing extra, needs no new
+# Render resource, and satisfies the worker's own "not exposed publicly,
+# internal only" requirement for free via localhost — it never needs a
+# public URL or Render's private network at all. Built here (not installed
+# fresh at runtime) so the final image doesn't need npm, only a bare `node`
+# binary to run the already-compiled output. No extra COPY needed —
+# `COPY . $APP_ROOT` above already brought mtproto-worker/ in.
+RUN cd mtproto-worker && \
+    npm ci && \
+    npm run build && \
+    npm prune --omit=dev
+
 # Remove folders not needed in resulting image
 RUN rm -rf docker node_modules tmp/cache spec .browserslistrc babel.config.js \
     package.json postcss.config.js pnpm-lock.yaml && \
@@ -81,7 +101,7 @@ ARG REPLACE_CHINA_MIRROR="true"
 ARG ORIGINAL_REPO_URL="dl-cdn.alpinelinux.org"
 ARG MIRROR_REPO_URL="mirrors.ustc.edu.cn"
 ARG RUBYGEMS_SOURCE="https://gems.ruby-china.com/"
-ARG PACKAGES="tzdata curl logrotate postgresql-client postgresql-dev imagemagick imagemagick-dev libwebp-dev libpng-dev tiff-dev openssl openssl-dev caddy gcompat openjdk17-jre-headless brotli bzip2 python3 py3-pip build-base python3-dev"
+ARG PACKAGES="tzdata curl logrotate postgresql-client postgresql-dev imagemagick imagemagick-dev libwebp-dev libpng-dev tiff-dev openssl openssl-dev caddy gcompat openjdk17-jre-headless brotli bzip2 python3 py3-pip build-base python3-dev nodejs"
 ARG RUBY_GEMS="bundler"
 ARG APP_ROOT=/app
 ARG S6_OVERLAY_VERSION="2.2.0.3"
@@ -133,6 +153,15 @@ WORKDIR $APP_ROOT
 
 COPY docker/rootfs /
 COPY --from=builder $APP_ROOT $APP_ROOT
+# ^ this already brings in mtproto-worker/{dist,node_modules,package.json}
+# (built+pruned in the builder stage above — see that stage's comment) — no
+# separate COPY needed. src/ isn't copied since the builder stage's own
+# cleanup (`rm -rf docker node_modules ...`) runs after the mtproto-worker
+# build but doesn't touch anything under mtproto-worker/ by name; src/ just
+# rides along unused at runtime (dist/ is what actually gets exec'd). Worth
+# trimming mtproto-worker/src (and package-lock.json/tsconfig.json) from
+# the final image in a future session if image size matters enough to
+# bother — harmless as-is, just a few KB of dead weight.
 
 # Copy compiled bsdiff binaries from builder stage
 COPY --from=builder /usr/local/bin/bsdiff /usr/local/bin/bsdiff
