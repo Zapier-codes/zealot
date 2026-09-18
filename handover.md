@@ -40,6 +40,71 @@ removed file or independently re-verified against the code.
 
 ## Task board
 
+### ✅ Fix: pnpm-lock.yaml drift broke the develop→GHCR build (this session)
+
+**Branch:** `fix/pnpm-lockfile-drift-and-docker-ci-gap`, base `develop`
+(applied after the landing-globe task below, which is why this is
+listed first).
+**Status:** actually build-verified this time (see below) — a rare
+exception to this file's usual "code-complete, not build-checked"
+caveat, because this sandbox happened to have `apt` access to install
+Ruby/pnpm/Docker-adjacent tooling this session (`registry.npmjs.org`
+and `archive.ubuntu.com` are on this sandbox's network allowlist; not
+guaranteed to be true for every future session).
+
+**What broke:** the previous session's landing-page/globe patch added
+`globe.gl` to `package.json` but did not regenerate `pnpm-lock.yaml`
+(that session had no Node runtime at all, so it flagged the risk in
+its patch notes instead of fixing it). `Dockerfile` runs `pnpm install
+--frozen-lockfile`, which hard-fails on any manifest/lockfile mismatch
+— so `anthropic_deploy_main.yml`'s `build-and-push` job would fail on
+this commit. Because that job's `deploy` job has `needs:
+build-and-push`, a failed build does **not** reach Render (fails
+closed, nothing bad went live) — but the commit's CI run goes red and
+the feature doesn't actually deploy.
+
+**Why nothing caught it before it reached `develop`:** `.github/workflows/
+test_docker_build.yml` — the one workflow that does a push:false dry-run
+build — only triggered `on: pull_request`. This org's actual process
+(see "Handoff process" above) is patches `git am`'d and pushed straight
+to `develop`, never through a PR. So that safety net never ran in
+practice for this org's real workflow.
+
+**Fixed, this session:**
+1. Regenerated `pnpm-lock.yaml` against the current `package.json`
+   (`corepack prepare pnpm@10 --activate && pnpm install
+   --no-frozen-lockfile`), then re-ran `pnpm install --frozen-lockfile`
+   from a clean `node_modules` to confirm it now succeeds — the exact
+   command the Dockerfile runs.
+2. Ran a full `pnpm exec vite build` — succeeded; `globe.gl` correctly
+   code-splits into its own ~544kB-gzipped chunk (dynamic `import()` in
+   `globe_controller.js`), not bundled into the main JS, so it only
+   loads once a visitor actually scrolls to the globe section.
+3. Added a `push: branches: [develop]` trigger to `test_docker_build.yml`
+   alongside its existing `pull_request` trigger, so this dry-run build
+   now actually runs against this org's real push pattern. **Caveat,
+   stated plainly:** this doesn't add strict prevention beyond what
+   `needs: build-and-push` already provides (a failed build already
+   can't reach Render) — it's a faster/clearer failure signal (and
+   covers the `arm64` build `anthropic_deploy_main.yml` deliberately
+   skips), not a new gate blocking the real deploy workflow. The two
+   workflows still run independently in parallel.
+
+**Standing convention, documented here for any future session:** this
+repo publishes container images to **GHCR (`ghcr.io`) only** —
+`anthropic_deploy_main.yml`, `publish_nighty.yml`, `publish_preview.yml`,
+`publish_release.yml`, `publish_codespace.yml`, and `test_docker_build.yml`
+all log in to and tag against `ghcr.io` exclusively. A prior session
+already removed a stale Docker Hub push target from
+`publish_nighty.yml` (see that file's own in-line comment) after it was
+failing with no Docker Hub credentials configured for this org's fork.
+**Do not re-add a Docker Hub / `docker.io` image target to any workflow
+without also adding a `docker/login-action` step and a `DOCKERHUB_TOKEN`
+secret for it** — a bare image reference with no matching login step is
+exactly what broke before.
+
+
+
 ### ✅ Landing page: live+migrated stats, logo marquee, 3D globe (this session)
 
 **Branch:** `feat/landing-globe-live-stats-logos`, base `develop`.

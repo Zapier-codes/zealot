@@ -1,5 +1,16 @@
 name: Test Docker Build
 
+# Anthropic (org note): this used to be pull_request-only, but this org's
+# actual workflow (see handover.md's "Handoff process") is sessions handing
+# off patches that get `git am`'d and pushed straight to `develop` -- no
+# PRs, ever. A pull_request-only trigger meant this dry-run build check
+# never actually ran for this org's real push pattern, so a
+# package.json/pnpm-lock.yaml mismatch (or any other Dockerfile-breaking
+# change) could reach `develop` -- and anthropic_deploy_main.yml's real
+# build-and-push job -- with zero prior warning. Added a `push: develop`
+# trigger below so this now runs on every push to develop too, same as
+# the real deploy workflow, `push: false` so it never actually publishes
+# anything -- it only proves the Dockerfile still builds.
 on:
   pull_request:
     paths-ignore:
@@ -10,6 +21,14 @@ on:
       - "Procfile*"
       - "*.yaml"
       - "*.yml"
+  push:
+    branches:
+      - develop
+    paths-ignore:
+      - "**.md"
+      - ".devcontainer/**"
+      - ".vscode/**"
+      - "LICENSE"
 
 permissions:
   contents: read
