@@ -56,6 +56,7 @@ RUN bundle config --global frozen 1 && \
     bundle install --jobs `expr $(cat /proc/cpuinfo | grep -c "cpu cores") - 1` --retry 3
 
 COPY . $APP_ROOT
+RUN bundle exec bootsnap precompile --gemfile app/ lib/
 RUN SECRET_KEY_BASE=precompile_placeholder bin/rails assets:precompile
 
 # Remove folders not needed in resulting image
