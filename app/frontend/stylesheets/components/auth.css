@@ -25,8 +25,34 @@
   }
 
   .auth-card {
-    @apply bg-base-100/70 backdrop-blur-xl border border-base-content/10 shadow-2xl shadow-base-content/10 rounded-3xl;
+    @apply relative bg-base-100/60 backdrop-blur-2xl backdrop-saturate-150 border border-base-content/10 shadow-2xl shadow-base-content/20 rounded-3xl;
     animation: auth-rise 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  /* Gradient sheen ring around the glass edge, 2026 "liquid glass" style */
+  .auth-card::before {
+    content: "";
+    @apply absolute -z-10 -inset-px rounded-3xl pointer-events-none;
+    background: linear-gradient(
+      135deg,
+      color-mix(in oklab, var(--color-primary) 55%, transparent),
+      transparent 30%,
+      transparent 70%,
+      color-mix(in oklab, var(--color-secondary) 45%, transparent)
+    );
+    opacity: 0.5;
+  }
+
+  /* Top inner highlight, like light catching the top edge of frosted glass */
+  .auth-card::after {
+    content: "";
+    @apply absolute inset-x-0 top-0 h-px rounded-t-3xl pointer-events-none;
+    background: linear-gradient(
+      to right,
+      transparent,
+      color-mix(in oklab, var(--color-base-content) 40%, transparent),
+      transparent
+    );
   }
 
   .auth-intro {

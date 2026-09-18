@@ -1,0 +1,150 @@
+@layer components {
+  /* ---------------------------------------------------------------- */
+  /* Hero                                                              */
+  /* ---------------------------------------------------------------- */
+  .landing-hero {
+    @apply isolate;
+  }
+
+  .landing-hero-glow-primary,
+  .landing-hero-glow-secondary,
+  .landing-hero-glow-accent {
+    @apply pointer-events-none absolute -z-10 rounded-full blur-3xl opacity-40;
+    animation: landing-drift 16s ease-in-out infinite;
+  }
+
+  .landing-hero-glow-primary {
+    @apply bg-primary size-96 -top-24 -left-24;
+  }
+
+  .landing-hero-glow-secondary {
+    @apply bg-secondary size-[26rem] -top-32 -right-24 opacity-30;
+    animation-delay: -7s;
+  }
+
+  .landing-hero-glow-accent {
+    @apply bg-accent size-72 top-1/2 left-1/2 -translate-x-1/2 opacity-20;
+    animation-delay: -3.5s;
+  }
+
+  .landing-hero-grid {
+    @apply pointer-events-none absolute inset-0 -z-20 opacity-[0.07];
+    background-image:
+      linear-gradient(to right, currentColor 1px, transparent 1px),
+      linear-gradient(to bottom, currentColor 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(ellipse 60% 60% at 50% 0%, black 40%, transparent 100%);
+  }
+
+  .landing-eyebrow {
+    @apply inline-flex items-center gap-2 rounded-full border border-base-content/15 bg-base-100/60 backdrop-blur-md px-4 py-1.5 text-xs font-medium uppercase tracking-widest text-primary;
+  }
+
+  .landing-headline {
+    @apply text-4xl md:text-6xl font-extrabold tracking-tight;
+  }
+
+  /* "Silver lining" ambient light sweep across the bold brand name */
+  .landing-shine {
+    @apply inline-block bg-clip-text text-transparent;
+    background-image: linear-gradient(
+      100deg,
+      var(--color-base-content) 30%,
+      color-mix(in oklab, var(--color-primary) 70%, white) 45%,
+      color-mix(in oklab, var(--color-base-content) 60%, white) 50%,
+      var(--color-base-content) 65%
+    );
+    background-size: 250% 100%;
+    animation: landing-shine 5s ease-in-out infinite;
+    filter: drop-shadow(0 0 28px color-mix(in oklab, var(--color-primary) 45%, transparent));
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Stat cards                                                        */
+  /* ---------------------------------------------------------------- */
+  .landing-stat-card {
+    @apply rounded-2xl border border-base-content/10 bg-base-100/60 backdrop-blur-md py-6 px-3 shadow-lg shadow-base-content/5;
+  }
+
+  .landing-counter {
+    @apply text-primary;
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Global reach flag pills                                           */
+  /* ---------------------------------------------------------------- */
+  .landing-reach-section {
+    @apply bg-base-200/40;
+  }
+
+  .landing-flag-grid {
+    @apply flex flex-wrap items-center justify-center gap-2.5;
+  }
+
+  .landing-flag-pill {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-base-content/10 bg-base-100/70 px-3 py-1.5 text-base-content/70;
+  }
+
+  .landing-flag-dot {
+    @apply size-1.5 rounded-full bg-primary;
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Marquees — partners scroll left, sponsors scroll right             */
+  /* ---------------------------------------------------------------- */
+  .landing-marquee-mask {
+    @apply overflow-hidden;
+    mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+  }
+
+  .landing-marquee {
+    @apply flex w-max items-center gap-3;
+  }
+
+  .landing-marquee-left {
+    animation: landing-scroll-left 32s linear infinite;
+  }
+
+  .landing-marquee-right {
+    animation: landing-scroll-right 32s linear infinite;
+  }
+
+  .landing-marquee-pill {
+    @apply shrink-0 rounded-full border border-base-content/10 bg-base-100/60 backdrop-blur-md px-5 py-2.5 text-sm font-medium text-base-content/70 whitespace-nowrap;
+  }
+
+  .landing-marquee-pill-accent {
+    @apply text-secondary-content bg-secondary/10 border-secondary/20;
+  }
+}
+
+@keyframes landing-drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(24px, -20px) scale(1.06); }
+}
+
+@keyframes landing-shine {
+  0% { background-position: 200% 0; }
+  60%, 100% { background-position: -40% 0; }
+}
+
+@keyframes landing-scroll-left {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@keyframes landing-scroll-right {
+  from { transform: translateX(-50%); }
+  to { transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-hero-glow-primary,
+  .landing-hero-glow-secondary,
+  .landing-hero-glow-accent,
+  .landing-shine,
+  .landing-marquee-left,
+  .landing-marquee-right {
+    animation: none;
+  }
+}

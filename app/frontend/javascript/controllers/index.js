@@ -30,4 +30,7 @@ application.register("tab-switch", TabSwitchController)
 import BreadcrumbsController from "./breadcrumbs_controller"
 application.register("breadcrumbs", BreadcrumbsController)
 
+import CounterController from "./counter_controller"
+application.register("counter", CounterController)
+
 import "./admin"

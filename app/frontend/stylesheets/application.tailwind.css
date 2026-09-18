@@ -4,5 +4,6 @@
 @import "./components/card";
 @import "./components/property";
 @import "./components/auth";
+@import "./components/landing";
 
 @import "./apps";

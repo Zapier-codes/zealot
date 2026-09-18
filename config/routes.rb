@@ -1,7 +1,8 @@
 # frozen_string_literal: true
 
 Rails.application.routes.draw do
-  root to: 'dashboards#index'
+  root to: 'home#index'
+  get 'dashboard', to: 'dashboards#index', as: :dashboard
 
   #############################################
   # User

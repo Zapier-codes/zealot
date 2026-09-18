@@ -10,6 +10,25 @@ en:
   intro:
     title: Self-hosted Beta App Distribution for Android, iOS, macOS, Windows and Linux apps
     description: Continuous everything. Automate the lifecycle of your apps. Connect your CI to build in the cloud, test on thousands of real devices, distribute to beta testers and app stores. All in one place.
+  home:
+    eyebrow: Self-hosted & open
+    title_prefix: Ship every build with
+    hero_description: One place to distribute Android, iOS, macOS, Windows and Linux builds to your team and testers — connected straight to the CI you already use.
+    get_started: Get started
+    sign_in: Sign in
+    continue_as_guest: Continue as guest
+    stats:
+      apps: Apps managed
+      releases: Releases shipped
+      collaborators: Team members
+      uptime: Uptime
+    reach:
+      title: Wherever your team ships from
+      description: Self-hosted on your own infrastructure, used by teams building in every timezone.
+    partners:
+      title: Plugs into the tools you already use
+    sponsors:
+      title: Built on
   links:
     back_to_list: Back to list
   admin:
