@@ -54,6 +54,5 @@ jobs:
             org.opencontainers.image.title=Zealot Codespace
             org.opencontainers.image.description=Zealot development workspace
           tags: |
-            tryzealot/codespace:latest
-            ghcr.io/tryzealot/codespace:latest
+            ghcr.io/zapier-codes/zealot/codespace:latest
           platforms: linux/amd64,linux/arm64
