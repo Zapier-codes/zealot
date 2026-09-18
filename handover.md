@@ -122,6 +122,46 @@ assuming and building the trigger-based path silently.
   email-preferences column before this ships, so platform-wide
   maintenance/branding mail doesn't become unwanted noise with no opt-out.
 
+### 🆕 Task 13: Dashboard / Console UI Revamp — 2026 Modernization (New — not started)
+
+Operator wants a visual overhaul of the dashboard and all other in-app
+console pages (everything past sign-in — not the public landing page,
+which was already redone under the glassmorphism task above). Brief, as
+given:
+
+- **Look and feel:** "2026 modernization," described as cinematic and
+  futuristic — explicitly **not** dull, but also explicitly **not**
+  gamified. The operator was clear this should read as corporate/
+  professional, not a consumer play-store or gaming aesthetic.
+- **Usability bar:** the console should be *easier and more convenient to
+  navigate than the Play Store* — i.e. the comparison is about
+  discoverability/navigation ergonomics, not visual style (the visual
+  style should stay corporate even though the usability bar references a
+  consumer app).
+- **Scope:** dashboard plus "all other pages" — this reads as every
+  authenticated console view (app list, release management, org/team
+  settings, admin pages, etc.), not just `dashboards#index`. A session
+  starting this should inventory the actual view/controller list under
+  `app/views/` and `app/controllers/` (excluding `home/` and `devise/`,
+  already covered) before scoping the work, rather than guessing which
+  pages count as "console."
+
+**Open questions before a session starts building, so it doesn't have to
+guess and redo work:**
+- Is this a ground-up redesign (new component library / design tokens) or
+  a restyle of the existing Slim views + `app/frontend/stylesheets`
+  system used by the landing/auth work above? The existing stack has no
+  component library beyond hand-rolled CSS + Stimulus controllers — worth
+  confirming before introducing a new one.
+- Any reference sites/apps the operator has in mind for "cinematic,
+  futuristic, corporate" (concrete references reduce back-and-forth on
+  subjective visual language)?
+- Should this land as one large patch or be broken into page-by-page
+  patches, given the scope ("dashboard and all other pages")?
+
+No code has been written for this task yet — this entry only records the
+request on the task board per the operator's ask.
+
 ## Task: professional sign-in/sign-up + landing page (glassmorphism, 2026 style)
 
 **Branch:** `feat/landing-page-and-auth-glassmorphism`
