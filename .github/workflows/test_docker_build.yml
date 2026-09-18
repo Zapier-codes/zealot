@@ -1,16 +1,24 @@
 name: Test Docker Build
 
-# Anthropic (org note): this used to be pull_request-only, but this org's
-# actual workflow (see handover.md's "Handoff process") is sessions handing
-# off patches that get `git am`'d and pushed straight to `develop` -- no
-# PRs, ever. A pull_request-only trigger meant this dry-run build check
-# never actually ran for this org's real push pattern, so a
-# package.json/pnpm-lock.yaml mismatch (or any other Dockerfile-breaking
-# change) could reach `develop` -- and anthropic_deploy_main.yml's real
-# build-and-push job -- with zero prior warning. Added a `push: develop`
-# trigger below so this now runs on every push to develop too, same as
-# the real deploy workflow, `push: false` so it never actually publishes
-# anything -- it only proves the Dockerfile still builds.
+# Anthropic (org note): this was briefly changed to also trigger on
+# push to develop (see git history), on the theory that this org's
+# real workflow -- patches git am'd and pushed straight to develop,
+# never through a PR (see handover.md's "Handoff process") -- meant
+# the pull_request-only trigger never actually ran for a real push.
+# Reverted: `develop` already gets THREE docker builds on every single
+# push (anthropic_deploy_main.yml's real build+deploy,
+# publish_nighty.yml, and publish_codespace.yml -- all three already
+# trigger on push:develop, pre-dating this file's change). Adding a
+# 4th -- and the slowest one, since this workflow builds both amd64
+# AND arm64 via QEMU emulation -- competed with those for shared
+# runner capacity and measurably delayed/disrupted the org's actual
+# deploy-to-Render pipeline (anthropic_deploy_main.yml's `deploy` job
+# needs `build-and-push` to finish first; a starved/delayed build job
+# means a starved/delayed deploy). The protection this was meant to
+# add was marginal anyway -- anthropic_deploy_main.yml's own
+# `needs: build-and-push` already stops a broken build from ever
+# reaching Render, fail-closed, with no extra workflow required. Back
+# to pull_request-only.
 on:
   pull_request:
     paths-ignore:
@@ -21,14 +29,6 @@ on:
       - "Procfile*"
       - "*.yaml"
       - "*.yml"
-  push:
-    branches:
-      - develop
-    paths-ignore:
-      - "**.md"
-      - ".devcontainer/**"
-      - ".vscode/**"
-      - "LICENSE"
 
 permissions:
   contents: read

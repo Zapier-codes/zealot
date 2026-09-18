@@ -40,6 +40,79 @@ removed file or independently re-verified against the code.
 
 ## Task board
 
+### ✅ Revert: undo the test_docker_build.yml push-trigger, clean up dead .bak files (this session)
+
+**Branch:** `fix/revert-docker-ci-trigger-and-cleanup-workflows`, base
+`develop`. Follow-up to the pnpm-lockfile-fix session directly above —
+read that entry first, this one partially undoes it.
+
+**What the operator reported:** after applying the pnpm-lockfile-fix
+patch, the "deploy to Render immediately after the build finishes"
+behavior stopped happening.
+
+**Root cause, most likely:** that patch added a `push: branches:
+[develop]` trigger to `test_docker_build.yml`. What that session
+missed: `develop` **already** gets two other full docker builds on
+every single push — `publish_nighty.yml` and `publish_codespace.yml`
+both already trigger on `push: develop` (pre-existing, nothing to do
+with either of these two sessions). Adding a third — and the slowest
+one, since `test_docker_build.yml` builds both `linux/amd64` **and**
+`linux/arm64` via QEMU emulation, unlike `anthropic_deploy_main.yml`
+which deliberately only builds `amd64` for exactly this cost reason
+(see that file's own top comment) — competes for shared GitHub-hosted
+runner capacity against `anthropic_deploy_main.yml`'s own build job.
+Since that workflow's `deploy` job has `needs: build-and-push`, a
+delayed/queued build job means a delayed/queued deploy. This is the
+most plausible explanation available from the code alone; this session
+has no GitHub Actions run-log access (unauthenticated API access to
+this repo is rate-limited/unavailable from this sandbox) to confirm it
+against an actual run history — if reverting this doesn't restore the
+immediate-deploy behavior, the next session (or the operator, who does
+have dashboard access) should pull the actual Actions run timeline for
+the affected pushes and look for queued/delayed job start times to
+confirm or rule this out.
+
+**Fixed:**
+- Reverted `test_docker_build.yml` to its original `pull_request`-only
+  trigger. The protection the push-trigger was meant to add was always
+  marginal — `anthropic_deploy_main.yml`'s own `needs: build-and-push`
+  already stops a broken build from reaching Render, fail-closed, no
+  extra workflow required — so removing it costs nothing.
+- Deleted four dead files: `publish_codespace.yml.bak`,
+  `publish_nighty.yml.bak`, `publish_preview.yml.bak`,
+  `publish_release.yml.bak`. These were leftover backups from an
+  earlier session's Docker Hub removal edit (see the "GHCR only, never
+  Docker Hub" note directly below) — not referenced by any trigger,
+  not read by anything, pure clutter. The **active** (non-`.bak`)
+  versions of these four files are untouched and still correctly
+  GHCR-only.
+
+**Still true and unrelated to this incident** — the actual bug this
+session's predecessor fixed (`pnpm-lock.yaml` drift breaking `pnpm
+install --frozen-lockfile` in the Dockerfile) is a real fix and stays
+in place; only the `test_docker_build.yml` trigger is reverted here.
+
+**On "which workflow file is the real one" going forward, for any
+future session reading this before touching CI:** this repo currently
+runs, on every push to `develop`:
+- `anthropic_deploy_main.yml` — the one that matters to this org: full
+  build, push to `ghcr.io`, then trigger the Render deploy hook.
+- `publish_nighty.yml` — upstream Zealot's own nightly image, for
+  public self-hosters, GHCR-only, unrelated to this org's Render
+  instance. Deliberately kept (see `anthropic_deploy_main.yml`'s own
+  comment) — do not merge or remove without an explicit operator
+  decision to stop serving the public nightly image.
+- `publish_codespace.yml` — same story, for the Codespace dev-container
+  image.
+- `sync_readme.yml` — README sync, unrelated to Docker entirely.
+
+`test_docker_build.yml` only runs on PRs (which this org doesn't use)
+and `publish_release.yml`/`publish_preview.yml` only run on tags/PR
+labels respectively — neither fires on a normal `develop` push, so
+neither was ever part of this contention.
+
+
+
 ### ✅ Fix: pnpm-lock.yaml drift broke the develop→GHCR build (this session)
 
 **Branch:** `fix/pnpm-lockfile-drift-and-docker-ci-gap`, base `develop`
