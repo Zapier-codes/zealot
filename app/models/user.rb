@@ -69,4 +69,11 @@ class User < ApplicationRecord
   def generate_user_token
     self.token = Digest::MD5.hexdigest(SecureRandom.uuid)
   end
+
+  # Email verification is disabled: never block sign in/sign up on
+  # confirmation status. `confirmed_at` etc. are kept around (admin UI,
+  # CreateAdminService) but no longer gate authentication.
+  def confirmation_required?
+    false
+  end
 end

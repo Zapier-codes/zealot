@@ -1,7 +1,3 @@
-databases:
-- name: zealot-db
-  plan: free
-  region: singapore
 services:
 - type: web
   name: zealot-web
@@ -59,8 +55,14 @@ services:
     sync: false
   - key: ZEALOT_GUEST_MODE
     value: false
+  # Registration is currently enabled in production (confirmed live via
+  # the Render API — this key isn't actually set on the service, so
+  # Setting.registrations_enabled falls back to its default of `true`).
+  # Declaring `value: false` here would silently disable sign-up again on
+  # the next Blueprint re-sync, so this is `sync: false` to preserve
+  # whatever's actually set in the dashboard instead.
   - key: ZEALOT_REGISTER_ENABLED
-    value: false
+    sync: false
 
   - key: SMTP_ADDRESS
     value: false
@@ -126,26 +128,14 @@ services:
   - key: GOOGLE_ANALYTICS_ID
     value: false
 
-  - key: ZEALOT_POSTGRES_HOST
-    fromDatabase:
-      name: zealot-db
-      property: host
-  - key: ZEALOT_POSTGRES_PORT
-    fromDatabase:
-      name: zealot-db
-      property: port
-  - key: ZEALOT_POSTGRES_USERNAME
-    fromDatabase:
-      name: zealot-db
-      property: user
-  - key: ZEALOT_POSTGRES_PASSWORD
-    fromDatabase:
-      name: zealot-db
-      property: password
-  - key: ZEALOT_POSTGRES_DB_NAME
-    fromDatabase:
-      name: zealot-db
-      property: database
+  # Database: Supabase Postgres (Session Pooler), not a Render-managed
+  # database -- set directly in the Render dashboard, not synced from a
+  # `databases:` block here, so a Blueprint re-sync never tries to
+  # provision its own Postgres and overwrite this. Single connection
+  # string (sslmode etc. are encoded in it); config/database.yml prefers
+  # this over the ZEALOT_POSTGRES_* discrete vars when both are present.
+  - key: ZEALOT_DATABASE_URL
+    sync: false
   - key: PORT
     value: 80 # Do not edit! Zealot exposes this internally
   - key: RAILS_MAX_THREADS
