@@ -5,16 +5,16 @@ FROM mcr.microsoft.com/vscode/devcontainers/base:${VARIANT}
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 RUN if [ "$USER_GID" != "$USER_UID" ] || [ "$USER_UID" != "1000" ]; then \
-      groupmod --gid $USER_GID vscode && \
-      usermod --uid $USER_UID --gid $USER_GID vscode && \
-      chmod -R $USER_UID:$USER_GID /home/vscode; \
+        groupmod --gid $USER_GID vscode && \
+        usermod --uid $USER_UID --gid $USER_GID vscode && \
+        chmod -R $USER_UID:$USER_GID /home/vscode; \
     fi
 
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
     apt-get -y install --no-install-recommends \
     debian-keyring debian-archive-keyring apt-transport-https \
-    build-essential gnupg2 tar git zsh libssl-dev zlib1g-dev libyaml-dev  \
+    build-essential gnupg2 tar git zsh libssl-dev zlib1g-dev libyaml-dev \
     imagemagick libjpeg-dev libpng-dev libtiff-dev libwebp-dev \
     caddy tzdata \
     vim git-lfs tig tmux
@@ -55,7 +55,11 @@ RUN mise trust && \
     mise reshim
 
 ENV PATH="${HOME:-/home/vscode}/.local/share/mise/shims:$PATH"
-COPY --chown=vscode:vscode Gemfile Gemfile.lock package.json pnpm-lock.yaml ./
+
+# Enable pnpm via corepack (bundled with Node, installed above via mise)
+RUN corepack enable && \
+    corepack prepare pnpm@latest --activate && \
+    mise reshim
 
 COPY --chown=vscode:vscode Gemfile Gemfile.lock package.json pnpm-lock.yaml ./
 RUN mkdir -p node_modules
