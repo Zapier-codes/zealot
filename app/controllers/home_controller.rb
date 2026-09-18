@@ -13,7 +13,7 @@ class HomeController < ApplicationController
       return
     end
 
-    @title = site_title
+    @title = Setting.site_title
     @stats = landing_stats
     @countries = landing_countries
     @partners = landing_partners
