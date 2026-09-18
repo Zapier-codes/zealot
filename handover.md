@@ -45,22 +45,61 @@ awaiting operator apply/verify · 🟡 in progress, needs live config/creds ·
 🆕 newly requested, not started · ❓ needs an operator decision before any
 session should start building.
 
-### ✅ Landing page + auth glassmorphism (this session's patch)
+### 🟢 Landing page + auth glassmorphism — done, merged, live
 
-See "What was built this session" below for the full breakdown. Patch
-`zealot-landing-page-auth-glassmorphism.patch` generated, not yet applied
-by the operator as of this doc.
+Applied by the operator: commit `7624295` is on `develop` and has been
+deployed (`deploy-7624295` in Render's deploy history). Three follow-up
+fix commits landed on top of it since (`cef5e83`, `fb99d46`, `e2abc22`).
+See "What was built this session" below (in the original session's
+section, kept for history) for the full breakdown of what shipped.
 
-### 🟡 Task 6: Telegram MTProto Cold Storage (In Progress)
-The code and Node.js typechecking are done, but it requires live credentials and a deployment decision.
-1. **Operator Action:** Generate a real `TELEGRAM_SESSION_STRING` using a live Telegram account.
-2. **Environment Variables:** Set `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, and `TELEGRAM_SESSION_STRING` on Render.
-3. **Render Configuration:** Decide how to run the Node.js sidecar (`mtproto-worker`) alongside the Rails app on Render (e.g., as a separate Background Worker service).
-4. **Verification:** Do one real archive → retrieve round trip against a test chat.
+**Bug found and fixed this session:** `HomeController#index` (added by
+this task) called the bare method `site_title`, but that method only
+exists in `ApplicationHelper` — never mixed into controllers, never
+declared with `helper_method`. Every signed-out visit to `/` raised
+`NameError: undefined local variable or method 'site_title'` and
+returned a 500. Fixed by switching to `Setting.site_title` directly,
+matching the existing convention in `device_attributes.rb` and
+`user_mailer.rb`. Patch: `0001-Fix-NameError-on-landing-page-use-Setting.site_title.patch`,
+branch `fix/home-controller-site-title-nameerror`, base `develop`. Not
+yet applied as of this doc.
 
-> Status above is as reported by the operator — not independently
-> re-verified against the code in this session (no Node runtime in this
-> sandbox to re-run the typecheck).
+### 🟡→ Task 6: Telegram MTProto Cold Storage (operator reports fully wired)
+Operator states all live credentials (`TELEGRAM_API_ID`, `TELEGRAM_API_HASH`,
+`TELEGRAM_SESSION_STRING`, `TELEGRAM_ARCHIVE_CHAT_ID`) are now set on Render
+and `MTPROTO_ARCHIVE_ENABLED` is intended to be `true`. Not independently
+re-verified against the code this session (no Node runtime in this sandbox).
+
+**Note from this session's 502 debugging:** `MTPROTO_ARCHIVE_ENABLED` was
+temporarily flipped to `false` on Render to rule the worker out as the
+cause of a 502 the operator was seeing. It was ruled out — see the 502
+investigation note below — but the flag was left `false` and needs to be
+flipped back to `true` before Task 6 can be considered live again.
+
+Remaining step: **do one real archive → retrieve round trip against a
+test chat** to confirm the wiring actually works end-to-end — this has
+not been verified, only configured.
+
+### 502 investigation (this session)
+Operator reported `zealot-web` returning 502. Root-caused via Render logs
+and deploy history, not the mtproto sidecar:
+- The container's `mtproto-worker` s6 service was briefly suspected (it
+  crash-loops if Telegram creds are invalid, and starting it coincided
+  with when the 502s began) — ruled out by disabling it and confirming
+  the 502 persisted.
+- Actual cause: `zealot-web` had **18 deploys in ~14 hours** that day
+  (`deploy_hook`-triggered by pushes to `develop`, plus a few
+  `service_updated`/`manual`/`api` ones). Each deploy replaces the
+  free-tier instance's only container, so a request landing mid-rollover
+  gets a 502. Not a crash loop, not an app bug — just very frequent
+  redeploys during active development.
+- `healthCheckPath` was empty on the service (`serviceDetails.healthCheckPath: ""`).
+  This does **not** explain the 502s (Render only runs health-check-driven
+  restarts when a path is configured), but it was still worth setting —
+  now set to `/` so future zero-downtime deploys can actually tell when
+  the new instance is ready before cutting traffic over. This depends on
+  the `site_title` fix above being applied first, since `/` 500'd before
+  that patch.
 
 ### 🟡 Task 7: Google Play Developer API Publishing (In Progress)
 The code is complete, but it requires live configuration and verification on your Render server.
