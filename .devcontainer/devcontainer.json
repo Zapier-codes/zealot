@@ -1,67 +1,71 @@
 {
-  "name": "Zealot Development Codespace",
-  "dockerComposeFile": "docker-compose.yml",
-  "service": "app",
-  "workspaceFolder": "/workspace",
-  "remoteUser": "vscode",
-  "mounts": [
-    "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
-  ],
-
-  "customizations": {
-    "vscode": {
-      "settings": {
-        "terminal.integrated.defaultProfile.linux": "zsh",
-        "terminal.integrated.profiles.linux":{
-          "zsh": {
-            "path": "/bin/zsh",
-            "icon": "star"
-          }
-        },
-        "rubyLsp.rubyVersionManager": {
-          "identifier": "mise",
-          "formatter": "auto"
-        },
-        "dev.containers.mountWaylandSocket": false,
-        "files.associations": {
-          "*.css": "tailwindcss",
-          "*.scss": "tailwindcss"
+    "name": "Zealot Development Codespace",
+    "dockerComposeFile": "docker-compose.yml",
+    "service": "app",
+    "workspaceFolder": "/workspace",
+    "remoteUser": "vscode",
+    "mounts": [
+        "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
+    ],
+    "features": {
+        "ghcr.io/devcontainers/features/sshd:1": {
+            "version": "latest"
         }
-      },
-      "extensions": [
-        "bradlc.vscode-tailwindcss",
-        "Shopify.ruby-lsp",
-        "KoichiSasada.vscode-rdbg",
-        "kaiwood.endwise",
-        "borama.ruby-slim",
-        "eamodio.gitlens",
-        "bung87.rails",
-        "bung87.vscode-gemfile",
-        "EditorConfig.EditorConfig",
-        "formulahendry.auto-complete-tag",
-        "AndrewButson.vscode-openapi-viewer",
-        "esbenp.prettier-vscode",
-        "tompollak.lazygit-vscode"
-      ]
-    }
-  },
+    },
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "terminal.integrated.defaultProfile.linux": "zsh",
+                "terminal.integrated.profiles.linux":{
+                    "zsh": {
+                        "path": "/bin/zsh",
+                        "icon": "star"
+                    }
+                },
+                "rubyLsp.rubyVersionManager": {
+                    "identifier": "mise",
+                    "formatter": "auto"
+                },
+                "dev.containers.mountWaylandSocket": false,
+                "files.associations": {
+                    "*.css": "tailwindcss",
+                    "*.scss": "tailwindcss"
+                }
+            },
+            "extensions": [
+                "bradlc.vscode-tailwindcss",
+                "Shopify.ruby-lsp",
+                "KoichiSasada.vscode-rdbg",
+                "kaiwood.endwise",
+                "borama.ruby-slim",
+                "eamodio.gitlens",
+                "bung87.rails",
+                "bung87.vscode-gemfile",
+                "EditorConfig.EditorConfig",
+                "formulahendry.auto-complete-tag",
+                "AndrewButson.vscode-openapi-viewer",
+                "esbenp.prettier-vscode",
+                "tompollak.lazygit-vscode"
+            ]
+        }
+    },
 
-  "forwardPorts": [3000, 5432, 8081],
-  "portsAttributes": {
-    "3000": {
-      "label": "rails server"
+    "forwardPorts": [3000, 5432, 8081],
+    "portsAttributes": {
+        "3000": {
+            "label": "rails server"
+        },
+        "5432": {
+            "label": "postgres server"
+        },
+        "8081": {
+            "label": "pgweb server"
+        },
+        "9293": {
+            "label": "puma"
+        }
     },
-    "5432": {
-      "label": "postgres server"
-    },
-    "8081": {
-      "label": "pgweb server"
-    },
-    "9293": {
-      "label": "puma"
-    }
-  },
 
-  // (Optinal) Database migration.
-  "postCreateCommand": "(bundle check || bundle install) && pnpm install && rails zealot:upgrade"
+    // (Optinal) Database migration.
+    "postCreateCommand": "(bundle check || bundle install) && pnpm install && rails zealot:upgrade"
 }
