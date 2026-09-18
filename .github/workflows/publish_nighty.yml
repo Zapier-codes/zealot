@@ -59,8 +59,18 @@ jobs:
         id: metadata
         uses: docker/metadata-action@v6
         with:
+          # Anthropic (org note): this originally also pushed to plain
+          # Docker Hub (`${{ github.repository }}`, no registry prefix),
+          # but there's no Docker Hub account/credentials set up for this
+          # org's fork — only a `Login to GitHub Container Registry` step
+          # above, nothing logging into docker.io. That mismatch is what
+          # was failing (401 "access token has insufficient scopes" — in
+          # reality, no token at all for that registry). GHCR-only matches
+          # what anthropic_deploy_main.yml already does correctly. Revisit
+          # if this org ever does want to publish to Docker Hub too — that
+          # needs its own docker/login-action step and a DOCKERHUB_TOKEN
+          # secret, not just re-adding the image target back.
           images: |
-            ${{ github.repository }}
             ghcr.io/${{ github.repository }}
           tags: |
             type=raw,value=${{ env.DOCKER_TAG }}
