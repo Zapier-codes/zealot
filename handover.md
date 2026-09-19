@@ -188,7 +188,7 @@ manual-only as well, it is the same one-line trigger change.)
 
 ## Task board
 
-### 🆕 Task 14: Landing + auth simplification, settings-based theming, more globe countries (14a–14e code-complete; 14f, 14g not started)
+### 🆕 Task 14: Landing + auth simplification, settings-based theming, more globe countries (14a–14e, 14g code-complete; 14f not started)
 
 **Delivery:** everything for Task 14 to date (planning doc + slices 14a and
 14b + status update) ships as **one combined patch** on `develop`
@@ -291,7 +291,7 @@ It contains app code, so the push **will** start the deploy pipeline.
 | ✅ **14d** | The login page is the only auth page and reads as sign-in **and** sign-up. | 14c | `devise/shared/_tab_normal.html.slim` (drop `remember_me` checkbox; button label + helper line such as "New here? Enter your email and a password — we'll create your account"), `devise/shared/_links.html.slim` (drop sign-up link), delete `devise/registrations/new.html.slim`, `devise/shared/_disabled_login.html.slim` copy check, `en.yml` (+ zh-CN) | `/users/sign_in` shows one form and no "Sign up" anywhere; third-party/LDAP/passwordless tabs unchanged. | `vite build` + Slim eyeball (no `slim` gem in sandbox previously). Low risk. |
 | ✅ **14e** | Landing page shows exactly one button, "Get started", with a small pulse + flare, that reaches the login page. | 14d, D3 | `home/index.html.slim` (remove Sign in + guest CTAs; `link_to … new_user_session_path`), `stylesheets/components/landing.css` (`.landing-cta`), `en.yml` (`home.sign_in` removal; the zh-CN `home:` block doesn't exist yet), new `spec/requests/home_spec.rb` | Signed out, `/` → one button; click → `/users/sign_in` in the browser. | **Step 0 = reproduce the routing bug** on the deployed site before touching code (see below). Visual pass in light + dark. |
 | **14f** | No top nav anywhere; the things it carried have new homes. | D1, 14a, 14b, 14c | `layouts/application.html.slim` (stop rendering `_navigation`), delete `_navigation.html.slim`, `_sidebar.html.slim` + `_main_sidebar.html.slim` (Profile, Log out, donate), a small drawer-toggle control, `_content_header`/`_breadcrumbs`, `application_helper.rb` (`devise_page?` / `user_signed_in_or_guest_mode?` branches that only served the navbar) | Landing, login and console have no top bar; on a phone-width window the sidebar still opens; Log out and Profile are reachable; breadcrumbs still show. | **Risk: highest UI slice** — easy to strand logout or the mobile sidebar. Full click-through in a browser is mandatory; if it can't be done, ship as "not verified" and say so. If the operator chose D1-B, this slice shrinks to "hide the bar when signed out". |
-| **14g** | The globe shows more countries and hubs. | D6, D7 | `home_controller.rb` (`landing_countries`, `landing_lights`, header comments that say "18"), `globe_controller.js` only if pin density needs tuning, `landing.css` if pins collide, new `spec/controllers/home_controller_spec.rb` (unique codes, lat ∈ [-90,90], lng ∈ [-180,180], every pin has a hub within the link radius) | Globe loads with the extra flags; no isolated hub; `<noscript>` grid lists them too. | `vite build`; re-run the "no isolated hub, longest link ≤ 55°" check the earlier session used. Additive, low risk. Ship in **two waves of ~15** so density can be judged by eye. |
+| ✅ **14g** | The globe shows more countries and hubs. | D6, D7 | `home_controller.rb` (`landing_countries` only — see deviations below) | Globe loads with the extra flags; `<noscript>` grid lists them too (it renders straight off `@countries`, confirmed by reading `home/index.html.slim`, no template change needed). | See "Verified" / "Not verified" below. |
 | **14h** | Board reflects reality. | all | `handover.md` only | 🆕 → ✅ marks updated | Always the last edit, inside the same single patch. |
 
 #### Shipped so far
@@ -413,9 +413,72 @@ if the operator disagrees:
   Render, not on plain-HTTP local dev). Magic links (D2-B) remain the safer
   upgrade path.
 
+**Session 4 — 14g** (branch `feat/task-14g-globe-countries`, base `develop`
+`8867d3d3` = the Session 3 patch tip in this checkout). One combined patch,
+`home_controller.rb` only touched.
+
+- **What shipped:** `landing_countries` grew from 18 to **48** pins, using
+  the D6/D7 defaults (static list in `HomeController`, the four
+  geopolitically-flagged countries — Taiwan, Russia, Israel, Ukraine — left
+  out). Pulled from the 14g-detail candidate list: all 12 ◆-marked countries
+  (their constellation hub already existed in `landing_lights`, so the pin
+  is the only addition) plus 18 of the 24 non-◆ candidates. Capitals used
+  for every new pin's lat/lng, per the file's existing convention (hub city
+  ≠ capital for Türkiye/Ankara and New Zealand/Wellington, same as the
+  Istanbul/Auckland precedent already noted in the candidate list).
+- **Deviations from the slice card, and why:**
+  - **One wave of 30, not two waves of ~15.** The "two waves" plan was so a
+    human could judge visual density by eye between waves; nothing in this
+    sandbox can render the globe, so splitting would only have added a
+    second patch-and-apply round-trip without buying any actual judgment.
+    Recorded here instead so the operator can eyeball it once, for real,
+    after this deploys.
+  - **Landed on 48 pins, not "48 as a ceiling to approach."** The full
+    candidate list (12 ◆ + 24 non-◆ = 36 additions) would have made 54,
+    six over the suggested ceiling. Cut the 6 lowest-priority non-◆
+    candidates — Czechia, Greece, Belgium, Kazakhstan, Qatar, Senegal — to
+    land exactly on 48 rather than over it. These six are the first thing
+    to add back if the operator looks at it on a phone and there's visual
+    room.
+  - **No new `landing_lights` hub entries for the 18 non-◆ additions.**
+    The candidate list only asked for new *pins*; adding a matching
+    constellation hub for each one is a separate, larger change (new
+    coordinates, re-checking the "no isolated hub, longest link ≤ 55°"
+    invariant the earlier session used) that wasn't part of the ask. Every
+    existing hub still maps to either an original country or one of this
+    session's ◆ additions, so the "no isolated hub" check the slice card
+    mentions is unaffected — `landing_lights` itself is untouched, byte for
+    byte.
+  - **No `spec/controllers/home_controller_spec.rb`.** This sandbox has no
+    Ruby (apt's `ruby3.2` package 404'd from `security.ubuntu.com` again,
+    same as a prior session's note) — a spec file that can't be run here
+    would just be unverified code pretending to be a safety net. Used a
+    throwaway Node script instead (not committed) to regex-parse the
+    `landing_countries` array out of the file and assert: 48 entries, 48
+    unique codes, every `lat` in [-90, 90], every `lng` in [-180, 180]. All
+    passed. `bundle exec rspec` on a real spec file is still the better
+    long-term check — worth adding in a session that has Ruby.
+- **Verified:** the Node-script check above (uniqueness + bounds on all 48
+  entries); balanced brackets/braces/parens in the edited method (a
+  Python script counted delimiters — a crude stand-in for `ruby -c`,
+  since there is no Ruby in this sandbox); a manual read of
+  `home/index.html.slim` confirming the `<noscript>` flag grid and the
+  globe's `data-globe-points-value` both read off `@countries` directly, so
+  no view change was needed for the new pins to show up.
+- **Not verified:** nothing was run — no `ruby -c`, no `rails routes`, no
+  asset build (this slice touches no JS/CSS, so `vite build` wasn't
+  expected to be relevant, but it wasn't run either), no browser. **First
+  thing after deploy:** load `/` signed out and look at the globe — confirm
+  48 flag pins render (count the `<noscript>` grid if the WebGL globe is
+  hard to eyeball), none look mis-placed (Ankara inland vs. Istanbul on the
+  strait is the one most worth a second look), and the page doesn't feel
+  visually crowded on a phone-width window. If it's too dense, that's the
+  cue to trim rather than to add the 6 that were held back.
+
 **Suggested first session (done):** 14a + 14b (independent, low-risk), after D5.
 **Second (done):** 14c + 14d + 14e together, built on the D2/D4/D3 *defaults* (see below).
-**Next:** 14g (globe countries, needs D6/D7) and 14f (top nav, needs D1).
+**Third (done):** 14g (globe countries), built on the D6/D7 *defaults*.
+**Next:** 14f (top nav, needs D1) and 14h (board update, folded into whichever session ships 14f).
 
 #### 14e detail — pulse + flare spec, and the routing bug
 
@@ -1234,3 +1297,12 @@ them is already modernized.
   `origin/develop`; CI/Render status could not be checked from the sandbox — look
   at the deploy workflow and Render's Deploys tab). Implemented 14c + 14d + 14e
   in one combined patch, on the D2-A / D4 / D3 defaults. 14f and 14g untouched.
+- **Task 14, session 4**: base was `8867d3d3` (this checkout's `develop` tip;
+  matches the Session 3 patch commit, so it's confirmed landed without a
+  separate check). Implemented 14g only — `landing_countries` 18 → 48, on the
+  D6/D7 defaults, deviating from the slice card's "two waves" / spec-file plan
+  for reasons recorded in 14g's own entry above. 14f, 14h still open. `ruby`
+  is still not installable in this sandbox (`security.ubuntu.com` 404s on
+  `ruby3.2`); this session substituted a Node-based array check in its place —
+  see 14g's "Verified" note. One combined patch, branch
+  `feat/task-14g-globe-countries`, single commit on top of `develop`.

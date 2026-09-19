@@ -64,6 +64,16 @@ class HomeController < ApplicationController
   # brand copy, rendered as pins on a globe rather than plain-text
   # badges. lat/lng are each country's capital (approximate, good
   # enough for a decorative globe marker — not analytics-grade).
+  #
+  # Task 14g: grew this from the original 18 to 48 (see handover.md's
+  # "14g detail" for the full candidate list and the D6/D7 defaults this
+  # was built on). 48 was the suggested ceiling ("go past it only after
+  # seeing it on a phone"), so the 6 lowest-priority candidates
+  # (Czechia, Greece, Belgium, Kazakhstan, Qatar, Senegal) were cut to
+  # land exactly on it rather than over it, since nobody has looked at
+  # this on a phone yet — add them back first if there's headroom.
+  # Taiwan, Russia, Israel and Ukraine stay out per D6 (flagged as
+  # geopolitically sensitive, left for the operator to decide).
   def landing_countries
     [
       { code: 'US', name: 'United States', lat: 38.9072, lng: -77.0369 },
@@ -83,7 +93,44 @@ class HomeController < ApplicationController
       { code: 'AU', name: 'Australia', lat: -35.2809, lng: 149.1300 },
       { code: 'NG', name: 'Nigeria', lat: 9.0765, lng: 7.3986 },
       { code: 'ZA', name: 'South Africa', lat: -25.7461, lng: 28.1881 },
-      { code: 'AE', name: 'United Arab Emirates', lat: 24.4539, lng: 54.3773 }
+      { code: 'AE', name: 'United Arab Emirates', lat: 24.4539, lng: 54.3773 },
+      # --- Task 14g additions below (18 -> 48) ---
+      # Africa
+      { code: 'EG', name: 'Egypt', lat: 30.0444, lng: 31.2357 },
+      { code: 'KE', name: 'Kenya', lat: -1.2921, lng: 36.8219 },
+      { code: 'GH', name: 'Ghana', lat: 5.6037, lng: -0.1870 },
+      { code: 'ET', name: 'Ethiopia', lat: 9.0320, lng: 38.7469 },
+      { code: 'MA', name: 'Morocco', lat: 34.0209, lng: -6.8416 },
+      { code: 'TZ', name: 'Tanzania', lat: 6.1630, lng: 35.7516 },
+      # Middle East
+      { code: 'SA', name: 'Saudi Arabia', lat: 24.7136, lng: 46.6753 },
+      { code: 'TR', name: 'Türkiye', lat: 39.9334, lng: 32.8597 },
+      # Asia
+      { code: 'ID', name: 'Indonesia', lat: -6.2088, lng: 106.8456 },
+      { code: 'TH', name: 'Thailand', lat: 13.7563, lng: 100.5018 },
+      { code: 'VN', name: 'Vietnam', lat: 21.0285, lng: 105.8542 },
+      { code: 'PH', name: 'Philippines', lat: 14.5995, lng: 120.9842 },
+      { code: 'MY', name: 'Malaysia', lat: 3.1390, lng: 101.6869 },
+      { code: 'PK', name: 'Pakistan', lat: 33.6844, lng: 73.0479 },
+      { code: 'BD', name: 'Bangladesh', lat: 23.8103, lng: 90.4125 },
+      # Europe
+      { code: 'ES', name: 'Spain', lat: 40.4168, lng: -3.7038 },
+      { code: 'IT', name: 'Italy', lat: 41.9028, lng: 12.4964 },
+      { code: 'PL', name: 'Poland', lat: 52.2297, lng: 21.0122 },
+      { code: 'CH', name: 'Switzerland', lat: 46.9480, lng: 7.4474 },
+      { code: 'IE', name: 'Ireland', lat: 53.3498, lng: -6.2603 },
+      { code: 'PT', name: 'Portugal', lat: 38.7223, lng: -9.1393 },
+      { code: 'NO', name: 'Norway', lat: 59.9139, lng: 10.7522 },
+      { code: 'DK', name: 'Denmark', lat: 55.6761, lng: 12.5683 },
+      { code: 'FI', name: 'Finland', lat: 60.1699, lng: 24.9384 },
+      { code: 'AT', name: 'Austria', lat: 48.2082, lng: 16.3738 },
+      # Americas
+      { code: 'AR', name: 'Argentina', lat: -34.6037, lng: -58.3816 },
+      { code: 'CO', name: 'Colombia', lat: 4.7110, lng: -74.0721 },
+      { code: 'PE', name: 'Peru', lat: -12.0464, lng: -77.0428 },
+      { code: 'CL', name: 'Chile', lat: -33.4489, lng: -70.6693 },
+      # Oceania
+      { code: 'NZ', name: 'New Zealand', lat: -41.2865, lng: 174.7762 }
     ]
   end
 
