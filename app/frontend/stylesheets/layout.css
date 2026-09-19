@@ -1,4 +1,18 @@
 @layer base {
+  /* Navbar light/dark toggle: <html data-mode> is "light" or "dark" (set
+     before paint by the layout's inline script, kept current by
+     GlobalController). Show the moon while light, the sun while dark —
+     i.e. the icon of the mode you'd switch *to*. */
+  .theme-toggle-sun {
+    display: none;
+  }
+  [data-mode="dark"] .theme-toggle-sun {
+    display: inline-flex;
+  }
+  [data-mode="dark"] .theme-toggle-moon {
+    display: none;
+  }
+
   .brand-image-dark {
     display: none;
   }

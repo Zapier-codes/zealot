@@ -5,6 +5,12 @@ import { Zealot } from "./zealot"
 const DRAWER_OPEN_VALUE = "open"
 const DRAWER_CLOSED_VALUE = "closed"
 
+// Per-browser light/dark choice made with the navbar toggle. Overrides the
+// account/site appearance until the user saves a new appearance on their
+// profile page (see clearStoredAppearance). Also read by the inline script
+// in layouts/application.html.slim — keep the key in sync.
+const APPEARANCE_STORAGE_KEY = "zealot-appearance"
+
 export default class extends Controller {
   static targets = ["drawer"]
   
@@ -59,7 +65,7 @@ export default class extends Controller {
   }
 
   setZealotThemeMode() {
-    const appearance = this.appearanceValue
+    const appearance = this.effectiveAppearance()
     const lightTheme = this.themesValue.light
     const darkTheme = this.themesValue.dark
 
@@ -76,13 +82,71 @@ export default class extends Controller {
     if (activeTheme) {
       Zealot.log(`Setting theme to: ${activeTheme}`)
       document.documentElement.setAttribute("data-theme", activeTheme)
+      this.syncThemeMode(appearance)
     } else {
       console.log("Unknown appearance mode:", appearance)
     }
   }
 
+  // Navbar light/dark toggle. Flips between the user's configured light
+  // and dark themes and remembers the choice in this browser.
+  toggleTheme() {
+    const nextMode = this.currentMode() === "dark" ? "light" : "dark"
+
+    try {
+      localStorage.setItem(APPEARANCE_STORAGE_KEY, nextMode)
+    } catch (error) {
+      // Storage blocked (private mode etc.): the switch still applies for
+      // this page view, it just won't persist.
+      Zealot.log("Unable to persist appearance", error)
+    }
+
+    this.setZealotThemeMode()
+    this.setGoodJobThemeMode()
+  }
+
+  // Called when the profile "appearance" form is submitted, so the
+  // preference the user just saved isn't shadowed by an older toggle.
+  clearStoredAppearance() {
+    try {
+      localStorage.removeItem(APPEARANCE_STORAGE_KEY)
+    } catch (error) {
+      Zealot.log("Unable to clear stored appearance", error)
+    }
+  }
+
+  // The toggle's saved choice if there is one, otherwise the appearance
+  // configured for the account / site.
+  effectiveAppearance() {
+    return this.storedAppearance() || this.appearanceValue
+  }
+
+  storedAppearance() {
+    try {
+      const stored = localStorage.getItem(APPEARANCE_STORAGE_KEY)
+      return stored === "light" || stored === "dark" ? stored : null
+    } catch (error) {
+      return null
+    }
+  }
+
+  currentMode() {
+    const mode = document.documentElement.getAttribute("data-mode")
+    if (mode === "light" || mode === "dark") { return mode }
+
+    const appearance = this.effectiveAppearance()
+    return appearance === "auto" ? (Zealot.isDarkMode ? "dark" : "light") : appearance
+  }
+
+  // Keeps <html data-mode="light|dark"> in step with the applied theme;
+  // the navbar toggle's sun/moon icon (layout.css) keys off it.
+  syncThemeMode(appearance) {
+    const mode = appearance === "auto" ? (Zealot.isDarkMode ? "dark" : "light") : appearance
+    document.documentElement.setAttribute("data-mode", mode)
+  }
+
   setGoodJobThemeMode() {
-    localStorage.setItem("good_job-theme", this.appearanceValue)
+    localStorage.setItem("good_job-theme", this.effectiveAppearance())
   }
 
   handleDocumentReady() {

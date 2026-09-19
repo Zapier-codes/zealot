@@ -1,9 +1,27 @@
 doctype html
-html lang="#{I18n.locale}" data-theme=active_theme
+html lang="#{I18n.locale}" data-theme=active_theme data-appearance=active_appearance data-themes=site_themes
   head
     title = page_title(yield :title)
     meta[charset="utf-8"]
     meta[name="viewport" content="width=device-width, initial-scale=1.0"]
+    / Applies the visitor's light/dark choice (set by the navbar toggle, kept
+    / in localStorage) before first paint so pages never flash the wrong
+    / theme. Mirrors GlobalController#setZealotThemeMode — keep them in sync.
+    javascript:
+      (function () {
+        try {
+          var root = document.documentElement;
+          var stored = localStorage.getItem('zealot-appearance');
+          var appearance = (stored === 'light' || stored === 'dark') ? stored : root.getAttribute('data-appearance');
+          if (appearance === 'light' || appearance === 'dark') {
+            var themes = JSON.parse(root.getAttribute('data-themes') || '{}');
+            if (stored && themes[appearance]) { root.setAttribute('data-theme', themes[appearance]); }
+            root.setAttribute('data-mode', appearance);
+          } else {
+            root.setAttribute('data-mode', window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+          }
+        } catch (e) { /* storage blocked: fall back to the server-rendered theme */ }
+      })();
     link[rel="apple-touch-icon" sizes="60x60" href="#{vite_asset_path('images/zealot-icon.png')}"]
     link[rel="apple-touch-icon" sizes="120x120" href="#{vite_asset_path('images/zealot-icon@2x.png')}"]
     link[rel="apple-touch-icon" sizes="180x180" href="#{vite_asset_path('images/zealot-icon@3x.png')}"]

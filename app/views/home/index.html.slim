@@ -30,15 +30,22 @@
 
   / ---------------------------------------------------------------------
   / Animated stat counters
+  / Big totals (compact) count up as plain digits, then switch to "5M+" /
+  / "10M+" shorthand once they reach a million — see counter_controller.js.
   / ---------------------------------------------------------------------
-  section class="relative mx-auto max-w-6xl px-4 md:px-6 pb-16 md:pb-24"
-    div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6"
+  section class="relative mx-auto max-w-4xl px-4 md:px-6 pb-16 md:pb-24"
+    div class="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6"
       - @stats.each do |stat|
         div class="landing-stat-card"
           div class="flex items-baseline justify-center gap-1"
-            span class="landing-counter text-3xl md:text-5xl font-bold tabular-nums" data-controller="counter" data-counter-count-value=stat[:value]
-              = number_with_delimiter(stat[:value])
-            span class="text-3xl md:text-5xl font-bold text-primary" = stat[:suffix]
+            - if stat[:compact]
+              span class="landing-counter text-4xl md:text-5xl font-bold tabular-nums" data-controller="counter" data-counter-count-value=stat[:value] data-counter-compact-value="true"
+                = compact_count(stat[:value])
+            - else
+              span class="landing-counter text-4xl md:text-5xl font-bold tabular-nums" data-controller="counter" data-counter-count-value=stat[:value]
+                = number_with_delimiter(stat[:value])
+              - if stat[:suffix]
+                span class="text-4xl md:text-5xl font-bold text-primary" = stat[:suffix]
           p class="mt-2 text-sm md:text-base text-base-content/60 text-center" = stat[:label]
 
   / ---------------------------------------------------------------------
@@ -49,7 +56,7 @@
       h2 class="text-2xl md:text-3xl font-semibold" = t('home.reach.title')
       p class="mt-3 text-base-content/60 max-w-xl mx-auto" = t('home.reach.description')
 
-      div class="landing-globe-wrap mt-8" data-controller="globe" data-globe-points-value=@countries.to_json
+      div class="landing-globe-wrap mt-8" data-controller="globe" data-globe-points-value=@countries.to_json data-globe-lights-value=@lights.to_json
         noscript
           div class="landing-flag-grid"
             - @countries.each do |country|
@@ -58,24 +65,21 @@
                 span class="text-xs font-semibold tracking-wide" = country[:code]
 
   / ---------------------------------------------------------------------
-  / Partners marquee (scrolls left) + Sponsors marquee (scrolls right)
+  / Partners marquee (scrolls left) + Sponsors marquee (scrolls right).
+  / Deliberately borderless and full-bleed: no headings, no pills, and
+  / the rows fade out at both edges so they melt into the page.
   / ---------------------------------------------------------------------
-  section class="relative py-14 md:py-20 border-t border-base-content/10"
-    div class="mx-auto max-w-6xl px-4 md:px-6"
-      p class="text-center text-sm uppercase tracking-widest text-base-content/50 mb-6" = t('home.partners.title')
-      div class="landing-marquee-mask"
-        div class="landing-marquee landing-marquee-left"
-          - (@partners + @partners).each do |partner|
-            span class="landing-marquee-pill"
-              img class="landing-marquee-logo" src="https://cdn.simpleicons.org/#{partner[:icon]}" alt="" loading="lazy" width="18" height="18"
-              = partner[:name]
+  section class="landing-brands"
+    div class="landing-marquee-mask"
+      div class="landing-marquee landing-marquee-left"
+        - (@partners + @partners).each do |partner|
+          span class="landing-marquee-item"
+            img class="landing-marquee-logo" src="https://cdn.simpleicons.org/#{partner[:icon]}" alt="" loading="lazy" decoding="async" width="44" height="44"
+            span class="landing-marquee-name" = partner[:name]
 
-  section class="relative pb-20 md:pb-28"
-    div class="mx-auto max-w-6xl px-4 md:px-6"
-      p class="text-center text-sm uppercase tracking-widest text-base-content/50 mb-6" = t('home.sponsors.title')
-      div class="landing-marquee-mask"
-        div class="landing-marquee landing-marquee-right"
-          - (@sponsors + @sponsors).each do |sponsor|
-            span class="landing-marquee-pill landing-marquee-pill-accent"
-              img class="landing-marquee-logo" src="https://cdn.simpleicons.org/#{sponsor[:icon]}" alt="" loading="lazy" width="18" height="18"
-              = sponsor[:name]
+    div class="landing-marquee-mask"
+      div class="landing-marquee landing-marquee-right"
+        - (@sponsors + @sponsors).each do |sponsor|
+          span class="landing-marquee-item"
+            img class="landing-marquee-logo" src="https://cdn.simpleicons.org/#{sponsor[:icon]}" alt="" loading="lazy" decoding="async" width="44" height="44"
+            span class="landing-marquee-name" = sponsor[:name]

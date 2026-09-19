@@ -12,6 +12,12 @@ div class="d-navbar border-base-300/60 border-b shadow-none transition-colors bg
     div class="d-navbar-center"
       == render 'layouts/brand_logo', site_title: Setting.site_title
   div class="d-navbar-end flex-1 md:flex-3 gap-1.5"
+    / Global light/dark toggle — see GlobalController#toggleTheme
+    button.d-btn.d-btn-ghost.d-btn-circle.theme-toggle type="button" aria-label=t('toggle_theme') title=t('toggle_theme') data-action="global#toggleTheme"
+      span.theme-toggle-moon
+        i.fa-solid.fa-moon
+      span.theme-toggle-sun
+        i.fa-solid.fa-sun
     - unless devise_page?
       - if user_signed_in?
         button.d-btn.d-btn-soft.d-btn-circle.s-9 aria-label=t('donate') data-action='global#showSponsorModal'

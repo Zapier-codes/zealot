@@ -73,12 +73,20 @@
   /* ---------------------------------------------------------------- */
   /* Global reach — 3D globe + flag pins                                */
   /* ---------------------------------------------------------------- */
+  /* Soft vertical fade rather than a flat band, so the section has no
+     visible top/bottom edge against the rest of the page. */
   .landing-reach-section {
-    @apply bg-base-200/40;
+    background-image: linear-gradient(
+      to bottom,
+      transparent,
+      color-mix(in oklab, var(--color-base-200) 45%, transparent) 25%,
+      color-mix(in oklab, var(--color-base-200) 45%, transparent) 75%,
+      transparent
+    );
   }
 
   .landing-globe-wrap {
-    @apply relative mx-auto w-full max-w-md aspect-square;
+    @apply relative mx-auto w-full max-w-xl aspect-square;
   }
 
   /* Hide the no-JS fallback grid once the globe controller has actually
@@ -120,37 +128,74 @@
 
   /* ---------------------------------------------------------------- */
   /* Marquees — partners scroll left, sponsors scroll right             */
+  /*                                                                    */
+  /* Intentionally chrome-free: no borders, pills, backgrounds or       */
+  /* section dividers. Rows run full-bleed and fade to transparent at   */
+  /* both edges, so the logos appear to drift in and out of the page.   */
   /* ---------------------------------------------------------------- */
+  .landing-brands {
+    @apply relative flex flex-col gap-8 md:gap-10 pt-6 pb-20 md:pb-28;
+  }
+
   .landing-marquee-mask {
     @apply overflow-hidden;
-    mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+    mask-image: linear-gradient(to right, transparent 0%, black 14%, black 86%, transparent 100%);
   }
 
   .landing-marquee {
-    @apply flex w-max items-center gap-3;
+    @apply flex w-max items-center gap-14 md:gap-20 pr-14 md:pr-20;
   }
 
   .landing-marquee-left {
-    animation: landing-scroll-left 32s linear infinite;
+    animation: landing-scroll-left 45s linear infinite;
   }
 
   .landing-marquee-right {
-    animation: landing-scroll-right 32s linear infinite;
+    animation: landing-scroll-right 45s linear infinite;
   }
 
-  .landing-marquee-pill {
-    @apply shrink-0 inline-flex items-center gap-2 rounded-full border border-base-content/10 bg-base-100/60 backdrop-blur-md px-5 py-2.5 text-sm font-medium text-base-content/70 whitespace-nowrap;
+  .landing-marquee-item {
+    @apply shrink-0 inline-flex items-center gap-3.5 whitespace-nowrap;
   }
 
-  .landing-marquee-pill-accent {
-    @apply text-secondary-content bg-secondary/10 border-secondary/20;
+  .landing-marquee-name {
+    @apply text-lg md:text-xl font-semibold tracking-tight text-base-content/80;
   }
 
+  /* 44px vector logos (simpleicons.org serves SVG, so they stay sharp at
+     any pixel density). Light themes keep each brand's own colour. */
   .landing-marquee-logo {
-    @apply size-[18px] shrink-0 object-contain opacity-90;
-    /* simpleicons.org's CDN serves brand-colored SVGs by default (no
-       ?color= sets each icon's own brand color), which reads better
-       here than forcing a single monochrome tint across every logo. */
+    @apply size-11 shrink-0 object-contain;
+  }
+
+  /* Dark themes: brand colours like Render's black or Sentry's deep
+     purples vanish on a dark page, so flatten every logo to clean white.
+     Selector list mirrors the dark themes in layout.css. */
+  :is(
+    [data-theme="dark"],
+    [data-theme="synthwave"],
+    [data-theme="halloween"],
+    [data-theme="forest"],
+    [data-theme="black"],
+    [data-theme="luxury"],
+    [data-theme="dracula"],
+    [data-theme="business"],
+    [data-theme="night"],
+    [data-theme="coffee"],
+    [data-theme="dim"],
+    [data-theme="sunset"],
+    [data-theme="aqua"],
+    [data-theme="abyss"]
+  ) .landing-marquee-logo {
+    filter: brightness(0) invert(1);
+    opacity: 0.92;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    [data-theme="auto"] .landing-marquee-logo {
+      filter: brightness(0) invert(1);
+      opacity: 0.92;
+    }
   }
 }
 
