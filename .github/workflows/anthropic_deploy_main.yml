@@ -9,6 +9,12 @@ name: Anthropic - Build & Deploy develop
 # develop branch -> our own GHCR image -> our own Render service", triggered
 # on the branch this org actually works on (develop is the default branch).
 #
+# THIS is the pipeline to look at after pushing to develop: two jobs, in
+# order -- "Build & push image to GHCR" then "Trigger Render deploy".
+# publish_nighty.yml used to fire alongside it on every push and was easy to
+# mistake for it; that one is now manual-only (see its header, and
+# handover.md's "Which workflow is the deploy pipeline?").
+#
 # What this does NOT do:
 #   - It builds linux/amd64 only, not the multi-arch (amd64+arm64) builds
 #     upstream's release/nightly workflows produce. Render's compute is

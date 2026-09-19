@@ -1,21 +1,25 @@
 name: Publish Nightly Docker Image
+
+# Anthropic (org note): MANUAL ONLY. Run it from Actions -> "Publish
+# Nightly Docker Image" -> "Run workflow" if you ever genuinely want a
+# `nightly` image.
+#
+# It used to trigger on every push to develop, in parallel with
+# anthropic_deploy_main.yml ("Anthropic - Build & Deploy develop"), which
+# is the ONLY pipeline that deploys this org's app to Render. Both started
+# in the same second on every push, and this one -- a single-job, ~5 min,
+# multi-arch (amd64+arm64 via QEMU) build titled "Push Docker image to
+# multiple registries" -- kept listing ABOVE the real pipeline in the
+# Actions tab, so the operator repeatedly opened it believing it was the
+# deploy. Nothing consumes the `nightly` tag it publishes (render.yaml
+# pulls `deploy-*` tags; fly.toml points at upstream's tryzealot image),
+# and its slow arm64 build competed with the real deploy build for runner
+# capacity.
+#
+# DO NOT add `push:` back under `on:`. See handover.md, "Which workflow is
+# the deploy pipeline?".
 on:
-  push:
-    paths-ignore:
-      - ".devcontainer/*"
-      - ".github/*.yml"
-      - ".github/workflows/publish_codespace.yml"
-      - ".github/workflows/publish_release.yml"
-      - ".github/workflows/publish_preview.yml"
-      - "*.md"
-      - ".*"
-      - "LICENSE"
-      - "Guardfile"
-      - Aptfile
-      - "Procfile*"
-      - "*.yaml"
-    branches:
-      - develop
+  workflow_dispatch:
 
 env:
   DOCKER_TAG: nightly

@@ -8,7 +8,9 @@ name: Test Docker Build
 # Reverted: `develop` already gets THREE docker builds on every single
 # push (anthropic_deploy_main.yml's real build+deploy,
 # publish_nighty.yml, and publish_codespace.yml -- all three already
-# trigger on push:develop, pre-dating this file's change). Adding a
+# trigger on push:develop, pre-dating this file's change; NOTE:
+# publish_nighty.yml has since been made manual-only, so it is now two,
+# and publish_codespace.yml only fires when dependency files change). Adding a
 # 4th -- and the slowest one, since this workflow builds both amd64
 # AND arm64 via QEMU emulation -- competed with those for shared
 # runner capacity and measurably delayed/disrupted the org's actual

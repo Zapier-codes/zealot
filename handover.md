@@ -32,13 +32,136 @@ removed file or independently re-verified against the code.
    was generated; if that happens, don't force it — pull first, rebase the
    patch, or flag it back to the next session rather than resolving
    conflicts blind.
-4. Build/behavior is verified after that push (CI, or a manual smoke test),
+4. **After the push, check the RIGHT workflow** — `Anthropic - Build & Deploy
+   develop` (two jobs: Build & push image to GHCR → Trigger Render deploy),
+   not whatever run is listed on top. See "Which workflow is the deploy
+   pipeline?" below before reporting any build/deploy status.
+5. Build/behavior is verified after that push (CI, or a manual smoke test),
    not claimed as verified by the session itself — nothing in this session
    was run through Ruby/Node locally (no Ruby/Node runtime in the sandbox
    this was written in), so treat everything below as **code-complete,
    not syntax- or build-checked**.
 
+## ⚠️ Which workflow is the deploy pipeline? (read before touching CI or telling the operator "the build passed")
+
+**There is exactly ONE deploy pipeline: `Anthropic - Build & Deploy develop`
+(`.github/workflows/anthropic_deploy_main.yml`).** It has **two jobs, in
+this order**, and this is what a correct run looks like in the Actions UI:
+
+```
+Build & push image to GHCR  ──►  Trigger Render deploy
+        (~3–4 min)                      (~5 s)
+```
+
+Anything else in the Actions tab is **not** the deploy, no matter how
+recent or how prominent it looks. In particular, a run whose graph is a
+*single* box titled **"Push Docker image to multiple registries"** is
+`Publish Nightly Docker Image` — an upstream leftover, **not** the pipeline
+that ships to Render.
+
+### What went wrong (and why it kept happening)
+
+Every push to `develop` used to start **two** workflows in the same
+second: the real pipeline above, and `publish_nighty.yml`. GitHub's
+Actions list sorted the Nightly run **above** the real one (e.g. run
+`Publish Nightly #20` sat on top of `Anthropic - Build & Deploy #38` for
+commit `4bc3c7a`), so the operator opened the top run, saw a one-job graph
+that did not match the known-good one, and concluded "the wrong workflow is
+running" — repeatedly (this is the same confusion recorded in the
+"Confirmed & closed" entry below, which blamed it on `publish_nighty.yml`).
+The real pipeline was in fact running and green each time.
+
+Nightly was also actively harmful beyond confusing people: its
+multi-arch (amd64 + arm64 via QEMU) build ran ~5 min in parallel and
+competed with the real build for runner capacity (`test_docker_build.yml`'s
+header comment records an earlier session observing exactly this kind of
+starvation).
+
+### Fix (this session)
+
+`publish_nighty.yml` is now **`workflow_dispatch` (manual) only** — it no
+longer runs on push. After this patch, **a normal push to `develop` starts
+only `Anthropic - Build & Deploy develop`.** Verified before changing it that
+nothing depends on the `nightly` tag: `render.yaml` pulls
+`ghcr.io/zapier-codes/zealot:deploy-latest` / `deploy-<sha>` (published only
+by `anthropic_deploy_main.yml`), and `fly.toml`'s `:nightly` image is
+**upstream's** `tryzealot/zealot`, not this fork's.
+
+### What triggers on `develop` now
+
+| Workflow (file) | Fires on push to `develop`? | Shape | Is it the deploy? |
+|---|---|---|---|
+| **Anthropic - Build & Deploy develop** (`anthropic_deploy_main.yml`) | **Yes, every push** (except docs-only: `**.md`, `.devcontainer/`, `.vscode/`, `LICENSE`) | 2 jobs: Build & push → Trigger Render deploy | **YES — the only one** |
+| Publish Nightly Docker Image (`publish_nighty.yml`) | **No** — manual only since this fix | 1 job: "Push Docker image to multiple registries" | No |
+| Publish Codespace Docker Image (`publish_codespace.yml`) | Only if `package.json`, `pnpm-lock.yaml`, `Gemfile*`, `yarn.lock`, `.mise.toml`, `.devcontainer/Dockerfile.base` or that workflow file changed (can run 10–25 min) | 1 job: "Push Codespace Docker image to multiple registries" | No |
+| Sync README to Organization (`sync_readme.yml`) | Only if `README.md` changed | 1 job | No |
+| Publish Preview (`publish_preview.yml`) | No — `release/*` branches only | 1 job | No |
+| Publish Release (`publish_release.yml`) | No — version tags only | 1 job | No |
+| Test Docker Build (`test_docker_build.yml`) | No — pull requests only | 1 job | No (dry-run check) |
+
+If a push touches dependency files you will still see **Publish Codespace**
+appear next to the real pipeline. That is expected, is not the deploy, and
+can be ignored. (It was left alone deliberately; if the operator wants it
+manual-only as well, it is the same one-line trigger change.)
+
+### Rules for every future session
+
+1. **Never tell the operator "the deploy passed/failed" from a run you have
+   not confirmed is `Anthropic - Build & Deploy develop`.** Check the
+   workflow name at the top of the run page and that both jobs
+   (`Build & push image to GHCR`, `Trigger Render deploy`) exist.
+2. **Never re-add `push:` (or `branches: [develop]`) to
+   `publish_nighty.yml`, `publish_preview.yml` or `test_docker_build.yml`**
+   to "get a build". They are not the deploy path and re-adding them
+   recreates this exact confusion (and burns runner minutes).
+3. **Do not add a new workflow that triggers on push to `develop`** without
+   updating the table above and giving it a name that cannot be mistaken for
+   the deploy pipeline. Two workflows racing on the same push is how this
+   started.
+4. **How the operator (and you) should find the right run fast:** open
+   `https://github.com/Zapier-codes/zealot/actions/workflows/anthropic_deploy_main.yml`
+   — that URL lists *only* the deploy pipeline's runs. Or, in the Actions
+   tab's left sidebar, tap **"Anthropic - Build & Deploy develop"** to filter.
+   Don't judge by the top row of "All workflows".
+5. **A green run still only proves GitHub got a 2xx back from Render's
+   deploy hook.** Render's own Events/Deploys tab is the source of truth for
+   whether the new image is actually live (see the closed pipeline entry
+   below).
+6. **Only the two `deploy-*` tags matter to Render.** Don't retarget
+   `render.yaml` at `nightly`/`preview`/`latest`.
+7. **How a session can check this itself:** the Actions pages are readable
+   without auth via `web_fetch` (start from
+   `https://github.com/Zapier-codes/zealot/actions`; the unauthenticated
+   REST API is rate-limited from the sandbox). Each run page states the
+   workflow file, status, and job list.
+
 ## Task board
+
+### ✅ Fix: Nightly workflow ran alongside the real deploy pipeline and got mistaken for it (this session)
+
+**Branch:** `fix/nightly-workflow-manual-only`, base `develop` (`4bc3c7a`).
+**Patch:** single commit, `git format-patch -1`.
+```
+cd ~/zealot && git checkout develop && git pull && git status   # must be clean
+git am ~/storage/downloads/0001-*.patch
+git push
+```
+**Full write-up is in the section above** ("Which workflow is the deploy
+pipeline?"). Short version: `publish_nighty.yml` now only runs when triggered
+manually, so a push to `develop` starts only `Anthropic - Build & Deploy
+develop` (Build & push image to GHCR → Trigger Render deploy). Also corrected
+two now-stale header comments (`anthropic_deploy_main.yml`,
+`test_docker_build.yml`).
+
+**Verified from GitHub's Actions pages (read-only, no auth):** for the
+landing-page commit `4bc3c7a`, `Anthropic - Build & Deploy develop #38` was
+**Success** — `Build & push image to GHCR` 3m 33s → `Trigger Render deploy`
+5s — the exact good shape; `Publish Nightly Docker Image #20` also succeeded
+but is the unrelated one-job run that was listed above it.
+**Not verified:** that Render itself finished deploying that image (this
+sandbox has no Render access — check Render's Events/Deploys tab), and the
+new trigger behaviour can only be confirmed by the next real push (expect one
+workflow run, not two). All workflow YAML parses.
 
 ### ✅ Landing page: M+ counters, realistic globe, borderless logo marquees, global light/dark toggle (this session)
 
