@@ -1236,6 +1236,7 @@ zh-CN:
       continue: 继续
       new_here: 第一次使用？输入邮箱和密码即可自动创建账户；已有账户则直接登录。
       invite_only: 请使用已有账户登录。目前不开放注册，请联系管理员开通账户。
+      admin_entry: 管理员登录：请输入管理员邮箱和密码。
       user_login_disabled: 用户登录已被禁用，请联系管理员
     ldap:
       title: LDAP 登录

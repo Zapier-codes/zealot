@@ -1232,6 +1232,7 @@ en:
       continue: Continue
       new_here: New here? Enter your email and a password and we'll create your account. Already have one? This signs you in.
       invite_only: Sign in with your account. New registrations are closed, contact the administrator for access.
+      admin_entry: Administrator sign-in. Enter the administrator email and password.
       user_login_disabled: User authentication is disabled, please contact the administrator.
     ldap:
       title: LDAP

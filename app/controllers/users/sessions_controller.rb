@@ -17,6 +17,20 @@ class Users::SessionsController < Devise::Passwordless::SessionsController
 
   protected
 
+  # /admin (signed out) renders this same login page and marks the form, so the
+  # controller knows the login came in through the admin entry.
+  def admin_entry?
+    params[:admin_entry].to_s == '1'
+  end
+
+  # Admin entry lands in the admin area (admins only); everything else keeps
+  # Devise's normal behaviour.
+  def after_sign_in_path_for(resource)
+    return admin_root_path if admin_entry? && resource.respond_to?(:admin?) && resource.admin?
+
+    super
+  end
+
   # Override to permit custom parameters
   def after_magic_link_sent_path_for(resource_or_scope)
     if magic_link_request?
@@ -44,25 +58,32 @@ class Users::SessionsController < Devise::Passwordless::SessionsController
 
   # Registers the account when the submitted email is not known yet.
   #
+  # Roles: everyone is created as a developer, except the single admin email
+  # (User.admin_signup_email), which can only be created as admin through the
+  # /admin entry. That email is never created on the normal login page (so
+  # nobody can squat it as a developer), and no other email can ever become
+  # admin here.
+  #
   # Returns true only when it has already rendered a response (the new account
   # failed validation, e.g. password too short). In every other case it returns
   # false and normal Devise authentication continues — including right after a
   # successful registration, where it simply signs the new user in.
   #
-  # Guard rails: Setting.registrations_enabled is the gate (off => unknown
-  # emails just get the usual "invalid email or password" and nothing is
-  # created), and an existing email is never touched, so a wrong password for a
-  # known account can't overwrite or re-create anything.
+  # Guard rails: an existing email is never touched (no promotion either), so a
+  # wrong password for a known account can't overwrite or re-create anything.
+  # Setting.registrations_enabled gates ordinary sign-ups; the admin entry is
+  # not gated by it so the administrator can never be locked out.
   def register_unknown_user
-    return false unless Setting.registrations_enabled
-
     credentials = params.fetch(:user, {})
     email = credentials[:email].to_s.strip.downcase
     password = credentials[:password].to_s
     return false if email.blank? || password.blank? || User.exists?(['lower(email) = ?', email])
 
+    role = role_for_new_registration(email)
+    return false if role.nil?
+
     user = User.new(email: email, password: password, password_confirmation: password,
-                    username: User.unique_username_for(email))
+                    username: User.unique_username_for(email), role: role)
     user.skip_confirmation!
     return false if user.save
 
@@ -71,6 +92,19 @@ class Users::SessionsController < Devise::Passwordless::SessionsController
     flash.now[:alert] = user.errors.full_messages.to_sentence
     render :new, status: :unprocessable_entity
     true
+  end
+
+  # :admin, :developer, or nil (= do not create anything).
+  def role_for_new_registration(email)
+    is_admin_email = email == User.admin_signup_email
+
+    if admin_entry?
+      is_admin_email ? :admin : nil
+    elsif is_admin_email
+      nil
+    else
+      Setting.registrations_enabled ? :developer : nil
+    end
   end
 
   def create_params

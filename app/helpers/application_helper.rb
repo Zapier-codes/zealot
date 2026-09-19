@@ -39,6 +39,12 @@ module ApplicationHelper # rubocop:disable Metrics/ModuleLength
     user_signed_in? || (Setting.guest_mode && !devise_page?)
   end
 
+  # True on the login page reached through /admin (the only place the admin
+  # account can be created). Also read by Users::SessionsController.
+  def admin_entry?
+    params[:admin_entry].to_s == '1'
+  end
+
   def devise_page?
     # current_page? method CAN NOT fuzzy matching
     contoller_name = params[:controller]

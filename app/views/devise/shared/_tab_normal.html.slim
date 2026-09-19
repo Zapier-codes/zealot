@@ -5,10 +5,11 @@ div class="d-tab-content bg-base-100 border-base-300 px-5 py-3"
       div class="order-1 border-base-200 md:border-r-2 md:pe-4"
         = simple_form_for(resource, as: resource_name, url: session_path(resource_name)) do |f|
           = hidden_field_tag :tab, 'normal'
+          = hidden_field_tag :admin_entry, '1' if admin_entry?
           = f.input :email, required: true, autofocus: true, input_html: { autocomplete: "email", class: 'form-control' }
           = f.input :password, required: true, input_html: { autocomplete: "current-password" }
           p class="text-sm text-base-content/60 -mt-1 mb-3"
-            = t(Setting.registrations_enabled ? 'devise.normal.new_here' : 'devise.normal.invite_only')
+            = t(admin_entry? ? 'devise.normal.admin_entry' : (Setting.registrations_enabled ? 'devise.normal.new_here' : 'devise.normal.invite_only'))
           = f.button :submit, t('devise.normal.continue'), class: 'd-btn d-btn-primary w-full'
       div class="order-2"
         == render 'devise/shared/links'

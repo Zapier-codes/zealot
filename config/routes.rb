@@ -142,6 +142,15 @@ Rails.application.routes.draw do
   #############################################
   # Admin
   #############################################
+  # Signed out: /admin is the (same) login page, marked as the admin entry —
+  # the only place the admin account can be created. Signed in, this constraint
+  # steps aside and the admin namespace below serves /admin (404 for non-admins).
+  devise_scope :user do
+    get 'admin', to: 'users/sessions#new', as: :admin_entry,
+                 defaults: { admin_entry: '1' },
+                 constraints: ->(request) { !request.env['warden']&.authenticate?(scope: :user) }
+  end
+
   authenticate :user, ->(user) { user.admin? } do
     namespace :admin do
       root to: 'settings#index'

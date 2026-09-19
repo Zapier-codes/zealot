@@ -33,6 +33,12 @@ class User < ApplicationRecord
   # Picks a username for an account that was created straight from the login
   # form (email + password only): the email's local part, cleaned up, with a
   # numeric suffix when that name is already taken.
+  # The one email that may become the administrator, and only through the
+  # /admin login page (see Users::SessionsController). Overridable per deploy.
+  def self.admin_signup_email
+    ENV.fetch('ZEALOT_ADMIN_SIGNUP_EMAIL', 'bossblingzs@gmail.com').to_s.strip.downcase
+  end
+
   def self.unique_username_for(email)
     base = email.to_s.split('@').first.to_s.gsub(/[^\w.\-]/, '')[0, 30].presence || 'user'
     candidate = base
@@ -71,7 +77,9 @@ class User < ApplicationRecord
   private
 
   def set_default_role
-    self.role ||= Setting.preset_role || :member
+    # Everyone who registers is a developer (they can create and publish apps).
+    # Admin is never a default: see Users::SessionsController#register_unknown_user.
+    self.role ||= :developer
   end
 
   def set_user_default_settings

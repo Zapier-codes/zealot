@@ -188,6 +188,58 @@ manual-only as well, it is the same one-line trigger change.)
 
 ## Task board
 
+### 🆕 Task 15: Everyone registers as developer; admin only via /admin (code-complete, not run)
+
+**Operator's request:** all new registrations get the **developer** role (no
+members); the admin account is created through the **same login form**, only for
+the email `bossblingzs@gmail.com`, and only through the route `/admin`.
+(Trigger: a fresh account landed as `member` and saw no "New app" button — 14c's
+auto-registration used `Setting.preset_role`, default `member`.)
+
+- **Roles:** `User#set_default_role` now always defaults to `developer` (covers
+  login auto-registration and OAuth). `Setting.preset_role` is **dormant** (its
+  default display value is now `developer`; changing it no longer affects new
+  users). Existing `member` users are promoted to `developer` by migration
+  `20260919180000_promote_members_to_developers.rb` (plain SQL `UPDATE users
+  SET role = 1 WHERE role = 0`; admins and per-app collaborator roles
+  untouched; **not reversible**). The container runs `zealot:upgrade` at start
+  (`docker/rootfs/etc/cont-init.d/30-zealot-upgrade`), which runs pending
+  migrations, so it applies on the next deploy. Without a deploy, the same
+  thing: `bin/rails runner 'User.where(role: :member).update_all(role: User.roles[:developer])'`.
+- **Admin entry:** signed out, `GET /admin` renders the normal login page with a
+  hidden `admin_entry=1` field (route in `config/routes.rb`, above the admin
+  namespace; it steps aside for signed-in users, so admins still get the admin
+  area and non-admins still 404). Rules in `Users::SessionsController`
+  (`role_for_new_registration`):
+  - admin email + `/admin` entry + no existing account → created as **admin**,
+    lands on `/admin` (works even if `registrations_enabled` is off);
+  - admin email on the **normal** login page → never created (so nobody can
+    squat it as a developer);
+  - any other email at `/admin` → nothing created;
+  - an existing account with the admin email is **never promoted** by logging in
+    (use `User.find_by(email: ...).grant_admin!` in a Render shell if needed);
+  - everything else → developer, gated by `registrations_enabled` as before.
+- **Email is configurable:** `User.admin_signup_email` reads
+  `ZEALOT_ADMIN_SIGNUP_EMAIL`, default `bossblingzs@gmail.com`.
+- **⚠️ Security caveat (accepted as requested):** there is no email
+  verification, so **whoever first submits that email + a password at `/admin`
+  becomes the admin.** Do it immediately after deploy. Also no rate limiting.
+  Hardening options: magic-link verification for the admin entry, or a one-time
+  setup key env var.
+- **Also note:** the seeded admin (`ZEALOT_ADMIN_EMAIL` / `ZEALOT_ADMIN_PASSWORD`,
+  default `admin@zealot.com` / `ze@l0t` if the env vars are unset) is untouched
+  and still works — make sure those env vars are set on Render.
+- **Files:** `user.rb`, `setting.rb`, `users/sessions_controller.rb`,
+  `application_helper.rb` (`admin_entry?`), `routes.rb`, the migration above (+ `schema.rb` version),
+  `devise/shared/_tab_normal.html.slim`, `en.yml` + `zh-CN.yml`
+  (`devise.normal.admin_entry`), new `spec/requests/roles_and_admin_entry_spec.rb`.
+- **Not verified:** no Ruby in this sandbox — nothing executed (routes, controller,
+  Slim, specs). Locale YAML parses. **After deploy:** (1) sign up a fresh email →
+  role Developer, "New app" visible on `/apps`; (2) signed out, open `/admin` →
+  login page; log in with the admin email → admin area; (3) `/users/sign_in`
+  with the admin email (new) → rejected; (4) signed in as a developer, `/admin`
+  → 404; (5) `bundle exec rspec spec/requests`.
+
 ### 🆕 Task 14: Landing + auth simplification, settings-based theming, more globe countries (14a–14g code-complete, 14h = this board update; nothing verified in a browser yet)
 
 **Delivery:** everything for Task 14 to date (planning doc + slices 14a and
@@ -1366,3 +1418,7 @@ them is already modernized.
   on the D1 default. No Ruby in the sandbox, so Slim and the new
   `spec/requests/layout_spec.rb` are unrun; vite build passes. One combined
   patch, branch `feat/task-14f-no-top-nav`.
+- **Task 15**: base `bf4f6f31` (Task 14f, confirmed landed). Developer as the
+  registration default, a migration promoting existing members, and admin creation limited to one email via `/admin`
+  (see Task 15). No Ruby in the sandbox; specs unrun. One combined patch,
+  branch `feat/task-15-developer-default-admin-signup`.
