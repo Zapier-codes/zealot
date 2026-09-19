@@ -40,6 +40,61 @@ removed file or independently re-verified against the code.
 
 ## Task board
 
+### ✅ Confirmed & closed: build→deploy pipeline verified working end-to-end, including on Render (this session)
+
+**Branch:** `docs/confirm-render-deploy-pipeline-fixed`, base `develop`.
+This is a documentation-only follow-up to the three fix entries
+directly below (pnpm-lockfile drift, the reverted test_docker_build.yml
+trigger, and the render.yaml registry-credential removal) — read those
+first for the actual code changes; this entry just closes the loop.
+
+**What the operator confirmed, directly in the GitHub Actions UI, after
+applying the render.yaml patch:** a run of "Anthropic - Build & Deploy
+develop" showing both jobs green, sequential, in the correct shape —
+`Build & push image to GHCR` (green) → `Trigger Render deploy` (green)
+— matching a known-good historical run from before any of this
+session's changes (run #32, commit `b5e9ef5`, 9 hours prior). This
+confirms:
+- The workflow's job graph (`deploy` needing `build-and-push`) has
+  been correctly wired as a single 2-job pipeline all along — none of
+  the confusion earlier in this handoff chain was ever a wiring bug in
+  `anthropic_deploy_main.yml` itself.
+- The earlier confusion (reported as "the deploy workflow isn't
+  triggering") had two real causes, now both addressed: (1) briefly,
+  this session's own `pnpm-lock.yaml`/`test_docker_build.yml` churn
+  disrupting things (reverted), and (2) looking at `publish_nighty.yml`
+  (a different, single-job, intentionally-unrelated workflow) instead
+  of `anthropic_deploy_main.yml`.
+
+**Operator has now confirmed "all green"** — taken here to mean both
+halves: the GitHub Actions run (as above) and the Render side itself
+(a real deploy actually starting/completing in Render's own
+Events/Deploys tab, off the back of the `Trigger Render deploy` job).
+This closes out the whole incident chain that started with the
+pnpm-lock.yaml drift entry below. **Root cause was two independent
+issues layered on top of each other:** (1) this session's own
+temporary CI churn from the lockfile-fix patch (the
+`test_docker_build.yml` push-trigger addition, reverted two entries
+below) briefly disrupting the pipeline, and (2) `render.yaml`
+referencing a Registry Credential (`ghcr-zealot`) that was never
+confirmed to exist in the Render workspace — which is what actually
+kept Render from picking up new images even while GitHub Actions
+stayed green throughout. Removing that `creds:` block (previous
+task-board entry) is what fixed the actual deploy.
+
+**Worth remembering for any future session:** a green
+`anthropic_deploy_main.yml` run only ever proves GitHub successfully
+called the Render deploy hook and got a 2xx back — it has no
+visibility into what Render does afterward. This sandbox never had
+Render dashboard/API access at any point in this chain; every
+Render-side confirmation in this incident came from the operator
+checking Render directly, not from anything this sandbox could verify
+on its own. If "deploy isn't reflecting" ever comes up again, don't
+assume a green GitHub run means it's fine on Render's side too — ask
+the operator to check Render's Events/Deploys tab directly, same as
+this time.
+
+
 ### ✅ Fix: render.yaml referenced a Registry Credential that may not exist (this session)
 
 **Branch:** `fix/render-ghcr-public-drop-unused-registry-creds`, base
