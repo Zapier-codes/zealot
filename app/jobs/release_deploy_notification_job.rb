@@ -1,8 +1,9 @@
 # frozen_string_literal: true
 
-# Email #1 (Task 12): a new build of an app was published. Fans out one
-# NotificationMailer#release_deployed per opted-in member of the app, so a bad
-# address or SMTP hiccup only retries that one mail.
+# Email #1 (Task 12): a new build of an app was published. Fans out one email
+# per opted-in member of the app (SMTP mailer or Novu trigger, see
+# EmailNotifications), so a bad address or provider hiccup only retries that
+# one mail.
 class ReleaseDeployNotificationJob < ApplicationJob
   queue_as :default
 
@@ -13,7 +14,7 @@ class ReleaseDeployNotificationJob < ApplicationJob
 
     release = Release.find(release_id)
     User.wanting_email_for_app(release.app, :deploys).find_each do |user|
-      NotificationMailer.release_deployed(release, user).deliver_later
+      EmailNotifications.deliver_release_deployed(release, user)
     end
   end
 end

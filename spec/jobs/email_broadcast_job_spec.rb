@@ -41,4 +41,16 @@ RSpec.describe EmailBroadcastJob, type: :job do
       described_class.perform_now(kind: 'receipts', subject: 's', body: 'b')
     end.to raise_error(ArgumentError)
   end
+
+  context 'when Novu is the email provider' do
+    before { stub_const('ENV', ENV.to_hash.merge('NOVU_API_KEY' => 'k')) }
+
+    it 'hands one Novu delivery per opted-in user to NovuDeliveryJob instead of the mailer' do
+      expect do
+        described_class.perform_now(kind: 'campaigns', subject: 'News', body: 'Hi')
+      end.to have_enqueued_job(NovuDeliveryJob).once
+
+      expect(enqueued_jobs.map { |job| job[:job] }).not_to include(ActionMailer::MailDeliveryJob)
+    end
+  end
 end

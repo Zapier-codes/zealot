@@ -22,12 +22,11 @@ class EmailBroadcastJob < ApplicationJob
     app = app_id.present? && kind.to_s == 'notices' ? App.find(app_id) : nil
 
     self.class.recipients(kind: kind, app_id: app&.id).find_each do |user|
-      mail = if kind.to_s == 'campaigns'
-               NotificationMailer.campaign(user, subject: subject, body: body)
-             else
-               NotificationMailer.notice(user, subject: subject, body: body, app: app)
-             end
-      mail.deliver_later
+      if kind.to_s == 'campaigns'
+        EmailNotifications.deliver_campaign(user, subject: subject, body: body, broadcast_id: job_id)
+      else
+        EmailNotifications.deliver_notice(user, subject: subject, body: body, app: app, broadcast_id: job_id)
+      end
     end
   end
 

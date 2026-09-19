@@ -92,6 +92,17 @@ services:
   - key: ACTION_MAILER_DEFAULT_TO
     value: false
 
+  # Task 16: Novu as the email delivery layer (see handover.md). `sync: false`
+  # so a Blueprint re-sync never overwrites what is set in the dashboard.
+  # NOVU_API_KEY = the Novu environment's Secret Key; while it is unset the
+  # automated emails keep using SMTP.
+  - key: NOVU_API_KEY
+    sync: false
+  - key: NOVU_API_URL
+    sync: false
+  - key: ZEALOT_EMAIL_PROVIDER
+    sync: false
+
   - key: GOOGLE_OAUTH_ENABLED
     value: false
   - key: GOOGLE_CLIENT_ID

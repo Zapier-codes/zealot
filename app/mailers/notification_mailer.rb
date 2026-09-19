@@ -17,7 +17,7 @@ class NotificationMailer < ApplicationMailer
     @app = release.app
     @version = release.release_version.to_s
     @version += " (#{release.build_version})" if release.build_version.present?
-    @changelog_lines = changelog_lines(release)
+    @changelog_lines = EmailNotifications.changelog_lines(release)
 
     localized_mail(user, :deploys, app: release.app_name, version: @version)
   end
@@ -38,14 +38,6 @@ class NotificationMailer < ApplicationMailer
   end
 
   private
-
-  # `changelog` is a jsonb array of { "message" => "..." } hashes (or blank).
-  def changelog_lines(release)
-    Array(release.changelog).filter_map do |entry|
-      line = entry.is_a?(Hash) ? (entry['message'] || entry[:message]) : entry
-      line.to_s.strip.presence
-    end.first(20)
-  end
 
   def localized_mail(user, kind, subject: nil, **subject_args)
     @user = user

@@ -188,6 +188,148 @@ manual-only as well, it is the same one-line trigger change.)
 
 ## Task board
 
+### 🆕 Task 16: Novu as the delivery layer for the Task 12 emails (code-complete, not run; needs 3 workflows created in Novu)
+
+**Operator's request:** use **Novu** for the email infrastructure connected to
+Task 12. **Design chosen:** Rails still decides *who* gets *what* (opt-outs,
+locked users, app members — all built in Task 12, untouched). Novu only
+*delivers*: each email becomes one Novu **workflow trigger for one subscriber**
+(`POST {NOVU_API_URL}/v1/events/trigger`, header `Authorization: ApiKey <secret>`).
+Templates, sender address and the actual email provider (SES / SendGrid /
+SMTP …) are configured in the Novu dashboard. **SMTP stays as the fallback** —
+nothing changes until `NOVU_API_KEY` is set.
+
+**Why no `novu-ruby` gem:** a new gem means regenerating `Gemfile.lock`, and
+there is no way to run `bundle` in this sandbox (rubygems.org is blocked); a
+stale lockfile already broke the build once (see the `pnpm-lock.yaml` entry
+below). Faraday is already a dependency, so `NovuClient` is ~100 lines of plain
+Faraday against the documented REST endpoint.
+
+**Flow:** `Release` callback / `rake zealot:email:*` → `ReleaseDeployNotificationJob`
+/ `EmailBroadcastJob` (unchanged fan-out, one recipient at a time) →
+`EmailNotifications.deliver_*` → **Novu:** `NovuDeliveryJob` → `NovuClient.trigger`
+· **SMTP:** `NotificationMailer#deliver_later` (exactly as before).
+
+| Piece | What it does |
+|---|---|
+| `app/services/novu_client.rb` | Trigger call. 2xx + `status: processed` = OK. 429 / 5xx / network → `TemporaryError` (retried). Other 4xx, or a 2xx whose status isn't `processed` (e.g. `no_workflow_active_steps_defined`, `trigger_not_active`) → `PermanentError` |
+| `app/jobs/novu_delivery_job.rb` | One trigger per recipient. Retries `TemporaryError` (6 attempts, growing waits — GoodJob has `retry_on_unhandled_error = false`, so it must be declared). Permanent errors are reported via `Rails.error` + the GoodJob log and dropped. Re-checks opt-out / locked at send time |
+| `app/services/email_notifications.rb` | Provider switch, `deliver_release_deployed / deliver_notice / deliver_campaign`, payload builders, Novu subscriber mapping |
+| `lib/tasks/zealot/email.rake` | New `zealot:email:status`; `zealot:email:test` now goes through the active provider; campaign/notice warn when nothing will be sent |
+
+**Provider selection:** `ZEALOT_EMAIL_PROVIDER=smtp|novu` forces one; unset →
+Novu if `NOVU_API_KEY` is set, else SMTP. **Rollback = set
+`ZEALOT_EMAIL_PROVIDER=smtp`** (no deploy of code needed). `enabled?` now asks
+the *active* provider whether it's configured (Novu: key present; SMTP in
+production: `SMTP_ADDRESS` present).
+
+**Env vars** (also in `.env.example`; `render.yaml` declares the first three
+with `sync: false`): `NOVU_API_KEY` (the environment's **Secret Key**),
+`NOVU_API_URL` (default `https://api.novu.co`; EU `https://eu.api.novu.co`;
+or self-hosted), `ZEALOT_EMAIL_PROVIDER`, and optional workflow-id overrides
+`NOVU_WORKFLOW_RELEASE_DEPLOYED` / `NOVU_WORKFLOW_NOTICE` / `NOVU_WORKFLOW_CAMPAIGN`.
+
+**Subscribers:** no sync job. Every trigger carries the subscriber inline
+(`subscriberId: "zealot-<user id>"`, `email`, `firstName` = username, `locale`),
+and Novu creates/updates it. **Idempotency:** each trigger has a
+`transactionId` (`release-<id>-user-<id>`, `notice-<job id>-user-<id>`,
+`campaign-<job id>-user-<id>`), so a retried/re-run send is ignored by Novu
+instead of emailing twice (Novu documents `transactionId` as trace/dedup; its
+stronger `Idempotency-Key` header isn't enabled for every org, so it isn't used).
+
+#### ⚙️ Operator setup in Novu (nothing in the app works until this is done)
+
+1. Novu dashboard → create an environment key: **API Keys → Secret Key** →
+   set it as `NOVU_API_KEY` on Render (plus `NOVU_API_URL` if EU/self-hosted).
+2. **Integrations:** connect the email provider you want Novu to send through
+   and set the sender address there (Rails' `ACTION_MAILER_DEFAULT_FROM` is
+   *not* used on the Novu path).
+3. Create **three workflows** with exactly these trigger identifiers, each
+   with one **Email** step, and **activate** them:
+   `zealot-release-deployed`, `zealot-notice`, `zealot-campaign`.
+4. Lay each email out with the payload fields below (Liquid, e.g.
+   `{{payload.heading}}`). **Copy is already localized (en / zh-CN) by Rails per
+   recipient**, so the templates only place fields — no per-language templates.
+5. `bin/rails zealot:email:status`, then `bin/rails zealot:email:test EMAIL=you@…`
+   (an accepted trigger can still fail at the provider — check Novu's
+   Activity Feed and the inbox).
+
+**Payload contract** (all keys camelCase; every workflow also gets the common block):
+
+| Workflow | Fields |
+|---|---|
+| *common (all three)* | `siteTitle`, `siteUrl`, `footer` (why-you-got-this sentence), `manageLabel`, `preferencesUrl` (the Task 12 token page — this is the unsubscribe link) |
+| `zealot-release-deployed` | `subject`, `heading`, `intro`, `changelogTitle`, `changelog` (array of strings, may be empty), `openLabel`, `releaseUrl`, `appName`, `version` |
+| `zealot-notice` | `subject`, `body` (raw text), `paragraphs` (array — same text split on blank lines), optional `appName` + `appLine` (only for per-app notices, incl. the Play-publish-failed notice) |
+| `zealot-campaign` | `subject`, `body`, `paragraphs` |
+
+- Set the email step's **subject** to `{{payload.subject}}`.
+- `body` / `paragraphs` are **operator-typed plain text** — render them as text
+  (escaped), never as raw HTML. Use `paragraphs` in a loop for real paragraph
+  breaks.
+- Send a test from Novu's workflow editor with a sample payload before relying
+  on it. Payload validation in Novu rejects (HTTP 400 → `PermanentError`, logged)
+  a trigger that doesn't match a schema you added, so keep any schema in sync
+  with this table.
+
+#### ❓ Decisions / caveats for the operator
+
+- **D1 — Unsubscribe header (not done).** The SMTP campaign mail carried a
+  `List-Unsubscribe` header; the Novu path does **not** (the visible footer link
+  to `preferencesUrl` is still there). Adding the header depends on the email
+  provider chosen in Novu and its header/override support — not researched or
+  verified. Needed before large-volume campaigns to Gmail/Yahoo.
+- **D2 — Preferences stay in Rails** (default taken). Novu's own subscriber
+  preferences are not synced or consulted, so leave them at defaults (don't
+  disable channels there). Moving preferences into Novu is a separate task.
+- **D3 — Copy stays in Rails locale files** (default taken), passed in the
+  payload. If the operator would rather edit copy in Novu (or use Novu's
+  translations), the payload contract is where to change it.
+- **D4 — Payment receipts (#3) are still not built** (no payment model). When
+  built, add a fourth workflow `zealot-receipt` (transactional, no opt-out) the
+  same way.
+- **Volume:** one API call per recipient (Novu allows up to 100 per call, but
+  copy/links are per-recipient). GoodJob runs `ZEALOT_WORKER_CONCURRENCY`
+  (default 5) at a time; Novu's trigger rate limit is per-second and 429s are
+  retried. Fine for the current user base; batch if campaigns get big.
+- **Pre-existing quirk fixed on the way:** `render.yaml` declares `SMTP_ADDRESS`
+  with `value: false`, which lands as the *string* `"false"` — and `"false".present?`
+  is true, so Task 12's "nothing queued until SMTP is set" guard never
+  tripped on Render. `EmailNotifications.smtp_configured?` now treats blank and
+  `"false"` as unset. Effect: on a Render service with no SMTP and no Novu key,
+  the emails are now (correctly) off instead of queueing undeliverable mail.
+
+**Slices (TSF — one combined patch):** 16a client + job (`novu_client.rb`,
+`novu_delivery_job.rb`, specs) · 16b provider switch + routing the two fan-out
+jobs and the mailer's shared `changelog_lines` through `EmailNotifications`
+(`email_notifications.rb`, `email_broadcast_job.rb`,
+`release_deploy_notification_job.rb`, `notification_mailer.rb`, specs) · 16c
+operator tooling + docs (`email.rake`, `.env.example`, `render.yaml`, this
+entry). **Revert:** to stop using Novu without reverting code, set
+`ZEALOT_EMAIL_PROVIDER=smtp`; to back the code out, revert the commit
+(no migration, no locale change — no `en.yml` / `zh-CN.yml` edits this task).
+
+**Verified in the sandbox:** `ruby -c` on every changed Ruby file; YAML parse of
+`render.yaml`; `spec/services/novu_client_spec.rb` (8 examples) run under plain
+RSpec against Faraday 2.7.1 (the repo pins 2.14.3) with Faraday's test adapter
+— passes; a stubbed harness run of `EmailNotifications` against the real
+`en.yml` / `zh-CN.yml` (payload contents, zh-CN localization, provider
+switching, workflow-id overrides, transaction ids) — output checked by eye.
+**Not verified:** the Rails-dependent specs (`spec/jobs/novu_delivery_job_spec.rb`,
+`spec/services/email_notifications_spec.rb`, the new context in
+`spec/jobs/email_broadcast_job_spec.rb`) — no bundle in the sandbox; and
+**nothing has been sent through a real Novu account.** The endpoint, auth
+header and request/response shape come from Novu's published API reference
+(`docs.novu.co/api-reference/events/trigger-event`); the response-envelope
+handling accepts both `{data:{…}}` and top-level fields because the docs and
+older SDKs differ. **After deploy + operator setup:** (1) `zealot:email:status`
+→ provider `novu`, configured true; (2) `zealot:email:test EMAIL=…` → "Novu
+accepted…", mail arrives; (3) publish a release for an app with a collaborator
+→ Activity Feed shows `zealot-release-deployed`; (4) `DRY_RUN=1` then a real
+campaign to yourself; (5) `bundle exec rspec spec/services spec/jobs spec/mailers`;
+(6) failure path: set a wrong workflow id → GoodJob log shows
+`[novu] giving up on …` and no retry storm.
+
 ### 🆕 Task 15: Everyone registers as developer; admin only via /admin (code-complete, not run)
 
 **Operator's request:** all new registrations get the **developer** role (no
@@ -1176,7 +1318,8 @@ prevent it.
   Every email links to `/email_preferences/:token` (signed token, no login,
   `EmailPreferencesController`); campaigns also carry a `List-Unsubscribe`
   header. Locked users are never emailed.
-- **Delivery:** `NotificationMailer#deliver_later` on GoodJob over the existing
+- **Delivery:** **(Task 16: Novu can now do the delivery — see that entry; the
+  SMTP path below is the fallback.)** `NotificationMailer#deliver_later` on GoodJob over the existing
   SMTP settings; one mail per recipient (a bad address only retries itself),
   rendered in the recipient's own locale (en + zh-CN), HTML + text parts.
   Body text of notices/campaigns is HTML-escaped plain text.
@@ -1443,3 +1586,13 @@ them is already modernized.
   #4 (notices + Play publish failure), per-user opt-outs and a token
   preferences page. #3 (receipts) not built — no payment model. No Ruby in the
   sandbox; specs unrun. One combined patch, branch `feat/task-12-email-infra`.
+- **Task 16 (Novu for the email infrastructure)**: base `0e1db436` (Task 12,
+  the `develop` tip this checkout cloned). Added `NovuClient` +
+  `NovuDeliveryJob`, a `ZEALOT_EMAIL_PROVIDER` / `NOVU_API_KEY` provider switch
+  in `EmailNotifications` (SMTP kept as fallback), routed the two fan-out jobs
+  through it, `zealot:email:status` and a provider-aware `zealot:email:test`, and
+  fixed the `SMTP_ADDRESS="false"` guard quirk. Ruby *was* installable this time
+  (`apt-get install ruby`), so `ruby -c` and a Faraday-adapter spec run were
+  possible; rubygems.org is blocked, so no bundle/Rails. Operator must create the
+  three Novu workflows (see Task 16). One combined patch, branch
+  `feat/task-16-novu-email`.
