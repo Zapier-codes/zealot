@@ -7,12 +7,21 @@ Rails.application.routes.draw do
   #############################################
   # User
   #############################################
+  # There is no separate sign-up page: the login form registers unknown emails
+  # (see Users::SessionsController#create). Devise's registration routes are
+  # therefore skipped, and only the profile-management ones (edit / update /
+  # cancel account) are mounted again below with the same helper names.
   devise_for :users, controllers: {
     sessions: 'users/sessions',
     registrations: 'users/registrations',
     confirmations: 'users/confirmations',
     omniauth_callbacks: 'users/omniauth_callbacks',
-  }, skip: :unlocks
+  }, skip: %i[unlocks registrations]
+
+  devise_scope :user do
+    resource :registration, only: %i[edit update destroy], path: 'users',
+                            controller: 'users/registrations', as: :user_registration
+  end
 
   #############################################
   # App

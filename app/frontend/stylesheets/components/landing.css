@@ -214,6 +214,83 @@
   to { transform: translateX(-50%); }
 }
 
+/* -------------------------------------------------------------------- */
+/* Get started CTA: a small pulse ring, a light flare that sweeps across */
+/* every few seconds, and a brighter burst while pressed. Colours come   */
+/* only from daisyUI theme variables (color-mix), so every theme works.  */
+/* The burst plays while the browser navigates — it never delays the     */
+/* link. Reduced-motion users get a static glow instead (see bottom).    */
+/* -------------------------------------------------------------------- */
+@layer components {
+  .landing-cta {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+    box-shadow:
+      0 10px 28px -10px color-mix(in oklch, var(--color-primary) 55%, transparent),
+      0 0 0 0 color-mix(in oklch, var(--color-primary) 40%, transparent);
+    animation: landing-cta-pulse 2.6s ease-out infinite;
+  }
+
+  /* moving flare */
+  .landing-cta::after {
+    content: "";
+    position: absolute;
+    top: -40%;
+    bottom: -40%;
+    left: -60%;
+    width: 40%;
+    pointer-events: none;
+    transform: skewX(-20deg);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in oklch, var(--color-primary-content) 55%, transparent),
+      transparent
+    );
+    animation: landing-cta-flare 5s ease-in-out infinite;
+  }
+
+  /* press burst */
+  .landing-cta::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    transform: scale(0.4);
+    background: radial-gradient(
+      circle at 50% 50%,
+      color-mix(in oklch, var(--color-primary-content) 70%, transparent),
+      transparent 60%
+    );
+  }
+  .landing-cta:active::before {
+    opacity: 1;
+    transform: scale(1.7);
+    transition: transform 0.35s ease-out, opacity 0.35s ease-out;
+  }
+}
+
+@keyframes landing-cta-pulse {
+  0% {
+    box-shadow:
+      0 10px 28px -10px color-mix(in oklch, var(--color-primary) 55%, transparent),
+      0 0 0 0 color-mix(in oklch, var(--color-primary) 40%, transparent);
+  }
+  70%, 100% {
+    box-shadow:
+      0 10px 28px -10px color-mix(in oklch, var(--color-primary) 55%, transparent),
+      0 0 0 14px color-mix(in oklch, var(--color-primary) 0%, transparent);
+  }
+}
+
+@keyframes landing-cta-flare {
+  0%, 55% { left: -60%; }
+  100% { left: 130%; }
+}
+
 @keyframes landing-scroll-right {
   from { transform: translateX(-50%); }
   to { transform: translateX(0); }
@@ -225,7 +302,12 @@
   .landing-hero-glow-accent,
   .landing-shine,
   .landing-marquee-left,
-  .landing-marquee-right {
+  .landing-marquee-right,
+  .landing-cta,
+  .landing-cta::after {
     animation: none;
+  }
+  .landing-cta::after {
+    display: none;
   }
 }

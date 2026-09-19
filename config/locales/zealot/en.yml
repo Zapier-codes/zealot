@@ -15,8 +15,6 @@ en:
     title_prefix: Ship every build with
     hero_description: One place to distribute Android, iOS, macOS, Windows and Linux builds to your team and testers — connected straight to the CI you already use.
     get_started: Get started
-    sign_in: Sign in
-    continue_as_guest: Continue as guest
     stats:
       apps: Apps managed
       releases: Releases shipped
@@ -1222,10 +1220,6 @@ en:
       new:
         title: Confirmation email
     registrations:
-      new:
-        error: Error!
-        register_closed: Close to register now, contact the administrator please.
-        register: Register
       edit:
         change_appearance: Change appearance
         update_appearance: Update appearance
@@ -1234,6 +1228,9 @@ en:
         api_token: API Token
     normal:
       title: Normal
+      continue: Continue
+      new_here: New here? Enter your email and a password and we'll create your account. Already have one? This signs you in.
+      invite_only: Sign in with your account. New registrations are closed, contact the administrator for access.
       user_login_disabled: User authentication is disabled, please contact the administrator.
     ldap:
       title: LDAP

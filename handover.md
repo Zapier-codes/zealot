@@ -188,7 +188,7 @@ manual-only as well, it is the same one-line trigger change.)
 
 ## Task board
 
-### 🆕 Task 14: Landing + auth simplification, settings-based theming, more globe countries (14a + 14b code-complete; 14c–14g not started)
+### 🆕 Task 14: Landing + auth simplification, settings-based theming, more globe countries (14a–14e code-complete; 14f, 14g not started)
 
 **Delivery:** everything for Task 14 to date (planning doc + slices 14a and
 14b + status update) ships as **one combined patch** on `develop`
@@ -287,9 +287,9 @@ It contains app code, so the push **will** start the deploy pipeline.
 |---|---|---|---|---|---|
 | ✅ **14a** | Footer no longer shows "Powered by Zealot" or the version. | — | `layouts/_footer.html.slim`, `application_helper.rb` (`powered_by` now unused → delete; keep `zealot_version` + `show_footer_version` setting untouched, note as dormant) | Console page footer shows only the API link (if enabled); nothing on landing. | `ruby -c`; low risk. |
 | ✅ **14b** | Theme is no longer a manual toggle; it follows the account/site setting. | D5 | `layouts/application.html.slim` (drop inline override script; **add** a one-line cleanup that deletes the stale `zealot-appearance` localStorage key so old browsers aren't stuck on an old override), `global_controller.js` (drop `toggleTheme`, `clearStoredAppearance`, stored-appearance logic, `syncThemeMode`; keep `previewTheme`, `switchAppearanceMode`, `setZealotThemeMode`, GoodJob sync), `layout.css` (`.theme-toggle*`), `devise/registrations/edit.html.slim` (remove `submit->global#clearStoredAppearance`), `en.yml` + `zh-CN.yml` (`toggle_theme`) | Toggle gone from every page; changing Appearance on the profile page changes the theme after save and after reload; signed-out `/` follows the site default. | `vite build`; medium (theme flash on first paint — the server already renders `data-theme`, so no inline script should be needed; confirm in a browser). The navbar button itself disappears here or in 14f, whichever lands first — if 14b lands first, remove the button in 14b. |
-| **14c** | Submitting the login form with an unknown email creates the account and signs it in; a known email logs in; both are remembered. | D2, D4 | `config/routes.rb` (replace `skip: :unlocks` with `skip: %i[unlocks registrations]` **plus** a `devise_scope :user` block re-adding only `edit/update/destroy` at the same `edit_user_registration_path` — the profile page depends on it), `users/sessions_controller.rb` (find-or-create for normal login: `username` from email local-part with de-dup, `Setting.preset_role`, `skip_confirmation!`, `remember_me` forced on), `users/registrations_controller.rb` (unchanged behaviour), new `spec/requests/auth_flow_spec.rb` | New email → account count +1, lands on `/dashboard`; same email + right password later → logs in, no new account; right email + wrong password → error, **no** new account; `/users/sign_up` no longer routes; profile page still saves; remember cookie present after login. | Specs + `ruby -c` (needs bundle — may not run in sandbox; say so). **Risk: high** — auth. Mitigations for D2-A: never create on wrong-password for an existing email; keep `:lockable` counting; consider `rack-attack`/throttle on create (new dependency → operator ok first); keep min password length 6; log account-creation events. `secure: true` remember cookie only works over HTTPS (fine on Render, not plain-HTTP local dev). |
-| **14d** | The login page is the only auth page and reads as sign-in **and** sign-up. | 14c | `devise/shared/_tab_normal.html.slim` (drop `remember_me` checkbox; button label + helper line such as "New here? Enter your email and a password — we'll create your account"), `devise/shared/_links.html.slim` (drop sign-up link), delete `devise/registrations/new.html.slim`, `devise/shared/_disabled_login.html.slim` copy check, `en.yml` (+ zh-CN) | `/users/sign_in` shows one form and no "Sign up" anywhere; third-party/LDAP/passwordless tabs unchanged. | `vite build` + Slim eyeball (no `slim` gem in sandbox previously). Low risk. |
-| **14e** | Landing page shows exactly one button, "Get started", with a small pulse + flare, that reaches the login page. | 14d, D3 | `home/index.html.slim` (remove Sign in + guest CTAs; `link_to … new_user_session_path`), `stylesheets/components/landing.css` (`.landing-cta`), `en.yml` (`home.sign_in` removal; the zh-CN `home:` block doesn't exist yet), new `spec/requests/home_spec.rb` | Signed out, `/` → one button; click → `/users/sign_in` in the browser. | **Step 0 = reproduce the routing bug** on the deployed site before touching code (see below). Visual pass in light + dark. |
+| ✅ **14c** | Submitting the login form with an unknown email creates the account and signs it in; a known email logs in; both are remembered. | D2, D4 | `config/routes.rb` (replace `skip: :unlocks` with `skip: %i[unlocks registrations]` **plus** a `devise_scope :user` block re-adding only `edit/update/destroy` at the same `edit_user_registration_path` — the profile page depends on it), `users/sessions_controller.rb` (find-or-create for normal login: `username` from email local-part with de-dup, `Setting.preset_role`, `skip_confirmation!`, `remember_me` forced on), `users/registrations_controller.rb` (unchanged behaviour), new `spec/requests/auth_flow_spec.rb` | New email → account count +1, lands on `/dashboard`; same email + right password later → logs in, no new account; right email + wrong password → error, **no** new account; `/users/sign_up` no longer routes; profile page still saves; remember cookie present after login. | Specs + `ruby -c` (needs bundle — may not run in sandbox; say so). **Risk: high** — auth. Mitigations for D2-A: never create on wrong-password for an existing email; keep `:lockable` counting; consider `rack-attack`/throttle on create (new dependency → operator ok first); keep min password length 6; log account-creation events. `secure: true` remember cookie only works over HTTPS (fine on Render, not plain-HTTP local dev). |
+| ✅ **14d** | The login page is the only auth page and reads as sign-in **and** sign-up. | 14c | `devise/shared/_tab_normal.html.slim` (drop `remember_me` checkbox; button label + helper line such as "New here? Enter your email and a password — we'll create your account"), `devise/shared/_links.html.slim` (drop sign-up link), delete `devise/registrations/new.html.slim`, `devise/shared/_disabled_login.html.slim` copy check, `en.yml` (+ zh-CN) | `/users/sign_in` shows one form and no "Sign up" anywhere; third-party/LDAP/passwordless tabs unchanged. | `vite build` + Slim eyeball (no `slim` gem in sandbox previously). Low risk. |
+| ✅ **14e** | Landing page shows exactly one button, "Get started", with a small pulse + flare, that reaches the login page. | 14d, D3 | `home/index.html.slim` (remove Sign in + guest CTAs; `link_to … new_user_session_path`), `stylesheets/components/landing.css` (`.landing-cta`), `en.yml` (`home.sign_in` removal; the zh-CN `home:` block doesn't exist yet), new `spec/requests/home_spec.rb` | Signed out, `/` → one button; click → `/users/sign_in` in the browser. | **Step 0 = reproduce the routing bug** on the deployed site before touching code (see below). Visual pass in light + dark. |
 | **14f** | No top nav anywhere; the things it carried have new homes. | D1, 14a, 14b, 14c | `layouts/application.html.slim` (stop rendering `_navigation`), delete `_navigation.html.slim`, `_sidebar.html.slim` + `_main_sidebar.html.slim` (Profile, Log out, donate), a small drawer-toggle control, `_content_header`/`_breadcrumbs`, `application_helper.rb` (`devise_page?` / `user_signed_in_or_guest_mode?` branches that only served the navbar) | Landing, login and console have no top bar; on a phone-width window the sidebar still opens; Log out and Profile are reachable; breadcrumbs still show. | **Risk: highest UI slice** — easy to strand logout or the mobile sidebar. Full click-through in a browser is mandatory; if it can't be done, ship as "not verified" and say so. If the operator chose D1-B, this slice shrinks to "hide the bar when signed out". |
 | **14g** | The globe shows more countries and hubs. | D6, D7 | `home_controller.rb` (`landing_countries`, `landing_lights`, header comments that say "18"), `globe_controller.js` only if pin density needs tuning, `landing.css` if pins collide, new `spec/controllers/home_controller_spec.rb` (unique codes, lat ∈ [-90,90], lng ∈ [-180,180], every pin has a hub within the link radius) | Globe loads with the extra flags; no isolated hub; `<noscript>` grid lists them too. | `vite build`; re-run the "no isolated hub, longest link ≤ 55°" check the earlier session used. Additive, low risk. Ship in **two waves of ~15** so density can be judged by eye. |
 | **14h** | Board reflects reality. | all | `handover.md` only | 🆕 → ✅ marks updated | Always the last edit, inside the same single patch. |
@@ -335,9 +335,87 @@ process for how to apply it; nothing else to run).
   real theme afterward, which is how it worked before the toggle existed, but
   it is unconfirmed here.
 
+**Session 3 — 14c + 14d + 14e** (branch `feat/task-14c-14d-unified-login`, base
+`develop` `d13fe3ac` = the Session 2 patch, **confirmed landed** on
+`origin/develop` before this work started). One combined patch.
+
+Built on the **defaults**, because D2/D3/D4 were not answered — change these
+if the operator disagrees:
+- **D2 = A (password):** unknown email + password on the login form creates the
+  account. **D4:** `Setting.registrations_enabled` gates that (off ⇒ unknown
+  emails get the normal "invalid email or password", nothing created).
+  **D3:** "Continue as guest" removed from the landing page.
+
+- **14c (backend):** `config/routes.rb` — `devise_for` now skips
+  `registrations`; a `devise_scope` block re-mounts only `edit / update /
+  destroy` at the same paths/helpers (`edit_user_registration_path` =
+  `/users/edit`, `user_registration_path` = `/users`), so the profile page and
+  "cancel my account" keep working. `/users/sign_up` no longer exists (it now
+  falls into the `:channel/:id` friendly route and 404s).
+  `Users::SessionsController#create` (normal-login branch only): if the email
+  is unknown (case-insensitive) and registrations are enabled → creates the user
+  (`skip_confirmation!`, username from the email's local part, de-duplicated with
+  a numeric suffix via new `User.unique_username_for`, role from
+  `Setting.preset_role`, locale/timezone/appearance defaults as usual), then
+  falls through to Devise's normal authentication which signs them in. A new
+  account that fails validation (e.g. password < 6) re-renders the login form
+  with the errors (422) and creates nothing. **Every** normal login now forces
+  `remember_me=1` (persistent login: Devise `remember_for` = 1 year, cleared on
+  sign out, cookie is `secure`).
+  Magic-link, LDAP and OAuth paths are untouched (OAuth already auto-registers).
+- **14d (login page):** `_tab_normal` drops the "remember me" checkbox, adds a
+  one-line hint ("New here? Enter your email and a password and we'll create
+  your account…", or the invitation-only variant when registrations are off) and
+  the button now says **Continue**; `_links` loses the sign-up link;
+  `devise/registrations/new.html.slim` deleted; obsolete
+  `devise.registrations.new.*` locale keys removed; new
+  `devise.normal.{continue,new_here,invite_only}` in en + zh-CN.
+- **14e (landing CTA):** exactly one button, **Get started**, pointing at
+  `new_user_session_path` (was `new_user_registration_path`, which 14c removes).
+  "Sign in" and "Continue as guest" buttons removed (`home.sign_in`,
+  `home.continue_as_guest` keys removed from `en.yml`). `.landing-cta` in
+  `landing.css`: pulse ring (2.6 s), light flare sweeping every 5 s, brighter
+  burst while pressed; theme colours only via `color-mix()`; reduced-motion
+  users get a static glow (animation off, flare hidden).
+- **The "Get started doesn't route" bug — root cause STILL UNKNOWN.** Nothing was
+  reproduced (no running app). The button now points at a route that exists and
+  that no longer depends on `registrations_enabled`, which covers hypotheses 1
+  and 5 in the 14e detail below; hypotheses 2 (`login_enabled` off), 3 (JS/Turbo
+  error) and 4 (overlay) are **not** ruled out. Click it on the deployed site
+  and record the outcome here.
+- **New specs (not run):** `spec/requests/auth_flow_spec.rb` (register, login,
+  wrong password, short password, username de-dup, registrations off, sign-up
+  route gone, profile routes intact) and `spec/requests/home_spec.rb` (one
+  button → `/users/sign_in`). These are the repo's first request specs.
+- **Verified:** `ruby -c` (Ruby 3.2.3 installed via apt this time) passes on the
+  controller, model, routes and both specs; both locale files parse; a grep finds
+  no remaining `new_user_registration` / `new_registration_path` /
+  `home.sign_in` / `continue_as_guest` references; `pnpm exec vite build`
+  succeeds and the compiled CSS contains `.landing-cta`, its `:active` burst,
+  both keyframes and the reduced-motion override.
+- **Not verified:** there is **no Rails/bundle** in the sandbox (rubygems is not
+  reachable), so **nothing was executed**: the routes, the controller flow, the
+  specs and the Slim templates are syntax-checked / read by eye only. The pulse
+  and flare have not been *seen*. **First thing after deploy:** (1) `/` shows one
+  button and it opens `/users/sign_in`; (2) log in with a brand-new email +
+  password → lands on the dashboard, and you stay logged in after closing the
+  browser; (3) log out, log in again with the same email → same account; (4)
+  wrong password on that email → error, no new account (check Admin → Users);
+  (5) `/users/edit` (profile + appearance + cancel account) still works;
+  (6) run `bundle exec rspec spec/requests`.
+- **Known gaps / risks accepted by choosing D2-A:** a mistyped email silently
+  creates a new account; no email verification (confirmation was already
+  disabled); anyone can create accounts at will — there is **no rate limiting**
+  (`rack-attack` is not in the Gemfile; adding it is a new dependency, needs an
+  operator OK); the magic-link tab still fails for unknown emails (it does not
+  auto-register); guest mode is now reachable only by visiting `/dashboard`;
+  the remember cookie is `secure`, so persistent login needs HTTPS (fine on
+  Render, not on plain-HTTP local dev). Magic links (D2-B) remain the safer
+  upgrade path.
+
 **Suggested first session (done):** 14a + 14b (independent, low-risk), after D5.
-**Second:** D2/D4 answered → 14c + 14d together as one apply-order pair.
-**Third:** 14e (after reproducing the bug) + 14g. **Fourth:** 14f once D1 is settled.
+**Second (done):** 14c + 14d + 14e together, built on the D2/D4/D3 *defaults* (see below).
+**Next:** 14g (globe countries, needs D6/D7) and 14f (top nav, needs D1).
 
 #### 14e detail — pulse + flare spec, and the routing bug
 
@@ -1152,3 +1230,7 @@ them is already modernized.
   `cd ~/zealot && git am <patch> && git push`. The Task 14 planning doc, 14a,
   14b and the status update were re-cut from four patches into that single
   patch (branch `feat/task-14-combined`, base `develop` `6e580958`).
+- **Task 14, session 3**: confirmed the Session 2 patch landed (`d13fe3ac` on
+  `origin/develop`; CI/Render status could not be checked from the sandbox — look
+  at the deploy workflow and Render's Deploys tab). Implemented 14c + 14d + 14e
+  in one combined patch, on the D2-A / D4 / D3 defaults. 14f and 14g untouched.

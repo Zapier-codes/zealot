@@ -30,6 +30,20 @@ class User < ApplicationRecord
   after_initialize :set_user_default_settings, if: :new_record?
   after_initialize :generate_user_token, if: :new_record?
 
+  # Picks a username for an account that was created straight from the login
+  # form (email + password only): the email's local part, cleaned up, with a
+  # numeric suffix when that name is already taken.
+  def self.unique_username_for(email)
+    base = email.to_s.split('@').first.to_s.gsub(/[^\w.\-]/, '')[0, 30].presence || 'user'
+    candidate = base
+    suffix = 1
+    while exists?(username: candidate)
+      suffix += 1
+      candidate = "#{base}#{suffix}"
+    end
+    candidate
+  end
+
   def create_app(**params)
     role_params = params.delete(:roles) || {}
     owner = params.delete(:owner) || false

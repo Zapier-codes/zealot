@@ -22,11 +22,8 @@
       p class="landing-subtext mx-auto mt-6 max-w-2xl text-base md:text-lg text-base-content/70"
         = t('home.hero_description')
 
-      div class="mt-10 flex flex-wrap items-center justify-center gap-3"
-        = link_to t('home.get_started'), new_user_registration_path, class: 'd-btn d-btn-primary d-btn-lg shadow-lg shadow-primary/30'
-        = link_to t('home.sign_in'), new_user_session_path, class: 'd-btn d-btn-ghost d-btn-lg border border-base-content/15'
-        - if Setting.guest_mode
-          = link_to t('home.continue_as_guest'), dashboard_path, class: 'd-btn d-btn-soft d-btn-lg'
+      div class="mt-10 flex items-center justify-center"
+        = link_to t('home.get_started'), new_user_session_path, class: 'd-btn d-btn-primary d-btn-lg landing-cta'
 
   / ---------------------------------------------------------------------
   / Animated stat counters

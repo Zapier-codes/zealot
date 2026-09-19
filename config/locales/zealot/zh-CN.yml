@@ -1224,10 +1224,6 @@ zh-CN:
       new:
         title: 邮箱确认
     registrations:
-      new:
-        error: 错误！
-        register_closed: 服务没有开放注册功能！请联系管理员开通账户。
-        register: 注册
       edit:
         change_appearance: 修改外观
         update_appearance: 更新外观
@@ -1236,6 +1232,9 @@ zh-CN:
         api_token: API 密钥
     normal:
       title: 标准登录
+      continue: 继续
+      new_here: 第一次使用？输入邮箱和密码即可自动创建账户；已有账户则直接登录。
+      invite_only: 请使用已有账户登录。目前不开放注册，请联系管理员开通账户。
       user_login_disabled: 用户登录已被禁用，请联系管理员
     ldap:
       title: LDAP 登录

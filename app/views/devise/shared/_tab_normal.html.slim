@@ -7,8 +7,9 @@ div class="d-tab-content bg-base-100 border-base-300 px-5 py-3"
           = hidden_field_tag :tab, 'normal'
           = f.input :email, required: true, autofocus: true, input_html: { autocomplete: "email", class: 'form-control' }
           = f.input :password, required: true, input_html: { autocomplete: "current-password" }
-          = f.input :remember_me, as: :boolean if devise_mapping.rememberable?
-          = f.button :submit, t('devise.sessions.new.sign_in'), class: 'd-btn d-btn-primary w-full'
+          p class="text-sm text-base-content/60 -mt-1 mb-3"
+            = t(Setting.registrations_enabled ? 'devise.normal.new_here' : 'devise.normal.invite_only')
+          = f.button :submit, t('devise.normal.continue'), class: 'd-btn d-btn-primary w-full'
       div class="order-2"
         == render 'devise/shared/links'
   - else
