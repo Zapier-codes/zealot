@@ -4,6 +4,11 @@ Rails.application.routes.draw do
   root to: 'home#index'
   get 'dashboard', to: 'dashboards#index', as: :dashboard
 
+  # Email preferences: reached from a link in every automated email, no login
+  # needed (the signed token identifies the user).
+  get   'email_preferences/:token', to: 'email_preferences#show',   as: :email_preferences
+  patch 'email_preferences/:token', to: 'email_preferences#update'
+
   #############################################
   # User
   #############################################

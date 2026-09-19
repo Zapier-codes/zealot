@@ -1216,6 +1216,49 @@ en:
     omniauth_welcome_email:
       subject: Welcome to %{title}
       default_password: "You authorized the third-party service to register Zealot, Here is the password:"
+  notification_mailer:
+    footer:
+      why_kind: "You are receiving this email because you opted in to %{kind}."
+      manage: Change your email preferences
+      kinds:
+        deploys: new build notifications
+        notices: error, maintenance and app notices
+        campaigns: platform announcements
+    release_deployed:
+      subject: "New build: %{app} %{version}"
+      heading: "%{app} has a new build"
+      intro: "Version %{version} was just published."
+      changelog: What's new
+      open: Open release
+    notice:
+      about_app: "About your app: %{app}"
+    play_publish_failed:
+      subject: "Google Play publish failed: %{app}"
+      body: |-
+        Publishing %{app} to Google Play failed.
+
+        Error: %{error}
+
+        Please check the release in Zealot and retry once the problem is fixed.
+  email_preferences:
+    invalid_link: This link is invalid or has expired.
+    show:
+      title: Email preferences
+      intro: "Choose which emails are sent to %{email}."
+      kinds:
+        deploys:
+          title: New build notifications
+          description: An email when a new build of one of your apps is published.
+        notices:
+          title: Errors, maintenance and app notices
+          description: Platform errors, scheduled maintenance and notices about your apps.
+        campaigns:
+          title: Platform announcements
+          description: News and announcements from the platform.
+      receipts_note: Payment receipts and invoices are always sent and cannot be switched off.
+      save: Save preferences
+    update:
+      saved: Preferences saved.
   devise:
     confirmations:
       new:

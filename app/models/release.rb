@@ -5,6 +5,33 @@ class Release < ApplicationRecord
   def schedule_proxy_injection
     ProxySdkInjectionJob.perform_later(self.id)
   end
+
+  # Task 12 emails: "new build published" to the app's members, and a notice
+  # when a Play Store publish fails. Both only enqueue a job (GoodJob) and
+  # never block or fail the upload.
+  after_commit :schedule_deploy_notification, on: :create
+  after_commit :notify_play_publish_failed, on: :update,
+               if: -> { saved_change_to_play_publish_status? && play_publish_failed? }
+
+  def schedule_deploy_notification
+    return unless EmailNotifications.enabled?
+
+    ReleaseDeployNotificationJob.perform_later(id)
+  end
+
+  def notify_play_publish_failed
+    return unless EmailNotifications.enabled?
+
+    I18n.with_locale(Setting.site_locale) do
+      EmailBroadcastJob.perform_later(
+        kind: 'notices',
+        app_id: app.id,
+        subject: I18n.t('notification_mailer.play_publish_failed.subject', app: app_name),
+        body: I18n.t('notification_mailer.play_publish_failed.body', app: app_name,
+                     error: play_publish_error.to_s.truncate(500))
+      )
+    end
+  end
   extend VersionCompare
 
   include ReleaseUrl

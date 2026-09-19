@@ -7,6 +7,13 @@ class CreateSampleDataService
   RELEASE_COUNT = 3
 
   def call(user)
+    # Sample releases must not email anyone (Task 12).
+    EmailNotifications.silenced { build_sample_data(user) }
+  end
+
+  private
+
+  def build_sample_data(user)
     create_sample_apps(user)
     create_sample_devices
       create_apple_developer
@@ -19,8 +26,6 @@ class CreateSampleDataService
       create_apple_developer
     end
   end
-
-  private
 
   def create_sample_apps(user)
     android_channels_app user

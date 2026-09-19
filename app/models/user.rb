@@ -5,6 +5,7 @@ PROVIDERS = %i[feishu gitlab google_oauth2 ldap openid_connect github gitea].fre
 class User < ApplicationRecord
   include UserSettings
   include UserRoles
+  include EmailPreferences
 
   extend UserOmniauth
   devise :database_authenticatable, :registerable, :confirmable, :rememberable, :trackable, 

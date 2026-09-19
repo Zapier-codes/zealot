@@ -1,0 +1,21 @@
+- content_for :title do
+  = t('.title')
+
+div class="mx-auto max-w-lg py-10"
+  div class="d-card bg-base-100 border border-base-300"
+    div class="d-card-body gap-4"
+      h1 class="d-card-title" = t('.title')
+      p class="text-sm text-base-content/70" = t('.intro', email: @user.email)
+
+      = form_with url: email_preferences_path(params[:token]), method: :patch do
+        div class="space-y-4"
+          - EmailPreferences::KINDS.each do |kind|
+            label class="flex items-start gap-3 cursor-pointer"
+              = hidden_field_tag "email_preferences[#{kind}]", '0', id: nil
+              = check_box_tag "email_preferences[#{kind}]", '1', @user.wants_email?(kind), class: 'd-checkbox d-checkbox-primary mt-1'
+              span
+                span class="font-semibold block" = t(".kinds.#{kind}.title")
+                span class="text-sm text-base-content/70" = t(".kinds.#{kind}.description")
+
+        p class="text-xs text-base-content/60 mt-4" = t('.receipts_note')
+        = submit_tag t('.save'), class: 'd-btn d-btn-primary mt-4'

@@ -1154,50 +1154,66 @@ This was deferred until the console was successfully hosted. Now that Zealot is 
 - Or will you keep it strictly internal for your employees?
 If you want it, a session needs to be started to build the public discovery layer UI.
 
-### 🆕 Task 12: Automated Email Infrastructure (New — not started)
+### 🟡 Task 12: Automated Email Infrastructure (emails #1, #2, #4 built; #3 receipts blocked; code-complete, not run)
 
-Four transactional/campaign emails, sent to platform users, triggered via
-Supabase RPC triggers on the Postgres side:
+**Path chosen: Rails, not Supabase.** The operator said "do the email infra
+setup now" after the Rails/GoodJob path was recommended (Rails callbacks →
+GoodJob → ActionMailer/SMTP); the Supabase-trigger alternative was **not**
+built. If a second, Rails-independent path is wanted later, this design does not
+prevent it.
 
-1. **App deploy notification** — sent when a user deploys/publishes an app.
-2. **Custom branding campaign** — a platform marketing/branding campaign
-   email (broadcast-style, not per-event).
-3. **Payment receipt/invoice** — sent when a user pays for publishing;
-   needs to include the invoice and the receipt.
-4. **Errors / maintenance / app notices** — sent on platform errors,
-   scheduled maintenance, or notices about a specific user's app.
+| # | Email | Status | Trigger |
+|---|---|---|---|
+| 1 | App deploy notification | ✅ built | `Release` `after_commit on: :create` → `ReleaseDeployNotificationJob` → one `NotificationMailer#release_deployed` per opted-in app member (owner + collaborators) |
+| 2 | Custom branding campaign | ✅ built | Operator-run: `rake zealot:email:campaign SUBJECT=… BODY=…` → `EmailBroadcastJob(kind: 'campaigns')` to every opted-in user |
+| 3 | Payment receipt / invoice | ⛔ not built | There is still **no payment/invoice model** (`db/schema.rb` has none). Build that (or pick a provider webhook) first; the receipt should then be a transactional mailer with **no opt-out** (the preferences page already says so) |
+| 4 | Errors / maintenance / app notices | ✅ built | `rake zealot:email:notice SUBJECT=… BODY=… [APP=id]` → `EmailBroadcastJob(kind: 'notices')`; plus an automatic notice to the app's members when a Play publish **fails** (`Release#notify_play_publish_failed`) |
 
-**Open design question before a session starts building this:** the app
-already has `ActionMailer` configured over SMTP
-(`config/environments/production.rb`), existing mailers
-(`app/mailers/application_mailer.rb`, `user_mailer.rb`,
-`devise_mailer.rb`), and `good_job` (Postgres-backed background jobs,
-already in the `Gemfile`, already the queue for everything else in this
-app). Routing these four emails through **Supabase RPC triggers** instead
-means a second, parallel trigger/delivery path that lives outside Rails
-entirely (e.g. Postgres Database Webhooks + `pg_net` calling out to a
-Supabase Edge Function or an external mail API), rather than a Rails
-`after_commit` callback enqueuing a `GoodJob`-backed mailer the normal way.
-That's not necessarily wrong — it can make sense if the intent is for
-emails to survive even if the Rails app itself is down, or if a separate
-Supabase project already owns this — but it is a second delivery
-mechanism next to one that already exists, so the operator should confirm
-that's actually wanted before a session builds it, rather than a session
-assuming and building the trigger-based path silently.
-
-**Known gaps to resolve first, regardless of which path is chosen:**
-- **No payment/invoice data model exists yet** — `db/schema.rb` has no
-  `payments`, `invoices`, or `receipts` table (checked the full model
-  list: no such model in `app/models/`). Email #3 needs that built (or an
-  existing external payment provider's webhook as the trigger source)
-  before it can fire on anything real.
-- **"Deploy" event** likely maps to `Release` creation/status changes,
-  which does already exist — email #1 is the most immediately buildable
-  of the four.
-- **Recipient/notification preferences** — none of the four should be
-  unsubscribable-proof by default; check whether `User` needs an
-  email-preferences column before this ships, so platform-wide
-  maintenance/branding mail doesn't become unwanted noise with no opt-out.
+- **Opt-outs:** migration `20260919190000_add_email_preferences_to_users.rb`
+  adds `users.email_deploys / email_notices / email_campaigns` (boolean, default
+  **true**, so everyone starts opted in — campaigns default-on is a **decision
+  to confirm**, flip the default in the migration if opt-in is wanted).
+  Every email links to `/email_preferences/:token` (signed token, no login,
+  `EmailPreferencesController`); campaigns also carry a `List-Unsubscribe`
+  header. Locked users are never emailed.
+- **Delivery:** `NotificationMailer#deliver_later` on GoodJob over the existing
+  SMTP settings; one mail per recipient (a bad address only retries itself),
+  rendered in the recipient's own locale (en + zh-CN), HTML + text parts.
+  Body text of notices/campaigns is HTML-escaped plain text.
+- **Switches:** `ZEALOT_EMAIL_NOTIFICATIONS_ENABLED=false` turns all of it off;
+  in production nothing is queued until `SMTP_ADDRESS` is set. Sample data
+  (`CreateSampleDataService`) is created with emails silenced.
+  `config.action_mailer.raise_delivery_errors` is `false` in production, so SMTP
+  failures are silent — use the test task below to actually see errors.
+- **Operator commands (Render shell):**
+  - `bin/rails zealot:email:test EMAIL=you@example.com` — sends one test mail
+    synchronously and raises on SMTP errors. **Run this first.**
+  - `DRY_RUN=1 bin/rails zealot:email:campaign SUBJECT=x BODY=y` — count
+    recipients without sending; drop `DRY_RUN` to queue it.
+  - `bin/rails zealot:email:notice SUBJECT="Maintenance tonight" BODY="…"` (add
+    `APP=<app id>` for one app only).
+- **Files:** `notification_mailer.rb` + `views/notification_mailer/*` +
+  `layouts/notification_mailer.html.slim` (inline-styled; the older
+  `layouts/mailer` pulls in Vite CSS, which mail clients ignore),
+  `jobs/release_deploy_notification_job.rb`, `jobs/email_broadcast_job.rb`,
+  `services/email_notifications.rb`, `models/concerns/email_preferences.rb`,
+  `email_preferences_controller.rb` + view, `lib/tasks/zealot/email.rake`,
+  `release.rb` (two callbacks), `routes.rb`, `schema.rb`, `en.yml` + `zh-CN.yml`
+  (`notification_mailer.*`, `email_preferences.*`), and specs
+  (`spec/mailers`, `spec/jobs`, `spec/models`, `spec/requests/email_preferences_spec.rb`).
+- **Not built / follow-ups:** email #3 (above); no admin UI for campaigns
+  (rake only); no email-preference toggles on the profile page (only the token
+  page); notice/campaign text is typed by the operator in one language
+  (the Play-failure notice uses the site locale); no rate limiting or
+  bounce handling.
+- **Not verified:** no Ruby in the sandbox — nothing was executed (routes,
+  mailer, Slim, jobs, specs, rake). Locale YAML parses; `vite build` passes.
+  **After deploy (the migration runs at container start):** (1) `zealot:email:test`;
+  (2) publish a release for an app with a collaborator → they get the email
+  (check GoodJob at `/admin/background_jobs` if not); (3) open the link in the
+  email footer → toggles save, and opted-out users stop receiving that kind;
+  (4) `DRY_RUN=1` a campaign, then send one to yourself; (5)
+  `bundle exec rspec spec/mailers spec/jobs spec/models spec/requests`.
 
 ### ✅ Task 13: Dashboard / Console UI Revamp — 2026 Modernization (shared layer done and merged)
 
@@ -1422,3 +1438,8 @@ them is already modernized.
   registration default, a migration promoting existing members, and admin creation limited to one email via `/admin`
   (see Task 15). No Ruby in the sandbox; specs unrun. One combined patch,
   branch `feat/task-15-developer-default-admin-signup`.
+- **Task 12 (email infrastructure)**: base `f9c6881c` (Task 15, confirmed
+  landed). Built on the Rails/GoodJob path: emails #1 (deploy), #2 (campaign),
+  #4 (notices + Play publish failure), per-user opt-outs and a token
+  preferences page. #3 (receipts) not built — no payment model. No Ruby in the
+  sandbox; specs unrun. One combined patch, branch `feat/task-12-email-infra`.

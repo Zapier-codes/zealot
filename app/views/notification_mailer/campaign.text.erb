@@ -1,0 +1,5 @@
+<%= @body %>
+
+--
+<%= t('notification_mailer.footer.why_kind', kind: t("notification_mailer.footer.kinds.#{@kind}")) %>
+<%= t('notification_mailer.footer.manage') %>: <%= @preferences_url %>

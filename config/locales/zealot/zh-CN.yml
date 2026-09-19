@@ -1220,6 +1220,49 @@ zh-CN:
     omniauth_welcome_email:
       subject: 欢迎使用 %{title}
       default_password: 您已经使用第三方登录成功授权注册了 Zealot 账号，系统随机生成了默认的密码：
+  notification_mailer:
+    footer:
+      why_kind: "您收到这封邮件，是因为您订阅了%{kind}。"
+      manage: 管理邮件通知设置
+      kinds:
+        deploys: 新版本发布通知
+        notices: 错误、维护与应用通知
+        campaigns: 平台公告
+    release_deployed:
+      subject: "新版本：%{app} %{version}"
+      heading: "%{app} 发布了新版本"
+      intro: "版本 %{version} 刚刚发布。"
+      changelog: 更新内容
+      open: 查看版本
+    notice:
+      about_app: "关于您的应用：%{app}"
+    play_publish_failed:
+      subject: "Google Play 发布失败：%{app}"
+      body: |-
+        %{app} 发布到 Google Play 失败。
+
+        错误信息：%{error}
+
+        请在 Zealot 中查看该版本，问题修复后再重试。
+  email_preferences:
+    invalid_link: 此链接无效或已过期。
+    show:
+      title: 邮件通知设置
+      intro: "选择要发送到 %{email} 的邮件类型。"
+      kinds:
+        deploys:
+          title: 新版本发布通知
+          description: 您的应用发布新版本时发送邮件。
+        notices:
+          title: 错误、维护与应用通知
+          description: 平台错误、计划维护以及与您的应用相关的通知。
+        campaigns:
+          title: 平台公告
+          description: 平台的新闻与公告。
+      receipts_note: 付款收据和发票始终会发送，无法关闭。
+      save: 保存设置
+    update:
+      saved: 设置已保存。
   devise:
     confirmations:
       new:

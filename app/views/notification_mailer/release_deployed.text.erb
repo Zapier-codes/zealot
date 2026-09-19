@@ -1,0 +1,12 @@
+<%= t('.heading', app: @release.app_name) %>
+
+<%= t('.intro', version: @version) %>
+
+<% if @changelog_lines.any? %><%= t('.changelog') %>
+<% @changelog_lines.each do |line| %>- <%= line %>
+<% end %>
+<% end %><%= t('.open') %>: <%= @release.release_url %>
+
+--
+<%= t('notification_mailer.footer.why_kind', kind: t("notification_mailer.footer.kinds.#{@kind}")) %>
+<%= t('notification_mailer.footer.manage') %>: <%= @preferences_url %>
