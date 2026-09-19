@@ -186,13 +186,6 @@ module ApplicationHelper # rubocop:disable Metrics/ModuleLength
     "#{Setting.repo_url}/commit/#{ref}"
   end
 
-  def powered_by
-    safe_join([
-      'Powered by', 
-      link_to('Zealot', 'https://zealot.ews.im')
-    ], ' ')
-  end
-
   def zealot_version
     link_to Setting.version_info(suffix: true), Setting.repo_url
   end

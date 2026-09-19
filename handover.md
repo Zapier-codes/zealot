@@ -6,32 +6,39 @@ handover.md") and is not carried forward here — task statuses below for
 Tasks 6, 7 and 9 are as reported by the operator, not re-derived from that
 removed file or independently re-verified against the code.
 
-## Handoff process (unchanged repo convention)
+## Handoff process — ONE combined patch, apply with `git am` + `git push`
+
+**Standing rule for every session (operator's instruction, supersedes any
+older apply block further down this file):**
 
 1. Session does the work on a branch, never pushes directly to `develop`/`main`.
-2. Session runs `git format-patch -1 HEAD` (or `-N` for N commits) to produce
-   a `.patch` file and hands it off — no push from the session.
-3. Operator applies it themselves. **Outstanding patches, apply in this
-   order** (adjust filenames below to match whatever your download
-   actually saved them as, if different):
+2. **Deliver exactly ONE `.patch` file — a single combined commit.** Everything
+   the session changed goes into it: app code, specs, locale files **and** the
+   `handover.md` update (task board, status marks, session log). Squash the
+   session's work into one commit on top of `develop`, then run
+   `git format-patch -1 HEAD`. Never hand over a numbered series
+   (`0001…000n`), never a separate "docs" patch, never several files the
+   operator has to order. If the session did several TSF slices, they all ride
+   in this one commit; list the slices in the commit body.
+3. **The operator's checkout is already in place and up to date, so applying is
+   just this — no `checkout`, no `pull`, no `status` dance:**
    ```
    cd ~/zealot
-   git am ~/storage/downloads/zealot-landing-page-auth-glassmorphism.patch
-   git am ~/storage/downloads/zealot-handover-task-board-update.patch
+   git am ~/storage/downloads/<the-one-patch>.patch
    git push
    ```
-   The second patch (task-board doc update) is commit-stacked directly on
-   top of the first in this session's branch — apply them in that order,
-   not the reverse. Both are single commits, so each `git am` call applies
-   exactly one.
-   This session's patch is a single commit on top of `develop` (branch
-   `feat/landing-page-and-auth-glassmorphism`), so `git am` applies
-   directly to whatever branch you're currently on — check `git status`
-   first and `git checkout develop` if you're not already there. `git am`
-   fails loudly (not silently) if the tree has diverged since this patch
-   was generated; if that happens, don't force it — pull first, rebase the
-   patch, or flag it back to the next session rather than resolving
-   conflicts blind.
+   The session names the exact file it is handing over. Before handing it
+   over the session must confirm the patch applies cleanly (`git apply --check`
+   / a throwaway `git am`) against the `develop` tip it cloned. `git am` fails
+   loudly if the tree has diverged since the patch was generated; if that
+   happens, don't force it — the operator reports back and the next session
+   rebases the patch instead of resolving conflicts blind. If a *previous*
+   patch from this file's history was only partly applied, say so before
+   generating a new one — a combined patch built on the wrong base will not
+   apply.
+   (Older task-board entries below still show the previous
+   `git checkout develop && git pull` block and multi-patch sequences; those
+   are historical — follow this section, not them.)
 4. **After the push, check the RIGHT workflow** — `Anthropic - Build & Deploy
    develop` (two jobs: Build & push image to GHCR → Trigger Render deploy),
    not whatever run is listed on top. See "Which workflow is the deploy
@@ -41,6 +48,50 @@ removed file or independently re-verified against the code.
    was run through Ruby/Node locally (no Ruby/Node runtime in the sandbox
    this was written in), so treat everything below as **code-complete,
    not syntax- or build-checked**.
+
+## Task-splitting formula (TSF) — how every task on this board gets cut into patches
+
+Added with Task 14. Use it for any task bigger than one obvious change, and
+write the resulting slice table into the task's board entry *before* any code
+is written. The goal is that each patch is small enough for the operator to
+apply from Termux, verify in two minutes, and revert alone if it misbehaves.
+
+**Slice test — a slice is only valid if it passes all five:**
+
+1. **One behaviour.** The goal fits in one sentence with no "and". If it
+   needs an "and", it is two slices.
+2. **Small.** Roughly ≤ 6 files and ≤ 300 changed lines, ideally one layer
+   (view · controller/model · JS+CSS · locale). Over that → split again.
+3. **Bootable after every slice.** Never leave a view calling a helper a
+   previous slice deleted. Removals land *after* their replacement exists.
+4. **Checkable.** Has a ≤ 2-minute browser check for the operator **and** a
+   machine check where the sandbox allows (`ruby -c`, a spec, `pnpm exec vite
+   build`). Anything not checkable in the sandbox is written down as
+   "not verified", per this file's standing convention.
+5. **Reversible.** Each slice lists what to revert (files / hunks) so it can be
+   backed out on its own even though a session ships as one combined commit; no
+   slice depends on a data migration unless it says so.
+
+**Ordering formula** (apply top to bottom, ties broken by lowest risk first):
+
+1. ❓ decisions resolved by the operator → nothing is built on a guess.
+2. Foundation before UI (routes/controllers/models before the views using them).
+3. Replacement before removal (new login path before deleting the old one).
+4. Independent low-risk slices before cross-cutting ones (footer before nav).
+5. Purely additive data slices (lists, copy) last — they never block anything.
+6. The docs/status update (🆕 → ✅) is always the last edit of a session and
+   goes into the same single patch.
+
+**Slice card** (one per slice, in the task entry): `ID · Goal · Depends on ·
+Files (predicted) · Acceptance check · Verify · Risk`.
+
+**Naming & delivery:** Task `N` → slices `Na, Nb, …`. Slices are *planning and
+verification units*, not separate patches. Branch `feat/task-N-<slug>` off
+`develop`; the session's slices are squashed into **one** commit
+(`feat(task-N): <slices done>`), delivered as **one** patch per the Handoff
+process at the top of this file. A session should take **1–3 slices**, never
+more than it can honestly verify. Every slice that changes copy updates
+`en.yml` and `zh-CN.yml` together (or says it didn't).
 
 ## ⚠️ Which workflow is the deploy pipeline? (read before touching CI or telling the operator "the build passed")
 
@@ -136,6 +187,226 @@ manual-only as well, it is the same one-line trigger change.)
    workflow file, status, and job list.
 
 ## Task board
+
+### 🆕 Task 14: Landing + auth simplification, settings-based theming, more globe countries (14a + 14b code-complete; 14c–14g not started)
+
+**Delivery:** everything for Task 14 to date (planning doc + slices 14a and
+14b + status update) ships as **one combined patch** on `develop`
+(`6e580958`), branch `feat/task-14-combined`. Apply per the Handoff process:
+```
+cd ~/zealot
+git am ~/storage/downloads/<the-one-patch>.patch
+git push
+```
+It contains app code, so the push **will** start the deploy pipeline.
+
+**Operator's request, in their order (nothing below has been coded):**
+1. Remove the footer's "Powered by Zealot" and the version.
+2. Remove the top nav on the landing page — and, per the request, *all* top nav.
+3. Theming must not be a manual toggle; it should be changed in the settings page.
+4. "Get started" doesn't route — fix it. It must be the **only** button on the
+   landing page (no Sign in / Sign up), with a small pulse and a flare, and it
+   routes to the login page.
+5. One login page only, no sign-up. A new user who logs in is registered as a
+   new user; an existing user is remembered (persistent login). One page does
+   both jobs.
+6. Add more missing countries to the globe / constellation.
+7. Document it here with a task-splitting formula (see **TSF** near the top of
+   this file). No coding yet.
+
+> Wording note: the request says "provided by zealot"; the code says
+> **"Powered by Zealot"** (`ApplicationHelper#powered_by`). Treated as the same
+> thing. The repo is MIT-licensed, so hiding the footer credit is permitted;
+> keep the `LICENSE` file itself.
+
+#### What the code looks like today (read from `develop` @ `6e580958`, not run)
+
+- **Footer** — `layouts/_footer.html.slim` renders `powered_by` and, if
+  `Setting.show_footer_version`, `zealot_version`, plus the API link
+  (`show_api`). It is already hidden on Devise pages (`unless devise_page?`), so
+  it only shows on the landing page and console pages.
+- **Top nav** — `layouts/_navigation.html.slim`, rendered once by
+  `layouts/application.html.slim`. It holds, for signed-out users: brand logo,
+  theme toggle, "Donate" heart button, "Log in" button. For signed-in users:
+  the **sidebar (drawer) toggle** (the only way to open the sidebar below `lg`),
+  **breadcrumbs**, theme toggle, donate heart, and the **avatar dropdown with
+  Profile + Log out**. `_sidebar.html.slim` / `_main_sidebar.html.slim`
+  contain **no** profile or logout link, so deleting the bar strands logout.
+- **Theme toggle** — `global#toggleTheme` (navbar button) writes
+  `localStorage['zealot-appearance']`, which **overrides** the account/site
+  appearance on that browser. Pieces: navbar button, `.theme-toggle*` rules in
+  `layout.css`, `data-mode` attribute, the inline no-flash script in
+  `layouts/application.html.slim`, `toggleTheme` / `storedAppearance` /
+  `effectiveAppearance` / `clearStoredAppearance` / `syncThemeMode` in
+  `global_controller.js`, `submit->global#clearStoredAppearance` on the profile
+  appearance form, and the `toggle_theme` locale key (en + zh-CN).
+- **Settings for theming already exist** — the profile page
+  (`devise/registrations/edit`, "Change appearance" card) has appearance
+  (light / dark / auto) + light-theme + dark-theme pickers saved on `User`; the
+  admin Settings page has `site_appearance` / `site_light_theme` /
+  `site_dark_theme` (what signed-out visitors get).
+- **Landing hero** — `home/index.html.slim` has three CTAs: "Get started" →
+  `new_user_registration_path`, "Sign in" → `new_user_session_path`, and
+  "Continue as guest" (only if `Setting.guest_mode`).
+- **Auth** — `devise_for :users, controllers: {sessions: 'users/sessions',
+  registrations: 'users/registrations', …}, skip: :unlocks`. `User` uses
+  `database_authenticatable, registerable, confirmable, rememberable, trackable,
+  validatable, recoverable, lockable, magic_link_authenticatable,
+  omniauthable`. Confirmation is already neutralised
+  (`confirmation_required?` → false). `remember_for = 1.year`,
+  `expire_all_remember_me_on_sign_out = true`,
+  `rememberable_options = { secure: true }` (cookie only sent over HTTPS).
+  The sign-in form has a `remember_me` checkbox. Sign-up page is gated by
+  `Setting.registrations_enabled`; login forms by `Setting.login_enabled`.
+  OAuth sign-in **already** auto-registers unknown users
+  (`UserOmniauth#from_omniauth`) — a pattern to copy. `Users::RegistrationsController`
+  is **also the profile-edit controller** (`edit_user_registration_path`), so
+  registrations cannot simply be `skip`ped.
+- **Globe** — `HomeController#landing_countries` = **18** flag pins (US GB DE FR
+  NL SE CA BR MX JP KR CN IN SG AU NG ZA AE) at capital-city lat/lng;
+  `#landing_lights` = **42** "constellation" hub cities joined to their 2
+  nearest neighbours (≤ 55°) by `globe_controller.js`. Both are static brand
+  imagery, not analytics. The `<noscript>` flag grid lists every country too.
+  There is **no** admin "constellation settings" screen — see D7.
+
+#### ❓ Decisions needed before the marked slices start
+
+| # | Question | Blocks | Default if the operator just says "go" |
+|---|---|---|---|
+| D1 | "Remove all top nav": literally **every** page including the signed-in console, or only landing + login? Removing it in the console needs new homes for the drawer toggle, breadcrumbs, Profile/Log out and the donate button. | 14f | Remove everywhere. Profile + Log out go to the bottom of the sidebar; a small floating drawer button on `< lg`; breadcrumbs move into the existing `_content_header`; donate heart moves to the sidebar footer. |
+| D2 | How does "login = sign-up" work? **(A)** email + password: unknown email → account created with that password. **(B)** magic link (email only; module is installed but `passwordless_login_enabled` defaults `false` and needs working SMTP). | 14c | **A**, because it is the literal ask. Known cost: a typo'd email silently creates an account, and there is no email verification (already the case today). Mitigations listed in 14c. B is the safer upgrade path. |
+| D3 | The "Continue as guest" button — the request says *only* Get started. | 14e | Remove it from the landing page. Guest mode still works by visiting `/dashboard` directly. |
+| D4 | Keep `Setting.registrations_enabled` as the gate on auto-registration (off ⇒ unknown emails get "invitation only")? | 14c | Keep it as the gate, default `true` (unchanged). |
+| D5 | Where is "the settings page" for theme? | 14b | Existing profile-page Appearance card (all users) + admin Settings for the site default. Signed-out visitors get the site default. No new page. |
+| D6 | Final country list — see 14g; a few picks are geopolitically sensitive (TW, RU, IL, UA). | 14g | Add the non-flagged ones; leave the flagged four out until told. |
+| D7 | "Constellation settings" — read as `landing_countries` + `landing_lights` + the constants at the top of `globe_controller.js`. If a Setting-backed/admin-editable list was meant, that is a bigger task. | 14g | Static lists in `HomeController`, as today. |
+
+#### Slice table (TSF applied) — apply order = table order
+
+| ID | Goal (one sentence) | Depends on | Files (predicted) | Acceptance check | Verify / risk |
+|---|---|---|---|---|---|
+| ✅ **14a** | Footer no longer shows "Powered by Zealot" or the version. | — | `layouts/_footer.html.slim`, `application_helper.rb` (`powered_by` now unused → delete; keep `zealot_version` + `show_footer_version` setting untouched, note as dormant) | Console page footer shows only the API link (if enabled); nothing on landing. | `ruby -c`; low risk. |
+| ✅ **14b** | Theme is no longer a manual toggle; it follows the account/site setting. | D5 | `layouts/application.html.slim` (drop inline override script; **add** a one-line cleanup that deletes the stale `zealot-appearance` localStorage key so old browsers aren't stuck on an old override), `global_controller.js` (drop `toggleTheme`, `clearStoredAppearance`, stored-appearance logic, `syncThemeMode`; keep `previewTheme`, `switchAppearanceMode`, `setZealotThemeMode`, GoodJob sync), `layout.css` (`.theme-toggle*`), `devise/registrations/edit.html.slim` (remove `submit->global#clearStoredAppearance`), `en.yml` + `zh-CN.yml` (`toggle_theme`) | Toggle gone from every page; changing Appearance on the profile page changes the theme after save and after reload; signed-out `/` follows the site default. | `vite build`; medium (theme flash on first paint — the server already renders `data-theme`, so no inline script should be needed; confirm in a browser). The navbar button itself disappears here or in 14f, whichever lands first — if 14b lands first, remove the button in 14b. |
+| **14c** | Submitting the login form with an unknown email creates the account and signs it in; a known email logs in; both are remembered. | D2, D4 | `config/routes.rb` (replace `skip: :unlocks` with `skip: %i[unlocks registrations]` **plus** a `devise_scope :user` block re-adding only `edit/update/destroy` at the same `edit_user_registration_path` — the profile page depends on it), `users/sessions_controller.rb` (find-or-create for normal login: `username` from email local-part with de-dup, `Setting.preset_role`, `skip_confirmation!`, `remember_me` forced on), `users/registrations_controller.rb` (unchanged behaviour), new `spec/requests/auth_flow_spec.rb` | New email → account count +1, lands on `/dashboard`; same email + right password later → logs in, no new account; right email + wrong password → error, **no** new account; `/users/sign_up` no longer routes; profile page still saves; remember cookie present after login. | Specs + `ruby -c` (needs bundle — may not run in sandbox; say so). **Risk: high** — auth. Mitigations for D2-A: never create on wrong-password for an existing email; keep `:lockable` counting; consider `rack-attack`/throttle on create (new dependency → operator ok first); keep min password length 6; log account-creation events. `secure: true` remember cookie only works over HTTPS (fine on Render, not plain-HTTP local dev). |
+| **14d** | The login page is the only auth page and reads as sign-in **and** sign-up. | 14c | `devise/shared/_tab_normal.html.slim` (drop `remember_me` checkbox; button label + helper line such as "New here? Enter your email and a password — we'll create your account"), `devise/shared/_links.html.slim` (drop sign-up link), delete `devise/registrations/new.html.slim`, `devise/shared/_disabled_login.html.slim` copy check, `en.yml` (+ zh-CN) | `/users/sign_in` shows one form and no "Sign up" anywhere; third-party/LDAP/passwordless tabs unchanged. | `vite build` + Slim eyeball (no `slim` gem in sandbox previously). Low risk. |
+| **14e** | Landing page shows exactly one button, "Get started", with a small pulse + flare, that reaches the login page. | 14d, D3 | `home/index.html.slim` (remove Sign in + guest CTAs; `link_to … new_user_session_path`), `stylesheets/components/landing.css` (`.landing-cta`), `en.yml` (`home.sign_in` removal; the zh-CN `home:` block doesn't exist yet), new `spec/requests/home_spec.rb` | Signed out, `/` → one button; click → `/users/sign_in` in the browser. | **Step 0 = reproduce the routing bug** on the deployed site before touching code (see below). Visual pass in light + dark. |
+| **14f** | No top nav anywhere; the things it carried have new homes. | D1, 14a, 14b, 14c | `layouts/application.html.slim` (stop rendering `_navigation`), delete `_navigation.html.slim`, `_sidebar.html.slim` + `_main_sidebar.html.slim` (Profile, Log out, donate), a small drawer-toggle control, `_content_header`/`_breadcrumbs`, `application_helper.rb` (`devise_page?` / `user_signed_in_or_guest_mode?` branches that only served the navbar) | Landing, login and console have no top bar; on a phone-width window the sidebar still opens; Log out and Profile are reachable; breadcrumbs still show. | **Risk: highest UI slice** — easy to strand logout or the mobile sidebar. Full click-through in a browser is mandatory; if it can't be done, ship as "not verified" and say so. If the operator chose D1-B, this slice shrinks to "hide the bar when signed out". |
+| **14g** | The globe shows more countries and hubs. | D6, D7 | `home_controller.rb` (`landing_countries`, `landing_lights`, header comments that say "18"), `globe_controller.js` only if pin density needs tuning, `landing.css` if pins collide, new `spec/controllers/home_controller_spec.rb` (unique codes, lat ∈ [-90,90], lng ∈ [-180,180], every pin has a hub within the link radius) | Globe loads with the extra flags; no isolated hub; `<noscript>` grid lists them too. | `vite build`; re-run the "no isolated hub, longest link ≤ 55°" check the earlier session used. Additive, low risk. Ship in **two waves of ~15** so density can be judged by eye. |
+| **14h** | Board reflects reality. | all | `handover.md` only | 🆕 → ✅ marks updated | Always the last edit, inside the same single patch. |
+
+#### Shipped so far
+
+**Session 2 — 14a + 14b** (branch `feat/task-14-combined`, one squashed
+commit containing the Task 14 planning doc and both slices — see the Handoff
+process for how to apply it; nothing else to run).
+
+- **14a (footer):** `_footer.html.slim` now renders only when
+  `openapi_endpoints_enabled?` and shows just the API link, right-aligned — so
+  with the API link off there is no footer bar at all (no empty strip).
+  `ApplicationHelper#powered_by` deleted. `zealot_version` and
+  `Setting.show_footer_version` are **left in place, dormant** (setting still
+  appears in admin Settings but no longer does anything — remove in a later
+  cleanup if wanted).
+- **14b (theme):** the manual toggle is gone. This is a revert of the toggle
+  parts of `4bc3c7a` (navbar button, inline `localStorage` override script,
+  `data-appearance`/`data-themes` on `<html>`, `.theme-toggle*` CSS,
+  `GlobalController` toggle/stored-appearance/`syncThemeMode` code, the profile
+  form's `submit->global#clearStoredAppearance`, the `toggle_theme` locale key in
+  en + zh-CN). The layout `<html>` tag is back to exactly its pre-toggle form.
+  `GlobalController#connect` now deletes the leftover `zealot-appearance`
+  localStorage key — pure hygiene, since nothing reads it anymore. The
+  **counter/globe parts of `4bc3c7a` are untouched.**
+  Theme is now changed only in the profile page's Appearance card (per user) or
+  admin Settings (site default, used for signed-out visitors) — decision D5's
+  default, **assumed, not confirmed by the operator**.
+- **Verified:** `pnpm install --frozen-lockfile` and a full `pnpm exec vite
+  build` succeed; compiled CSS/JS contain no `theme-toggle` / `toggleTheme`.
+  Both locale YAML files parse and no longer contain `toggle_theme`. A grep of
+  `app config spec lib` finds no remaining references to the removed helpers
+  (only the intentional legacy-key constant).
+- **Not verified:** no Ruby in this sandbox (`apt` install failed), so
+  `ruby -c` was **not** run and Slim was eyeballed only — the two Slim edits are
+  deletions plus a one-line footer condition. No browser: the footer look and
+  the theme behaviour have not been seen. **After deploy, check:** (1) console
+  page footer — API link only, or no footer when the API link is off; (2) change
+  Appearance on the profile page → theme changes after save and survives reload;
+  (3) with appearance set to **auto**, watch for a brief flash of the wrong
+  theme on first paint — the server renders `data-theme="auto"` and JS applies the
+  real theme afterward, which is how it worked before the toggle existed, but
+  it is unconfirmed here.
+
+**Suggested first session (done):** 14a + 14b (independent, low-risk), after D5.
+**Second:** D2/D4 answered → 14c + 14d together as one apply-order pair.
+**Third:** 14e (after reproducing the bug) + 14g. **Fourth:** 14f once D1 is settled.
+
+#### 14e detail — pulse + flare spec, and the routing bug
+
+- **Pulse:** a soft expanding ring (`box-shadow` keyframes, ~2.4 s loop, ring
+  alpha ≤ ~35 % of the primary colour) with a barely-there scale (1 → 1.02).
+  "Small" is the requirement — no bounce.
+- **Flare:** a diagonal highlight (`::after` gradient) that sweeps across the
+  button every few seconds, and a brighter one-shot burst on `:active`. It must
+  **not** delay navigation — the link navigates immediately, the burst plays
+  during the Turbo visit.
+- Colours only through daisyUI theme variables / `color-mix()` (Task 13
+  convention) so every theme works. Add the classes to the existing
+  `@media (prefers-reduced-motion: reduce)` block at the bottom of
+  `landing.css` → reduced-motion users get a static glow, no animation.
+- **Routing bug — root cause NOT known.** `new_user_registration_path` exists in
+  `config/routes.rb` (Devise `registerable`), so it is not a missing route, and
+  nothing in the hero markup or the glow layers (`pointer-events-none`, `-z-10`)
+  looks like it blocks clicks. Nothing could be run here (no Rails app, no
+  browser). Candidate causes, cheapest to check first:
+  1. `Setting.registrations_enabled` is `false` on the live instance (DB-stored
+     settings override `ZEALOT_REGISTER_ENABLED`) → the sign-up page renders only
+     a "registration closed" message, which reads as "the button does nothing".
+  2. `Setting.login_enabled` is `false` → the login page renders no form.
+  3. A JS error in the `application` bundle breaks Turbo navigation — check the
+     browser console on `/`.
+  4. Something overlapping the button at runtime (needs devtools "inspect
+     element" on the button).
+  5. Stale signed-in session bouncing `/users/sign_up` back to the dashboard.
+  Record which one it was in this entry when 14e ships. Pointing the button at
+  `new_user_session_path` (which 14e does anyway) fixes 1 and 5 but **not** 2 or
+  3 — don't call the bug closed until it has been clicked on the deployed site.
+
+#### 14g detail — candidate additions (capital cities; session fills lat/lng)
+
+Existing 18 stay. Proposed additions, grouped so the globe fills evenly. Hubs
+that already exist in `landing_lights` without a pin are marked ◆ (cheapest
+wins — the constellation is already there).
+
+- **Africa:** Egypt ◆(Cairo) · Kenya ◆(Nairobi) · Ghana · Ethiopia · Morocco · Tanzania · Senegal
+- **Middle East:** Saudi Arabia ◆(Riyadh) · Türkiye ◆(Istanbul hub; capital is Ankara) · Qatar
+- **Asia:** Indonesia ◆(Jakarta) · Thailand ◆(Bangkok) · Vietnam · Philippines · Malaysia · Pakistan · Bangladesh · Kazakhstan
+- **Europe:** Spain ◆(Madrid) · Italy ◆(Rome) · Poland · Switzerland · Ireland · Portugal · Norway · Denmark · Finland · Austria · Belgium · Greece · Czechia
+- **Americas:** Argentina ◆(Buenos Aires) · Colombia ◆(Bogotá) · Chile · Peru ◆(Lima)
+- **Oceania:** New Zealand ◆(Auckland hub; capital is Wellington)
+- **Flagged for operator (D6), excluded by default:** Taiwan, Russia ◆(Moscow), Israel, Ukraine.
+
+Notes for the session doing it:
+- Hubs use city centres, pins use capitals (existing convention) — e.g.
+  Istanbul/Ankara, Auckland/Wellington will not coincide; that is fine.
+- Each new pin is a lazily-loaded `flagcdn.com` image plus a DOM element
+  rendered by globe.gl, and the `<noscript>` grid grows with it. ~48 pins is
+  the suggested ceiling; go past it only after seeing it on a phone.
+- Add a hub for any new country that has no hub within ~55° of another hub,
+  then re-run the link check (each hub links to its 2 nearest, none isolated).
+- Update the "18" wording in the `landing_countries` / `landing_lights` and
+  `globe_controller.js` header comments.
+
+#### Standing caveats for this task
+
+- Everything above is **read from the repo, not run**. No Rails/Ruby bundle,
+  browser, or WebGL was available for this planning pass, so the routing-bug
+  causes and the theme "no inline script needed" claim are hypotheses to
+  confirm, not findings.
+- Slim templates and RSpec have historically been eyeballed only (no `slim`
+  gem / bundle in the sandbox). Node/Vite builds have worked in earlier
+  sessions; check `registry.npmjs.org` is still on the network allowlist.
+- `home:` locale keys exist only in `en.yml`; `zh-CN.yml` has no `home:` block.
+  Slices 14d/14e should add keys to `en.yml` and either mirror them in
+  `zh-CN.yml` or state that they didn't.
 
 ### ✅ Fix: Nightly workflow ran alongside the real deploy pipeline and got mistaken for it (this session)
 
@@ -868,3 +1139,16 @@ them is already modernized.
   partners/sponsors strip, and the auth-page glass upgrade described above.
   Patch generated from a single commit on
   `feat/landing-page-and-auth-glassmorphism`, base `develop`.
+- **Task 14 planning session**: read-only pass over `develop` @ `6e580958`;
+  no application code changed. Documented Task 14 (landing/auth/theme/globe),
+  its seven ❓ decisions, the slice table, and added the Task-splitting
+  formula (TSF). Patch = handover.md only, branch
+  `docs/task-14-landing-auth-theme-plan`.
+- **Task 14, session 2**: implemented slices 14a (footer) and 14b (theme toggle
+  removal) only. Decisions D1–D4, D6, D7 still open; 14c–14g untouched.
+  Branch `feat/task-14a-14b-footer-and-theme-setting`, three commits.
+- **Patch-delivery rule change (operator request)**: Handoff process rewritten —
+  every session now delivers ONE combined patch, applied with just
+  `cd ~/zealot && git am <patch> && git push`. The Task 14 planning doc, 14a,
+  14b and the status update were re-cut from four patches into that single
+  patch (branch `feat/task-14-combined`, base `develop` `6e580958`).
