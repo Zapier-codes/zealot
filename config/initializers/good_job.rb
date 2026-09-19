@@ -27,6 +27,11 @@ CRON_JOBS_SETUP = lambda do
       cron: '*/15 * * * *',
       class: 'AnthropicPlayApprovalExpiryJob',
       description: 'Auto-expire Play Store publish-approval requests older than 48h'
+    },
+    anthropic_play_setup_recheck: {
+      cron: '*/10 * * * *',
+      class: 'AnthropicPlaySetupRecheckJob',
+      description: 'Re-check Play Console setup for apps with releases waiting on it and resume their publish'
     }
   }
 

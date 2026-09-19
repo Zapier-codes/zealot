@@ -72,9 +72,9 @@
       - if release.play_store_target? && user_signed_in_or_guest_mode?
         li title="#{t('releases.show.play_publish_status')}" data-bs-toggle="tooltip" data-bs-custom-class="default-tooltip"
           i.fa-brands.fa-google-play
-          - badge_class = { 'not_published' => 'secondary', 'publishing' => 'info', 'published' => 'success', 'failed' => 'danger' }[release.play_publish_status] || 'secondary'
+          - badge_class = { 'not_published' => 'secondary', 'publishing' => 'info', 'published' => 'success', 'failed' => 'danger', 'waiting_for_setup' => 'warning' }[release.play_publish_status] || 'secondary'
           span.badge class="text-bg-#{badge_class}" = t("releases.show.play_publish_status_badges.#{release.play_publish_status}")
-          - if release.play_publish_status == 'failed' && release.play_publish_error.present?
+          - if release.play_publish_status.in?(%w[failed waiting_for_setup]) && release.play_publish_error.present?
             span.text-danger.small title="#{t('releases.show.play_publish_error', error: release.play_publish_error)}" data-bs-toggle="tooltip" data-bs-custom-class="default-tooltip"
               = " #{truncate(release.play_publish_error, length: 60)}"
 

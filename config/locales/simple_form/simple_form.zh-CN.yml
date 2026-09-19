@@ -29,6 +29,8 @@ zh-CN:
         remember_me: 记住登录信息
       app:
         name: 应用名称
+        play_package_name: Play applicationId
+        play_publish_track: Play Store 发布轨道
       teardown:
         file: 应用文件
       collaborator:
@@ -121,6 +123,8 @@ zh-CN:
       app:
         schemes:
           name: :'simple_form.hints.scheme.name'
+        play_package_name: 该应用在 Google Play 上的 applicationId，例如 com.example.app。它由你上传的第一个安装包确定，在 Play Console 创建应用时并没有这个字段。留空则取第一个以 Play Store 为目标的 .aab，之后每个安装包都会与它比对。
+        play_publish_track: 该应用通过审批的版本会发布到的 Google Play 轨道
       teardown:
         file: 支持 iPhone 的 IPA、Android 的 APK/AAB、macOS 的 mobileprovision 以及 macOS.app.zip、Window 的 EXE 文件
       scheme:
@@ -144,9 +148,9 @@ zh-CN:
         branch: 通常情况是 main 或 develop
         git_commit: 通常是 40 位长度的哈希值
         ci_url: Jenkins、Gitlab CI、Github Action 等具体构建的地址
+        play_store_target: 将该版本标记为需要发布到 Google Play Store。无论是否勾选，该版本都会立即通过我们自己的内部分发渠道下载——此选项仅决定是否需要额外进入 Play Store 发布审批队列。Google Play 仅支持 .aab（不支持 .apk 及其他文件类型），且 applicationId 必须与应用的 Play applicationId 一致
       play_credential:
         service_account_json: 用于调用 Play Developer API 的 Google Cloud 服务账号 JSON 密钥
-        play_store_target: 将该版本标记为需要发布到 Google Play Store。无论是否勾选，该版本都会立即通过我们自己的内部分发渠道下载——此选项仅决定是否需要额外进入 Play Store 发布审批队列
       web_hook:
         body: 自定义的 JSON 消息体以满足不同第三方服务消息体的要求，不填写会使用<a href="https://zealot.ews.im/zh-Hans/docs/user-guide/webhooks">默认结构</a>
       debug_file:

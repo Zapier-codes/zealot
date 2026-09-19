@@ -24,6 +24,30 @@ class App < ApplicationRecord
 
   validates :name, presence: true
 
+  # Task 18 — Google Play only learns an app's applicationId from the first
+  # bundle uploaded to Play Console (it is not a "create app" field there),
+  # so the intended one is recorded here, verified against every
+  # Play-targeted AAB (Release#play_target_bundle_valid) and, when left
+  # blank, adopted from the first such AAB. `play_setup_status` is the
+  # result of the last automated Play-side check
+  # (Anthropic::PlayPreflightService).
+  PLAY_PACKAGE_NAME_FORMAT = /\A[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+\z/
+
+  enum :play_setup_status, {
+    unchecked: 'unchecked',
+    ready: 'ready',
+    needs_first_upload: 'needs_first_upload',
+    needs_access: 'needs_access',
+    needs_credentials: 'needs_credentials',
+    check_failed: 'check_failed'
+  }, prefix: :play_setup
+
+  before_validation :normalize_play_package_name
+  validate :play_package_name_format_valid
+  validates :play_package_name, uniqueness: true, allow_nil: true
+
+  after_commit :schedule_play_preflight,
+               if: -> { saved_change_to_play_package_name? && play_package_name.present? }
   after_destroy :delete_app_recently_releases_cache
 
   def channel_ids
@@ -112,6 +136,44 @@ class App < ApplicationRecord
     collaborators.select(:user_id).map(&:user_id)
   end
 
+  # Adopts a Play-targeted AAB's applicationId as this app's Play package
+  # name when none was entered. Never overwrites an existing value (that
+  # mismatch is rejected at upload instead). Returns true when it changed.
+  def adopt_play_package_name!(value)
+    value = value.to_s.strip
+    return false if play_package_name.present? || value.blank?
+
+    update(play_package_name: value)
+  end
+
+  # Stores an Anthropic::PlayPreflightService::Result. update_columns on
+  # purpose: recording a check must not re-trigger the callbacks that
+  # schedule a check.
+  def record_play_setup!(result)
+    update_columns(
+      play_setup_status: result.app_status.to_s,
+      play_setup_message: result.message,
+      play_setup_checked_at: Time.current
+    )
+  end
+
+  # Approved releases parked by AnthropicPlayPublishJob as
+  # `waiting_for_setup`, oldest first.
+  def waiting_play_releases
+    Release.where(channel_id: Channel.where(scheme_id: schemes.select(:id)).select(:id))
+           .play_approval_approved
+           .play_publish_waiting_for_setup
+           .reorder(id: :asc)
+  end
+
+  # Called when a check says Play is ready: publishes the waiting releases
+  # one minute apart so they don't open concurrent edits on the same app.
+  def resume_waiting_play_publishes!
+    waiting_play_releases.each_with_index do |release, index|
+      AnthropicPlayPublishJob.set(wait: index.minutes).perform_later(release.id)
+    end
+  end
+
   def archive
     update(archived: true)
   end
@@ -121,6 +183,20 @@ class App < ApplicationRecord
   end
 
   private
+
+  def normalize_play_package_name
+    self.play_package_name = play_package_name.to_s.strip.presence
+  end
+
+  def play_package_name_format_valid
+    return if play_package_name.blank? || play_package_name.match?(PLAY_PACKAGE_NAME_FORMAT)
+
+    errors.add(:play_package_name, I18n.t('apps.messages.errors.invalid_play_package_name'))
+  end
+
+  def schedule_play_preflight
+    AnthropicPlayPreflightJob.perform_later(id)
+  end
 
   def recently_release_app_id
     id

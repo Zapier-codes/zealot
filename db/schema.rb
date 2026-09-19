@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_19_190000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_19_200000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -62,9 +62,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_19_190000) do
     t.datetime "created_at", null: false
     t.string "description"
     t.string "name", null: false
+    t.string "play_package_name"
     t.string "play_publish_track", default: "internal", null: false
+    t.datetime "play_setup_checked_at"
+    t.text "play_setup_message"
+    t.string "play_setup_status", default: "unchecked", null: false
     t.datetime "updated_at", null: false
     t.index ["name"], name: "index_apps_on_name"
+    t.index ["play_package_name"], name: "index_apps_on_play_package_name", unique: true, where: "(play_package_name IS NOT NULL)"
   end
 
   create_table "apps_users", id: false, force: :cascade do |t|

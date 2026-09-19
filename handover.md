@@ -188,6 +188,177 @@ manual-only as well, it is the same one-line trigger change.)
 
 ## Task board
 
+### 🆕 Task 18: Play applicationId intake fix + automated Play preflight (code-complete, not run)
+
+**Why (a correction to earlier guidance):** an earlier session/operator note
+told developers to enter the package name when *creating the app in Play
+Console*. That is wrong: Play Console's "Create app" asks for name, language,
+App/Game, Free/Paid, contact email and declarations — **no package name**. The
+applicationId is fixed by the **first bundle uploaded**, and until then the
+Play Developer API answers `404 Package not found: <id>` (the operator's
+`play-check com.package` hit exactly this). Consequences for Zealot: the
+package name is not a "create the Play app" field, it is the **intended
+applicationId**, and it must be **verified against the first uploaded AAB**.
+Google-side facts here rest on the operator's report plus third-party
+docs/issues that say the same (first upload must be manual; unknown package →
+404); this session did not open Google's own docs page for it.
+
+> There was no literal "intake form" with a package-name field in this repo.
+> The closest things were `Channel#bundle_id` (a *regex/wildcard rule* matched
+> against uploaded builds, default `*`, unrelated to Play) and the `App` form
+> (name + Play track only). The `play-check` command is not in the repo
+> either — `rake zealot:play:check` is now its in-repo equivalent.
+
+#### The two sides of deployment (as stated by the operator)
+
+- **Track A — our own stores.** Every uploaded app goes to our stores. To be
+  linked "soon" through an API from Zealot. **Nothing is built for this yet**;
+  today an upload is downloadable through Zealot itself immediately. (Possibly
+  the same thing as the undecided Task 9 storefront — ❓ confirm.)
+- **Track B — Google Play.** Only *approved* apps go to Play. A **payment
+  screen** will be shown the moment the developer presses **Publish**. **Not
+  built.** Today "Publish" = ticking `play_store_target` on the upload form →
+  `Release#request_play_approval_if_targeted` → `request_play_approval!`
+  (48 h admin approval) → `AnthropicPlayPublishJob`.
+  Operator rules (this session): the **payment is non-refundable**, including
+  when an admin rejects the push to Play; a rejected/expired app **still shows
+  up on our stores** (already true — Play status never touches our own
+  distribution). The payment screen's copy should say both up front.
+
+**Account model (operator, this session):** every app on this instance is
+submitted by members under **one approved Play service account**, which
+already covers every app. No new service-account invites will ever happen, so
+"service account not invited" is not a state this flow waits for; a 403 from
+Google is treated as a real failure (permissions revoked / API disabled).
+
+Recommended order for Track B once the payment screen exists — put the free,
+side-effect-free checks *before* taking money:
+
+1. Validate at press time: `.aab` only (anything else shows "not supported"
+   and is not sent to Play), applicationId matches the app's Play
+   applicationId (built here: `Release#play_target_bundle_valid`), and
+   `Anthropic::PlayPreflightService` (built here — can be called synchronously
+   from the Publish handler to warn "Play isn't set up yet" before payment).
+2. **Payment** (not built, non-refundable). `Release#request_play_approval!`
+   is the single choke point — payment success should be what calls it.
+3. Admin approval (exists, 48 h expiry).
+4. `AnthropicPlayPublishJob` — preflight again, sign with the Play upload key,
+   upload, commit.
+
+#### Automated flow after this patch
+
+1. Developer ticks Play target on an upload. Only an `.aab` can go to Play:
+   an `.apk` or any other file type shows **"Not supported for Google Play"**,
+   the Play target is switched off, and the build is still uploaded and
+   available on our stores. An AAB whose applicationId ≠ the app's Play
+   applicationId (or one owned by another app) is rejected as a form error.
+   If the app has no Play applicationId yet, the AAB's is **adopted** (first
+   Play-targeted AAB fixes it, as in Play Console).
+2. Setting/adopting the Play applicationId (or a Play-targeted upload)
+   enqueues `AnthropicPlayPreflightJob`: opens and discards a Play edit and
+   stores the verdict on the app (`play_setup_status` / `play_setup_message`,
+   shown in the app edit form).
+3. Admin approves → `AnthropicPlayPublishJob` re-runs the preflight **before**
+   signing/uploading anything.
+   - `ready` → publish as before.
+   - `package_not_found` (first upload of this app missing / wrong id) →
+     release parked as **`waiting_for_setup`** (new `play_publish_status`, not
+     a failure) and the **admins** get one notice email (members submit apps
+     but have no Play Console access, so they can't fix it).
+   - credential missing / rejected, 403 `access_denied`, or an unexpected
+     error → `failed` as before.
+4. `AnthropicPlaySetupRecheckJob` (GoodJob cron, every 10 min) re-checks only
+   apps that have a `waiting_for_setup` release. When Google says ready, the
+   waiting releases are published automatically, one minute apart. Nobody
+   presses anything after doing the manual step.
+
+**The one step that cannot be automated (Google's API cannot create an app or
+do the first upload — even with the service account):** the first bundle
+upload of each new app, done once by a Play Console admin (not the submitting
+member). Admin checklist per new app:
+
+1. Play Console → create the app (name/language/App-or-Game/Free-or-Paid/
+   email/declarations — no package name).
+2. Upload the org's Play upload key in Zealot (`/admin/play_upload_key`) and
+   sign the first AAB **with that same keystore**. With Play App Signing the
+   key that signs the first upload becomes the registered upload key; later
+   Zealot uploads are signed with the Zealot-held keystore and Google rejects
+   a mismatch.
+3. Upload that first AAB by hand to the **Internal testing** track and create
+   a release. Its applicationId is what the app's Play applicationId in Zealot
+   must equal.
+4. Zealot notices by itself (or run `rake "zealot:play:check[com.your.app]"`;
+   `ready` means Google-side setup is finished). No service-account invite is
+   needed — the one account already covers every app.
+
+#### What changed
+
+- `db/migrate/20260919200000_add_play_setup_to_apps.rb` + `db/schema.rb`:
+  `apps.play_package_name` (unique when set), `play_setup_status`
+  (`unchecked`/`ready`/`needs_first_upload`/`needs_access`/`needs_credentials`/
+  `check_failed`), `play_setup_message`, `play_setup_checked_at`.
+- `App`: applicationId format validation + normalisation, `adopt_play_package_name!`,
+  `record_play_setup!`, `resume_waiting_play_publishes!`, preflight scheduled
+  on change. `AppsController#update` now re-renders the form on validation
+  errors (it used to ignore them silently).
+- `app/views/apps/_form.html.slim`: the applicationId field (create + edit),
+  last Play check message on edit.
+- `Release`: new `play_publish_status` value `waiting_for_setup`,
+  `play_target_bundle_valid` (create-time), `drop_unsupported_play_target`
+  (non-`.aab` → Play target off + "not supported" alert from
+  `ReleasesController#create`, upload still succeeds), adoption + preflight in
+  `request_play_approval_if_targeted`, one-shot "setup needed" notice to admins
+  (`EmailBroadcastJob` got an `admins_only:` option for this).
+- `Anthropic::PlayPreflightService` (new), `AnthropicPlayPreflightJob` (new),
+  `AnthropicPlaySetupRecheckJob` (new, cron in `config/initializers/good_job.rb`),
+  `AnthropicPlayPublishJob` (preflight first; skips already-published or
+  in-flight releases), `Anthropic::PlayPublishService` (package name falls back
+  to the app's Play applicationId when the AAB's could not be parsed).
+- `lib/tasks/zealot/play.rake`: `zealot:play:check[package]`.
+- Badges in `releases/body/_metadata` and `admin/play_approvals/index` know the
+  new status. Locale keys added to `zealot/{en,zh-CN}.yml` and
+  `simple_form.{en,zh-CN}.yml` together. Also fixed two pre-existing locale
+  bugs: `simple_form.labels/hints.app.play_publish_track` did not exist (the app
+  form showed "translation missing"), and the `play_store_target` hint sat under
+  `hints.play_credential` instead of `hints.release`, so it never showed.
+- Specs added: `spec/services/anthropic/play_preflight_service_spec.rb`,
+  `spec/jobs/anthropic_play_publish_job_spec.rb`, `spec/models/app_play_setup_spec.rb`
+  (also covers `Release#play_target_bundle_valid`).
+
+#### Slice table (TSF applied)
+
+| ID | Goal | Depends on | Files | Acceptance check | Verify | Risk / revert |
+|---|---|---|---|---|---|---|
+| 18a | Intended applicationId on the app, verified against Play-targeted AAB | — | migration, schema, `app.rb`, `release.rb`, `apps_controller.rb`, `releases_controller.rb`, `apps/_form`, locales | Enter `com.x.y` on an app; uploading an AAB with another id and Play ticked is rejected; blank → first AAB's id is adopted; an `.apk` with Play ticked uploads with a "not supported" alert | `ruby -c`, YAML parse, model spec | Low. Revert the migration + those hunks. Column is additive. |
+| 18b | Automated preflight, hold-then-resume publish, cron, rake | 18a | preflight service, 3 jobs, `email_broadcast_job.rb`, cron, rake, publish service, badges | Un-registered package → release shows "Waiting for Play setup" + admin email; after the manual upload it publishes by itself | service logic smoke-tested with stubbed Google classes; specs written | Medium (touches the publish job). Revert = drop the preflight call in `AnthropicPlayPublishJob#perform`. |
+
+#### ❓ Decisions / caveats for the operator
+
+- ✅ **Refunds (decided by the operator):** the Play payment is
+  non-refundable, also when an admin rejects; the app stays on our stores.
+  Still open: does an *expired* (48 h, nobody acted) request count the same?
+  Assumed yes — say so on the payment screen.
+- **Track A (our stores) API** — not started; needs its own task + TSF table.
+  Confirm whether it is the Task 9 storefront.
+- ✅ **Only `.aab` is supported for Play** (the publish service can only upload
+  bundles). `.apk` and every other type shows "Not supported for Google Play"
+  and is simply not sent to Play — the upload itself still succeeds and the
+  build is on our stores. (An applicationId mismatch, by contrast, is a form
+  error: that is a wrong-app mistake, not an unsupported format.)
+- If the AAB's applicationId can't be parsed (`bundle_id` blank) the mismatch
+  check is skipped rather than blocking; the publish then uses the app's Play
+  applicationId.
+- `Channel#bundle_id_matched?` is an *unanchored regex* match; it is unrelated
+  to Play, so the Play check uses exact equality instead. Worth tightening
+  separately.
+- **Not verified:** the migration was not run, nothing was booted, no spec was
+  executed (rubygems is blocked in the sandbox — no bundle/Rails), and nothing
+  has talked to Google. Checked: `ruby -c` on every Ruby file, all four locale
+  files parse and the new keys exist in both languages, and the preflight
+  service's classification logic was run against stubbed Google error classes.
+  Slim edits are unrendered. After the push, run the migration on Render,
+  `rake zealot:play:check` for a known app, and watch the deploy workflow.
+
 ### 🆕 Task 17: Admin-only API endpoint for PlayCredential (code-complete, not run)
 
 Grew out of the Task 7 service-account provisioning work this session (see
@@ -1345,7 +1516,8 @@ The code is complete, but it requires live configuration and verification on you
 1. **Database Migration:** Run `bin/rails db:migrate` on Render to create the `play_upload_keys`, `play_credentials` tables, and the `play_rejection_fields` columns.
 2. **Credentials:** Create a Google Cloud Service Account, link it to your Play Console, and upload the `service_account.json` via the Zealot Admin UI (`/admin/play_credential`).
 3. **Upload Key:** Upload a `PlayUploadKey` (keystore) via the Zealot Admin UI (`/admin/play_upload_key`).
-4. **Verification:** Test the end-to-end flow: upload a release, check the `play_store_target` box, approve it, and verify it actually publishes to the Google Play Store.
+4. **First upload (manual — see Task 18):** Play only registers an app's applicationId when its first bundle is uploaded, and the API cannot do that. A Play Console admin uploads each new app's first AAB by hand to Internal testing (signed with the same keystore as the `PlayUploadKey`). The single service account already covers every app, so nothing needs inviting. There is no package-name field when creating the app in Play Console.
+5. **Verification:** Test the end-to-end flow: upload a release, check the `play_store_target` box, approve it, and verify it actually publishes to the Google Play Store. Since Task 18, `rake "zealot:play:check[com.your.app]"` reports whether step 4 is done.
 
 > Same caveat as Task 6 — status as reported, not re-verified this session.
 
@@ -1690,3 +1862,28 @@ them is already modernized.
   existing patterns instead of running it. Nothing in Task 17 or Task 7 has
   been functionally verified yet. One combined patch, branch
   `feat/task-17-play-credential-api`.
+- **Task 18 (Play applicationId intake fix + automated preflight)**: base
+  `6731354f` (`origin/develop` tip this checkout cloned). Operator reported the
+  Play API check returning `404 Package not found: com.package` and corrected an
+  earlier claim: Play Console's Create-app form has no package name; the
+  applicationId is fixed by the first uploaded bundle. Read the repo — no
+  package-name intake field or `play-check` existed in it — so implemented the
+  intended-applicationId field on the App form, verification against
+  Play-targeted AABs, an automated Play preflight (service + job + rake task),
+  a `waiting_for_setup` publish status that resumes by itself after the manual
+  first upload (cron every 10 min), and recorded the two-sided deployment model
+  (own stores API / Play with a future payment screen at Publish) plus the
+  recommended gate order. Ruby was installable this time (`apt-get install
+  ruby`, 3.2.3) so `ruby -c` and a stubbed-Google smoke test of the preflight
+  service ran; rubygems is blocked, so no Rails/specs. One combined patch,
+  branch `feat/task-18-play-package-preflight`.
+- **Task 18, follow-up (same branch/patch, operator answers)**: all apps are
+  submitted by members under the one approved service account, so "service
+  account not invited" is no longer a waiting state (403 now fails; only a
+  missing package waits) and the "setup needed" email goes to admins, not
+  members. Payment is non-refundable even when an admin rejects; the app still
+  shows on our stores. Non-`.aab` files show "not supported" for Play and are
+  not sent there, without blocking the upload. Note for the operator: the
+  service account cannot do the first Play Console upload of a new app (Google
+  API limit) — that one step stays a manual admin task. Patch regenerated,
+  still one commit.

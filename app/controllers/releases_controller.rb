@@ -58,7 +58,9 @@ class ReleasesController < ApplicationController
     @release.perform_teardown_job(current_user.id)
 
     message = t('activerecord.success.create', key: "#{t('releases.title')}")
-    redirect_to channel_release_path(@channel, @release), notice: message
+    flash_options = { notice: message }
+    flash_options[:alert] = t('releases.messages.errors.play_target_unsupported') if @release.play_target_dropped
+    redirect_to channel_release_path(@channel, @release), flash_options
   end
 
   def destroy

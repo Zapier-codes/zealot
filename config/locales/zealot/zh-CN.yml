@@ -172,9 +172,19 @@ zh-CN:
           publishing: 发布中
           published: 已发布
           failed: 失败
+          waiting_for_setup: 等待 Play 配置
       messages:
         approved: "%{name} 已通过 Play Store 发布审批"
         rejected: "%{name} 已被拒绝 Play Store 发布"
+    play_preflight:
+      messages:
+        ready: "Google Play 已识别 %{package}，服务账号可以编辑该应用，可以继续发布。"
+        no_package_name: "该应用尚未设置 Play 的 applicationId。请在应用中填写，或上传勾选了 Play Store 目标的 .aab，系统会从安装包中自动读取。"
+        package_not_found: "Google Play 中还没有 %{package} 对应的应用。applicationId 只会在第一个安装包上传到 Play Console 时注册，而 API 无法完成这一步。需要有 Play Console 权限的管理员手动把该应用的第一个 .aab（使用 Zealot 中配置的 Play 上传密钥签名）上传到「内部测试」轨道（服务账号已覆盖所有应用，无需再邀请）。如果 %{package} 不是安装包真实的 applicationId，请在应用中更正。完成后 Zealot 会自动重新检查并自动发布。"
+        access_denied: "Google Play 拒绝了服务账号（%{email}）访问 %{package}。该账号本应覆盖开发者账号下的所有应用，请在 Play Console 的「用户和权限」中检查其权限，并确认其所属项目仍已启用 Google Play Android Developer API。"
+        not_configured: "尚未上传 Play API 凭据（admin/play_credential）。"
+        auth_failed: "Google 拒绝了 Play 服务账号凭据（%{detail}）。请在 admin/play_credential 上传有效的密钥，并确认其所属项目已启用 Google Play Android Developer API。"
+        error: "Play 配置检查意外失败：%{detail}"
     apple_teams:
       edit:
         title: 更新苹果开发者名称
@@ -428,6 +438,8 @@ zh-CN:
           title: 没有发现任何已归档应用
           body_html: 如果应用长期不再使用且不想删除可以进行归档操作。
     messages:
+      errors:
+        invalid_play_package_name: "不是有效的 Android applicationId（例如 com.example.app）"
       failture:
         not_found_app_by_version: "没有找到应用版本: %{version}"
         not_found_app: 没有找到应用 %{id}，跳转至应用列表
@@ -557,6 +569,7 @@ zh-CN:
         publishing: 发布中
         published: 已发布
         failed: 失败
+        waiting_for_setup: 等待 Play 配置
       install: 安装
       download: 下载
       installing: 安装中 ...
@@ -603,6 +616,9 @@ zh-CN:
         not_found_really: 您访问的应用版本真的不存在
         invalid_password: 密码错误，请重新输入
         bundle_id_not_matched: "应用的包名 %{got} 和约束的包名 %{expect} 无法匹配"
+        play_target_unsupported: "Google Play 不支持该文件：只有 Android App Bundle（.aab）才能发布到 Google Play，.apk 及其他文件类型均不支持。该版本已上传，可在我们自己的商店中获取。"
+        play_package_name_taken: "applicationId %{got} 已属于 Zealot 中的另一个应用，请将该安装包上传到那个应用。"
+        play_package_name_mismatch: "该安装包的 applicationId %{got} 与此应用的 Play applicationId %{expect} 不一致。请上传匹配的安装包；如果应用的 Play applicationId 填写有误，请先更正。"
         upload_to_archived_app: "应用 %{app} 已归档，无法上传新的版本。"
   debug_files:
     title: 调试文件
@@ -1244,6 +1260,14 @@ zh-CN:
         错误信息：%{error}
 
         请在 Zealot 中查看该版本，问题修复后再重试。
+    play_publish_waiting:
+      subject: "需要完成 Google Play 配置：%{app}"
+      body: |-
+        %{app} 已通过 Google Play 发布审批，但需要先在 Play Console 中手动完成一个步骤，且只有拥有 Play Console 权限的管理员才能完成。
+
+        %{detail}
+
+        Zealot 中无需其他操作：系统每隔几分钟会自动重新检查，Google Play 就绪后会自动发布该版本。
   email_preferences:
     invalid_link: 此链接无效或已过期。
     show:

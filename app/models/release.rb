@@ -12,6 +12,8 @@ class Release < ApplicationRecord
   after_commit :schedule_deploy_notification, on: :create
   after_commit :notify_play_publish_failed, on: :update,
                if: -> { saved_change_to_play_publish_status? && play_publish_failed? }
+  after_commit :notify_play_publish_waiting, on: :update,
+               if: -> { saved_change_to_play_publish_status? && play_publish_waiting_for_setup? }
 
   def schedule_deploy_notification
     return unless EmailNotifications.enabled?
@@ -29,6 +31,26 @@ class Release < ApplicationRecord
         subject: I18n.t('notification_mailer.play_publish_failed.subject', app: app_name),
         body: I18n.t('notification_mailer.play_publish_failed.body', app: app_name,
                      error: play_publish_error.to_s.truncate(500))
+      )
+    end
+  end
+
+  # Task 18: the one manual step of the Play flow (the first bundle upload
+  # of a new app in Play Console) needs someone with Play Console access,
+  # which members submitting apps don't have — so the notice goes to the
+  # admins, once, when a release starts waiting for it. Only fires on the
+  # status change, so the automatic re-checks never repeat the email.
+  def notify_play_publish_waiting
+    return unless EmailNotifications.enabled?
+
+    I18n.with_locale(Setting.site_locale) do
+      EmailBroadcastJob.perform_later(
+        kind: 'notices',
+        app_id: app.id,
+        admins_only: true,
+        subject: I18n.t('notification_mailer.play_publish_waiting.subject', app: app_name),
+        body: I18n.t('notification_mailer.play_publish_waiting.body', app: app_name,
+                     detail: play_publish_error.to_s.truncate(800))
       )
     end
   end
@@ -79,7 +101,11 @@ class Release < ApplicationRecord
     not_published: 'not_published',
     publishing: 'publishing',
     published: 'published',
-    failed: 'failed'
+    failed: 'failed',
+    # Task 18: approved, but Play Console itself isn't ready yet (first
+    # bundle of a new app not uploaded yet). Not a failure:
+    # resumes automatically once the preflight check passes.
+    waiting_for_setup: 'waiting_for_setup'
   }, prefix: :play_publish
 
   belongs_to :channel
@@ -91,7 +117,9 @@ class Release < ApplicationRecord
   validates :file, presence: true, on: :create
   validate :bundle_id_matched, on: :create
   validate :determine_file_exist, on: :create
+  validate :play_target_bundle_valid, on: :create, if: :play_store_target?
 
+  before_validation :drop_unsupported_play_target, on: :create
   before_validation :determine_disk_space
   before_create :auto_release_version
   before_create :default_source
@@ -231,6 +259,30 @@ class Release < ApplicationRecord
     message = I18n.t('releases.messages.errors.bundle_id_not_matched', got: self.bundle_id,
                                                                   expect: channel.bundle_id)
     errors.add(:file, message)
+  end
+
+  # Set by drop_unsupported_play_target; the controller uses it to tell the
+  # uploader that the Play target was not applied.
+  attr_reader :play_target_dropped
+
+  # Task 18: Play only learns an app's applicationId from its first
+  # uploaded bundle, so Zealot records the intended one on the App and
+  # checks every Play-targeted release against it. When the bundle's
+  # applicationId can't be read (bundle_id blank) there is nothing to
+  # compare, so that case is let through rather than blocked.
+  def play_target_bundle_valid
+    return if file.blank?
+
+    expected = app.play_package_name
+    if expected.blank? && bundle_id.present? && App.where(play_package_name: bundle_id).where.not(id: app.id).exists?
+      errors.add(:play_store_target, I18n.t('releases.messages.errors.play_package_name_taken', got: bundle_id))
+      return
+    end
+
+    return if expected.blank? || bundle_id.blank? || bundle_id == expected
+
+    errors.add(:play_store_target, I18n.t('releases.messages.errors.play_package_name_mismatch',
+                                          got: bundle_id, expect: expected))
   end
 
   def perform_teardown_job(user_id, when_to_run: :later)
@@ -433,6 +485,19 @@ class Release < ApplicationRecord
     end
   end
 
+  # Only an Android App Bundle (.aab) can go to Google Play; .apk and every
+  # other file type is not supported there. That must never stop the build
+  # from being uploaded and distributed through our own stores, so instead of
+  # failing the upload the Play target is switched off and the controller
+  # shows a "not supported" message (see #play_target_dropped).
+  def drop_unsupported_play_target
+    return unless play_store_target?
+    return if file.blank? || file.path.to_s.end_with?('.aab')
+
+    self.play_store_target = false
+    @play_target_dropped = true
+  end
+
   def determine_disk_space
     upload_path = Sys::Filesystem.stat(Rails.root.join('public/uploads'))
     disk_free_size = upload_path.bytes_free
@@ -488,10 +553,18 @@ class Release < ApplicationRecord
   # for Play Store (see releases/_form.html.slim's play_store_target
   # checkbox). Everything else about the release proceeds identically
   # either way — this only starts the 48h admin-approval clock.
+  #
+  # Task 18: also adopts the bundle's applicationId as the App's Play
+  # package name when none was entered (the first Play-targeted AAB fixes
+  # it, as it does in Play Console), and kicks off the Play-side setup
+  # check so a missing manual step is known before an admin approves.
   def request_play_approval_if_targeted
     return unless play_store_target?
 
+    adopted = app.adopt_play_package_name!(bundle_id)
     request_play_approval!
+    # Adopting a package name already schedules the check (App callback).
+    AnthropicPlayPreflightJob.perform_later(app.id) if app.play_package_name.present? && !adopted
   end
 
   def original_filename

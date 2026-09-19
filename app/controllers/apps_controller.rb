@@ -55,7 +55,12 @@ class AppsController < ApplicationController
   def update
     raise_if_app_archived!(@app)
 
-    @app.update(app_params)
+    unless @app.update(app_params)
+      @title = t('apps.edit.title')
+      set_selected_schemes_and_channels
+      return render :edit, status: :unprocessable_entity
+    end
+
     respond_to do |format|
       format.html { redirect_to apps_path }
       format.turbo_stream
@@ -171,6 +176,7 @@ class AppsController < ApplicationController
     @app_params ||= params.require(:app)
                           .permit(
                             :name,
+                            :play_package_name,
                             :play_publish_track,
                             scheme_attributes: { name: [] },
                             channel_attributes: { name: [] },

@@ -28,6 +28,15 @@ RSpec.describe EmailBroadcastJob, type: :job do
     end.to have_enqueued_mail(NotificationMailer, :notice).twice
   end
 
+  it 'can send a notice to the admins only (Task 18: Play setup needed)' do
+    create_user('boss@example.com', role: :admin)
+
+    expect do
+      described_class.perform_now(kind: 'notices', subject: 'Play setup', body: 'Upload the first bundle',
+                                  admins_only: true)
+    end.to have_enqueued_mail(NotificationMailer, :notice).once
+  end
+
   it 'sends nothing when notifications are switched off' do
     allow(EmailNotifications).to receive(:enabled?).and_return(false)
 

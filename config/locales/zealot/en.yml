@@ -186,9 +186,19 @@ en:
           publishing: Publishing
           published: Published
           failed: Failed
+          waiting_for_setup: Waiting for Play setup
       messages:
         approved: "%{name} approved for Play Store publishing"
         rejected: "%{name} rejected for Play Store publishing"
+    play_preflight:
+      messages:
+        ready: "Google Play recognises %{package} and the service account can edit it. Publishing can go ahead."
+        no_package_name: "No Play applicationId is set for this app yet. Enter it on the app, or upload an .aab with the Play Store target ticked and it is taken from the bundle."
+        package_not_found: "Google Play has no app for %{package} yet. An applicationId is only registered by the first bundle uploaded to Play Console, and the API cannot do that step. A Play Console admin needs to upload the first .aab of this app manually to the Internal testing track, signed with the Play upload key configured in Zealot (the service account already covers every app, nothing needs inviting). If %{package} is not the bundle's real applicationId, correct it on the app instead. Zealot re-checks automatically and publishes by itself once it is done."
+        access_denied: "Google Play refused the service account (%{email}) access to %{package}. It should already cover every app on the developer account, so check its permissions under Users and permissions in Play Console and that the Google Play Android Developer API is still enabled for its project."
+        not_configured: "No Play API credential has been uploaded yet (admin/play_credential)."
+        auth_failed: "Google rejected the Play service-account credential (%{detail}). Upload a valid key at admin/play_credential and make sure the Google Play Android Developer API is enabled for its project."
+        error: "The Play setup check failed unexpectedly: %{detail}"
     apple_teams:
       edit:
         title: Edit team metadata
@@ -446,6 +456,8 @@ en:
           title: Not found archived app
           body_html: You can archive app if not in maintaintion or long time no response.
     messages:
+      errors:
+        invalid_play_package_name: "is not a valid Android applicationId (for example com.example.app)"
       failture:
         not_found_app_by_version: "Not found app version: %{version}"
         not_found_app: Not found app by id %{id}, redirect to list of app
@@ -575,6 +587,7 @@ en:
         publishing: Publishing
         published: Published
         failed: Failed
+        waiting_for_setup: Waiting for Play setup
       install: Install
       download: Download
       installing: Installing ...
@@ -623,6 +636,9 @@ en:
         not_found_really: Not found this build.
         invalid_password: Invalid password
         bundle_id_not_matched: "Bundle id or package name not matched between release %{got} and rule %{expect}"
+        play_target_unsupported: "Not supported for Google Play: only Android App Bundles (.aab) can be published there. .apk and other file types are not supported. The build was uploaded and is available on our stores."
+        play_package_name_taken: "applicationId %{got} already belongs to another app in Zealot. Upload this bundle to that app instead."
+        play_package_name_mismatch: "applicationId %{got} in this bundle does not match this app's Play applicationId %{expect}. Upload the matching bundle, or correct the app's Play applicationId if it was entered wrongly."
   debug_files:
     title: Debug files
     index:
@@ -1240,6 +1256,14 @@ en:
         Error: %{error}
 
         Please check the release in Zealot and retry once the problem is fixed.
+    play_publish_waiting:
+      subject: "Google Play setup needed: %{app}"
+      body: |-
+        %{app} is approved for Google Play, but Play Console needs one manual step first, and only an admin with Play Console access can do it.
+
+        %{detail}
+
+        Nothing else is needed in Zealot: it re-checks every few minutes and publishes the release by itself once Google Play is ready.
   email_preferences:
     invalid_link: This link is invalid or has expired.
     show:

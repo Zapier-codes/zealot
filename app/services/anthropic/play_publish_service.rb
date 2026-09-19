@@ -47,7 +47,7 @@ module Anthropic
     def publish!(release)
       ensure_configured!
 
-      package_name = release.bundle_id
+      package_name = release.bundle_id.presence || release.app.play_package_name
       track = release.app.play_publish_track.presence || 'internal'
 
       signed_bundle_path = sign_bundle_for_upload(release.file.path)

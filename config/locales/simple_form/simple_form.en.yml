@@ -29,6 +29,8 @@ en:
         remember_me: Remember me
       app:
         name: App name
+        play_package_name: Play applicationId
+        play_publish_track: Play Store track
       teardown:
         file: File
       collaborator:
@@ -121,6 +123,8 @@ en:
       app:
         schemes:
           name: :simple_form.hints.scheme.name
+        play_package_name: The applicationId this app has on Google Play, e.g. com.example.app. Google Play fixes it from the first bundle you upload; it is not a field when creating the app in Play Console. Leave empty to take it from the first Play-targeted .aab, after which every later one is checked against it.
+        play_publish_track: The Google Play track that approved releases of this app are published to
       teardown:
         file: Support iOS, Android, HarmonyOS, macOS, Windows and Linux binary file
       scheme:
@@ -144,9 +148,9 @@ en:
         branch: Git branch. In general either main or develop
         git_commit: 40 bit length SHA value of git commit
         ci_url: The CI URL specific like Jenkins, Gitlab CI, Github Action etc
+        play_store_target: Mark this release as bound for Google Play Store distribution. It stays available through our own internal distribution immediately either way — this only gates whether it also goes through the Play Store publish-approval queue. Only .aab bundles are supported for Google Play (.apk and other file types are not), and the applicationId must match the app's Play applicationId
       play_credential:
         service_account_json: Google Cloud service account JSON key, scoped to the Play Developer API
-        play_store_target: Mark this release as bound for Google Play Store distribution. It stays available through our own internal distribution immediately either way — this only gates whether it also goes through the Play Store publish-approval queue
       web_hook:
         body: Custom JSON struct body to apply the third party notification services. Use <a href="https://zealot.ews.im/docs/user-guide/webhooks">default structure</a> by leave it empty
       debug_file:

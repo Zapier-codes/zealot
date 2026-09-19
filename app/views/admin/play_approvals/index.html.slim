@@ -70,10 +70,10 @@
                   td = link_to release.app_name, friendly_channel_release_path(release.channel, release)
                   td = "#{release.release_version} (#{release.build_version})"
                   td
-                    - badge_class = { 'not_published' => 'secondary', 'publishing' => 'info', 'published' => 'success', 'failed' => 'danger' }[release.play_publish_status] || 'secondary'
+                    - badge_class = { 'not_published' => 'secondary', 'publishing' => 'info', 'published' => 'success', 'failed' => 'danger', 'waiting_for_setup' => 'warning' }[release.play_publish_status] || 'secondary'
                     span.badge class="text-bg-#{badge_class}" = t(".publish_status_badges.#{release.play_publish_status}")
                   td
-                    - if release.play_publish_status == 'failed' && release.play_publish_error.present?
+                    - if release.play_publish_status.in?(%w[failed waiting_for_setup]) && release.play_publish_error.present?
                       span.text-danger.small = truncate(release.play_publish_error, length: 140)
                     - else
                       span.text-muted "—"
