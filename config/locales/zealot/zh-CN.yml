@@ -11,6 +11,18 @@ zh-CN:
   intro:
     title: 应用托管竟然如此简单、全平台 App 应用分发系统
     description: 持续集成一切跟应用有关事情，接入 CI 系统一切自动化处理，企业多年实战经验，独立部署提供企业打包分发流程、上传应用全套流程方案
+  home:
+    eyebrow: 自托管 · 开源
+    title_prefix: 每一次构建，都交给
+    hero_description: 一个平台，向团队和测试人员分发 Android、iOS、macOS、Windows 和 Linux 应用，并直接对接你已在使用的 CI。
+    get_started: 立即开始
+    stats:
+      apps: 托管应用
+      releases: 已发布版本
+      uptime: 正常运行时间
+    reach:
+      title: 无论团队身在何处
+      description: 部署在你自己的基础设施上，服务于各个时区的开发团队。
   links:
     back_to_list: 返回列表
   admin:
@@ -118,6 +130,8 @@ zh-CN:
         destroy_warning: "删除此密钥不会重新签名或撤销任何已使用它构建的版本，仅会停止后续版本的自动签名。"
       create:
         successful: Android 签名密钥上传并验证成功
+    play_publish:
+      default_release_notes: 问题修复与体验优化。
     play_upload_keys:
       title: Play 上传密钥
       new:
@@ -388,12 +402,15 @@ zh-CN:
       not_found:
         title: 没有发现任何应用或全部已归档
         body_html: 新建应用请点击右上角的 <i class="fa-regular fa-plus-square"></i> 进行操作，查看已归档应用请点击左侧导航栏的 "已归档应用"
+    unarchived:
+      success: 应用已取消归档，可以再次上传新版本。
     show:
       new_scheme: 新增类型
       edit_app: 编辑应用
       destroy_app: 删除应用
       archive_app: 归档应用
       unarchive_app: 取消归档应用
+      archived: 已归档
       new_channel: 新增渠道
       edit_scheme: 编辑类型
       destroy_scheme: 删除类型
@@ -913,6 +930,7 @@ zh-CN:
       team_name: 团队名称
       team_id: 团队 ID
       register_device: 注册设备
+      action: 操作
       related_apple_keys_not_found: 没有发现苹果开发者账户
       related_apps_not_found_with_registered_device: 本设备是通过其他设备同步的方式被注册，但您的设备还没有关联的应用上传
       related_apps_not_found: 当前设备可能还没有注册到苹果开发者或注册的应用没有上传到 Zealot

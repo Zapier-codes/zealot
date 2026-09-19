@@ -188,6 +188,50 @@ manual-only as well, it is the same one-line trigger change.)
 
 ## Task board
 
+### ✅ Fix: missing / untranslated locale keys found while verifying Tasks 12–18 (this session, code-complete, not run)
+
+Found by running a key-parity check (en vs zh-CN, deep-merged across every
+file under `config/locales/`) and by resolving every absolute `t('…')` used in
+`app/` against the en locales. Nothing here is a behaviour change except the
+first row, which is a real bug on the Play publish path.
+
+| Key | Was | Now |
+|---|---|---|
+| `admin.play_publish.default_release_notes` | **Missing in both locales.** `Anthropic::PlayPublishService#release_notes_for` falls back to it when a release has no changelog, and `I18n.t` returns the literal string `translation missing: en.admin.play_publish.default_release_notes` — which would have been sent to Google Play as the release notes. | Added to en + zh-CN (“Bug fixes and improvements.” / “问题修复与体验优化。”). The same text still goes out for both `en-US` and `zh-CN` Play languages, as before. |
+| `home.*` (9 keys: `eyebrow`, `title_prefix`, `hero_description`, `get_started`, `stats.*`, `reach.*`) | en only — the landing page fell back to English for zh-CN users (the “Not done / next session” item from the landing-page task). | Added to zh-CN. |
+| `channels.show.view_app` | en.yml had it as `app_detail` (unused); `channels/_channel.html.slim` calls `view_app`, so English showed “translation missing”. zh-CN was already right. | en key renamed `app_detail` → `view_app`. |
+| `releases.messages.errors.upload_to_archived_app` | zh-CN only (`ReleasesController#create` on an archived app). | Added to en. |
+| `modals.reset.title/body` | zh-CN only (`admin/settings/_form` reset confirm). | Added to en. |
+| `apps.show.archived`, `apps.unarchived.success`, `udid.show.action` | Missing in both. | Added to both. |
+| `admin.users.new_user` | `Admin::UsersController#new` used a key that only exists as `admin.users.index.new_user`. | Controller now uses `admin.users.new.title` (“New user” / “创建用户”). |
+
+**Left alone on purpose:** `Channel#bundle_id_matched?` (unanchored regex — see
+Task 18 caveats) and the remaining `.one` / `.other` differences between
+`en.yml` and `zh-CN.yml` (Chinese has no plural forms; every key is present in
+both once those are collapsed). A few other absolute keys the scan lists
+(`devise.*`, `helpers.select.prompt`, `datetime.distance_in_words.*`,
+`errors.messages.not_saved`, `activerecord.errors.models.setting.default_message`,
+`activerecord.attributes.user.remember_me`) are provided by gems /
+rails-i18n or resolved another way — not verified either way.
+
+**Verified in the sandbox:** `ruby -c` on the 44 Ruby files changed since
+Task 14f and on `admin/users_controller.rb`; every locale file parses; the
+deep-merged lookup resolves each fixed key in both languages; en↔zh-CN key
+parity check has no gaps other than plural shape. **Not verified:** Ruby
+3.2.3 installed this time (`apt-get update && apt-get install ruby`), but
+rubygems is still blocked, so no Rails / RSpec / Slim; nothing rendered in a
+browser. **After deploy:** open `/` as a zh-CN user (landing copy), an app
+page in English (channel “View App” button), a release upload to an archived
+app, and `/admin/users/new` (page title).
+
+**Confirmed by reading the code (not running it):** the Task 18 follow-up
+answers are in the tree as described in Task 18 — a 403 is a plain failure
+(`PlayPreflightService::Result#waiting_for_setup?` is `package_not_found`
+only), the setup-needed notice goes to admins (`EmailBroadcastJob`
+`admins_only`), and non-`.aab` files switch the Play target off with a
+“not supported” message instead of failing the upload. The 48 h-expiry
+question in Task 18’s decisions list is **still open** (assumed non-refundable).
+
 ### 🆕 Task 18: Play applicationId intake fix + automated Play preflight (code-complete, not run)
 
 **Why (a correction to earlier guidance):** an earlier session/operator note
@@ -1887,3 +1931,11 @@ them is already modernized.
   service account cannot do the first Play Console upload of a new app (Google
   API limit) — that one step stays a manual admin task. Patch regenerated,
   still one commit.
+- **Locale-gap fixes (after Task 18)**: base `2ebc5672` (Task 18, the
+  `origin/develop` tip this checkout cloned). Read the whole board, confirmed
+  Task 18's operator follow-up is present in the code, then ran a locale parity
+  / used-key scan (see the ✅ entry at the top of the Task board): zh-CN
+  landing copy, a missing Play release-notes fallback key (would have been sent
+  to Google verbatim as “translation missing…”), and several keys present in
+  only one language. Ruby 3.2.3 installable again; no bundle/Rails. One combined
+  patch, branch `fix/locale-gaps`.

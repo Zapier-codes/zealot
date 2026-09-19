@@ -9,7 +9,7 @@ class Admin::UsersController < ApplicationController
   end
 
   def new
-    @title = t('admin.users.new_user')
+    @title = t('admin.users.new.title')
     @user = User.new
     authorize @user
   end
