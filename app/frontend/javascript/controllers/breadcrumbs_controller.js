@@ -27,11 +27,12 @@ export default class extends Controller {
     // Show all items
     this.itemTargets.forEach(item => item.classList.remove('hidden'))
 
-    // Get parent container's available width
-    const navbarStart = this.containerTarget.closest('.d-navbar-start')
-    if (!navbarStart) return
+    // Get parent container's available width (the breadcrumb row in the
+    // content header; the old navbar container no longer exists)
+    const host = this.containerTarget.closest('[data-breadcrumbs-container]')
+    if (!host) return
 
-    const availableWidth = navbarStart.clientWidth - 100
+    const availableWidth = host.clientWidth - 100
     const containerWidth = this.containerTarget.scrollWidth
 
     // Check if breadcrumbs overflow

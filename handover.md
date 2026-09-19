@@ -188,7 +188,7 @@ manual-only as well, it is the same one-line trigger change.)
 
 ## Task board
 
-### 🆕 Task 14: Landing + auth simplification, settings-based theming, more globe countries (14a–14e, 14g code-complete; 14f not started)
+### 🆕 Task 14: Landing + auth simplification, settings-based theming, more globe countries (14a–14g code-complete, 14h = this board update; nothing verified in a browser yet)
 
 **Delivery:** everything for Task 14 to date (planning doc + slices 14a and
 14b + status update) ships as **one combined patch** on `develop`
@@ -290,9 +290,9 @@ It contains app code, so the push **will** start the deploy pipeline.
 | ✅ **14c** | Submitting the login form with an unknown email creates the account and signs it in; a known email logs in; both are remembered. | D2, D4 | `config/routes.rb` (replace `skip: :unlocks` with `skip: %i[unlocks registrations]` **plus** a `devise_scope :user` block re-adding only `edit/update/destroy` at the same `edit_user_registration_path` — the profile page depends on it), `users/sessions_controller.rb` (find-or-create for normal login: `username` from email local-part with de-dup, `Setting.preset_role`, `skip_confirmation!`, `remember_me` forced on), `users/registrations_controller.rb` (unchanged behaviour), new `spec/requests/auth_flow_spec.rb` | New email → account count +1, lands on `/dashboard`; same email + right password later → logs in, no new account; right email + wrong password → error, **no** new account; `/users/sign_up` no longer routes; profile page still saves; remember cookie present after login. | Specs + `ruby -c` (needs bundle — may not run in sandbox; say so). **Risk: high** — auth. Mitigations for D2-A: never create on wrong-password for an existing email; keep `:lockable` counting; consider `rack-attack`/throttle on create (new dependency → operator ok first); keep min password length 6; log account-creation events. `secure: true` remember cookie only works over HTTPS (fine on Render, not plain-HTTP local dev). |
 | ✅ **14d** | The login page is the only auth page and reads as sign-in **and** sign-up. | 14c | `devise/shared/_tab_normal.html.slim` (drop `remember_me` checkbox; button label + helper line such as "New here? Enter your email and a password — we'll create your account"), `devise/shared/_links.html.slim` (drop sign-up link), delete `devise/registrations/new.html.slim`, `devise/shared/_disabled_login.html.slim` copy check, `en.yml` (+ zh-CN) | `/users/sign_in` shows one form and no "Sign up" anywhere; third-party/LDAP/passwordless tabs unchanged. | `vite build` + Slim eyeball (no `slim` gem in sandbox previously). Low risk. |
 | ✅ **14e** | Landing page shows exactly one button, "Get started", with a small pulse + flare, that reaches the login page. | 14d, D3 | `home/index.html.slim` (remove Sign in + guest CTAs; `link_to … new_user_session_path`), `stylesheets/components/landing.css` (`.landing-cta`), `en.yml` (`home.sign_in` removal; the zh-CN `home:` block doesn't exist yet), new `spec/requests/home_spec.rb` | Signed out, `/` → one button; click → `/users/sign_in` in the browser. | **Step 0 = reproduce the routing bug** on the deployed site before touching code (see below). Visual pass in light + dark. |
-| **14f** | No top nav anywhere; the things it carried have new homes. | D1, 14a, 14b, 14c | `layouts/application.html.slim` (stop rendering `_navigation`), delete `_navigation.html.slim`, `_sidebar.html.slim` + `_main_sidebar.html.slim` (Profile, Log out, donate), a small drawer-toggle control, `_content_header`/`_breadcrumbs`, `application_helper.rb` (`devise_page?` / `user_signed_in_or_guest_mode?` branches that only served the navbar) | Landing, login and console have no top bar; on a phone-width window the sidebar still opens; Log out and Profile are reachable; breadcrumbs still show. | **Risk: highest UI slice** — easy to strand logout or the mobile sidebar. Full click-through in a browser is mandatory; if it can't be done, ship as "not verified" and say so. If the operator chose D1-B, this slice shrinks to "hide the bar when signed out". |
+| ✅ **14f** | No top nav anywhere; the things it carried have new homes. | D1, 14a, 14b, 14c | `layouts/application.html.slim` (stop rendering `_navigation`), delete `_navigation.html.slim`, `_sidebar.html.slim` + `_main_sidebar.html.slim` (Profile, Log out, donate), a small drawer-toggle control, `_content_header`/`_breadcrumbs`, `application_helper.rb` (`devise_page?` / `user_signed_in_or_guest_mode?` branches that only served the navbar) | Landing, login and console have no top bar; on a phone-width window the sidebar still opens; Log out and Profile are reachable; breadcrumbs still show. | **Risk: highest UI slice** — easy to strand logout or the mobile sidebar. Full click-through in a browser is mandatory; if it can't be done, ship as "not verified" and say so. If the operator chose D1-B, this slice shrinks to "hide the bar when signed out". |
 | ✅ **14g** | The globe shows more countries and hubs. | D6, D7 | `home_controller.rb` (`landing_countries` only — see deviations below) | Globe loads with the extra flags; `<noscript>` grid lists them too (it renders straight off `@countries`, confirmed by reading `home/index.html.slim`, no template change needed). | See "Verified" / "Not verified" below. |
-| **14h** | Board reflects reality. | all | `handover.md` only | 🆕 → ✅ marks updated | Always the last edit, inside the same single patch. |
+| ✅ **14h** | Board reflects reality. | all | `handover.md` only | 🆕 → ✅ marks updated | Always the last edit, inside the same single patch. |
 
 #### Shipped so far
 
@@ -475,10 +475,64 @@ if the operator disagrees:
   visually crowded on a phone-width window. If it's too dense, that's the
   cue to trim rather than to add the 6 that were held back.
 
+**Session 5 — 14f + 14h** (branch `feat/task-14f-no-top-nav`, base `develop`
+`fb95fcc3` = the Session 4 patch tip, **confirmed landed** in this clone). One
+combined patch.
+
+Built on the **D1 default** (remove the top nav everywhere), because D1 was not
+answered — say so if only landing + login was meant (then this slice shrinks to
+"hide the bar when signed out" and most of the below can be reverted).
+
+- **What shipped:** `layouts/_navigation.html.slim` deleted and no longer
+  rendered. Its jobs moved:
+  - **Drawer toggle** → a floating round button (`fixed top-3 left-3`, `md:hidden`,
+    only when `user_signed_in_or_guest_mode?`) plus a collapse/expand item at
+    the bottom of the sidebar (`hidden md:block`). Both are `label for="zealot-drawer"`.
+    Note the drawer opens permanently at `md` (`md:d-drawer-open`), not `lg` as
+    the D1 default text said, so the floating button follows `md`.
+  - **Profile / Log out / Donate** → a new footer menu in `_sidebar.html.slim`
+    (icon-only + tooltips when the sidebar is collapsed, like the other items).
+    Guest-mode visitors get a **Log in** link there instead of Profile/Log out.
+  - **Breadcrumbs** → rendered at the top of `_content_header.html.slim` inside a
+    `[data-breadcrumbs-container]` wrapper; `breadcrumbs_controller.js` now
+    measures that wrapper instead of the deleted `.d-navbar-start`.
+  - `_content.html.slim` adds `pt-16 md:pt-2` when the sidebar exists, so the
+    floating button doesn't cover page content on phones.
+  - New locale key `sidebar_toggle` (en + zh-CN).
+- **Consequences to know about:** signed-out visitors on non-landing/non-login
+  public pages (if any) no longer see a "Log in" button or Donate button —
+  the landing page's Get started is the only entry point. `devise_page?` and
+  `user_signed_in_or_guest_mode?` are **unchanged** (the footer, sidebar and
+  breadcrumbs still use them); nothing in them was navbar-only.
+  `_main_sidebar.html.slim` (unused legacy AdminLTE partial) was left alone.
+- **New spec (not run):** `spec/requests/layout_spec.rb` — no `d-navbar` on
+  landing/login/console; console still exposes Profile, Log out, drawer toggle
+  and the Donate action.
+- **Verified:** `pnpm install --frozen-lockfile` + `pnpm exec vite build`
+  succeed; compiled CSS contains `.z-5`, `.pt-16`, `.top-3`, `.left-3`; both
+  locale files carry the new key. Slim edits were re-read by eye.
+- **Not verified:** no Ruby again (`apt` still 404s on `ruby3.2`), so `ruby -c`,
+  Slim compilation and the new spec were **not run**, and nothing was seen in a
+  browser. **First thing after deploy — full click-through:** (1) `/` and
+  `/users/sign_in` have no top bar; (2) console on desktop: sidebar footer shows
+  Donate / Profile / Log out / toggle, collapsing to icons works; (3) phone-width
+  window: floating ☰ opens the sidebar, overlay closes it, Log out is reachable;
+  (4) open an app/channel page and confirm breadcrumbs show above the page title
+  (and collapse into "…" on narrow widths); (5) log out works (it is a
+  `button_to … method: :delete` inside the sidebar `<li>`); (6) guest mode
+  (`Setting.guest_mode` on, signed out, visit `/dashboard`) shows Log in in the
+  sidebar; (7) `bundle exec rspec spec/requests`. If the drawer starts open on a
+  phone and covers the page, that is the pre-existing `checked=drawer_status`
+  default, not new.
+- **Task 14 is otherwise complete.** Still open from earlier slices: the
+  "Get started doesn't route" root cause (not reproduced), D2-A risks (no rate
+  limiting), and the six held-back globe countries.
+
 **Suggested first session (done):** 14a + 14b (independent, low-risk), after D5.
 **Second (done):** 14c + 14d + 14e together, built on the D2/D4/D3 *defaults* (see below).
 **Third (done):** 14g (globe countries), built on the D6/D7 *defaults*.
-**Next:** 14f (top nav, needs D1) and 14h (board update, folded into whichever session ships 14f).
+**Fourth (done):** 14f (top nav) + 14h (board update), built on the D1 *default*.
+**Next:** nothing scheduled on Task 14 — see Task 12 (email infrastructure) and the open ❓ on Task 9, or verify Task 14 on the deployed site first.
 
 #### 14e detail — pulse + flare spec, and the routing bug
 
@@ -1306,3 +1360,9 @@ them is already modernized.
   `ruby3.2`); this session substituted a Node-based array check in its place —
   see 14g's "Verified" note. One combined patch, branch
   `feat/task-14g-globe-countries`, single commit on top of `develop`.
+- **Task 14, session 5**: base `fb95fcc3` (Session 4 patch, confirmed landed in
+  this clone). Implemented 14f (remove top nav; toggle/profile/logout/donate to
+  the sidebar, breadcrumbs to the content header) + 14h (this board update),
+  on the D1 default. No Ruby in the sandbox, so Slim and the new
+  `spec/requests/layout_spec.rb` are unrun; vite build passes. One combined
+  patch, branch `feat/task-14f-no-top-nav`.

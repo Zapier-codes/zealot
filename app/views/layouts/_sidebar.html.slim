@@ -32,3 +32,32 @@
         = sidebar_link_to('fa-solid fa-file-contract', admin_logs_path, text: t('admin.logs.title'))
         = sidebar_link_to('fa-solid fa-bars-progress', admin_background_jobs_path, text: t('admin.background_jobs.title'))
         = sidebar_link_to('fa-solid fa-database', admin_database_analytics_path, text: t('admin.database_analytics.title'))
+
+    / Footer of the sidebar: everything the removed top nav used to carry
+    ul class="d-menu d-menu-lg w-full border-t border-base-300/60 pt-2"
+      li
+        button[
+          type="button"
+          class="d-is-drawer-close:d-tooltip d-is-drawer-close:d-tooltip-right py-2"
+          data-tip=t('donate')
+          data-action="global#showSponsorModal"
+        ]
+          i.fa-regular.fa-heart.text-red-500
+          span class="d-is-drawer-close:hidden" = t('donate')
+      - if user_signed_in?
+        = sidebar_link_to('fa-solid fa-user-circle', edit_user_registration_path, text: t('user_profile'))
+        li
+          = button_to destroy_user_session_path, method: :delete, class: "d-is-drawer-close:d-tooltip d-is-drawer-close:d-tooltip-right py-2 w-full text-left", data: { tip: t('log_out') } do
+            i.fa-solid.fa-right-from-bracket
+            span class="d-is-drawer-close:hidden" = t('log_out')
+      - else
+        = sidebar_link_to('fa-solid fa-user', new_user_session_path, text: t('log_in'))
+      / Desktop collapse / expand (mobile uses the floating button)
+      li class="hidden md:block"
+        label[
+          for="zealot-drawer"
+          class="d-is-drawer-close:d-tooltip d-is-drawer-close:d-tooltip-right py-2 cursor-pointer"
+          data-tip=t('sidebar_toggle')
+        ]
+          i.fa-solid.fa-bars
+          span class="d-is-drawer-close:hidden" = t('sidebar_toggle')

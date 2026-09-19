@@ -2,6 +2,12 @@ ruby:
   section_title = yield :section_title
   right_panel = yield :section_rightpanel
   breadcrumb = yield :breadcrumb
+  breadcrumbs = @breadcrumbs
+
+// Breadcrumbs (moved here from the removed top nav)
+- if breadcrumbs.present? && user_signed_in_or_guest_mode?
+  div class="min-w-0" data-breadcrumbs-container
+    == render 'layouts/breadcrumbs', breadcrumbs: breadcrumbs
 
 // Content Header (Page header)
 - if section_title.present?

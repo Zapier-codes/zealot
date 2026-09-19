@@ -1,5 +1,5 @@
 // Main content
-.app-container class="flex-1 px-4 py-2"
+.app-container class="flex-1 px-4 py-2 #{'pt-16 md:pt-2' if user_signed_in_or_guest_mode?}"
   == render 'layouts/content_header'
   .app-container-body
     == yield

@@ -32,7 +32,13 @@ html lang="#{I18n.locale}" data-theme=active_theme
         data-action="change->global#storeDrawerStatus"
       ]
       div class="d-drawer-content flex flex-col min-h-screen"
-        == render 'layouts/navigation'
+        - if user_signed_in_or_guest_mode?
+          label[
+            class="d-btn d-btn-circle d-btn-soft fixed top-3 left-3 z-5 md:hidden"
+            for="zealot-drawer"
+            aria-label=t('sidebar_toggle')
+          ]
+            i.fa-solid.fa-bars
         == render 'layouts/content'
         == render 'layouts/footer'
       div class="d-drawer-side d-is-drawer-close:overflow-visible"
