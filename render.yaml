@@ -18,12 +18,24 @@ services:
   # require deleting and recreating the service in the Render dashboard
   # rather than a simple `render blueprint deploy`. Not something this
   # sandbox session can verify; flagging so the operator checks the sync
-  # result rather than assuming it took effect silently. Also needed
-  # before this actually works: a Container Registry credential in the
-  # Render workspace (Workspace Settings -> Registry Credentials) able to
-  # pull from ghcr.io if this repo's GHCR package stays private, wired up
-  # via `creds.fromRegistryCreds.name` below (placeholder name -- create
-  # the credential first, then this name must match it exactly).
+  # result rather than assuming it took effect silently.
+  #
+  # No `creds:` block: this repo's GHCR package (ghcr.io/zapier-codes/zealot)
+  # is public (confirmed by the operator), so Render can pull it
+  # unauthenticated -- no Registry Credential needed. A prior version of
+  # this file referenced `creds.fromRegistryCreds.name: ghcr-zealot`, a
+  # credential that was never actually confirmed to exist in the Render
+  # workspace ("placeholder name -- create the credential first" is what
+  # the old comment literally said). A Blueprint pointing `creds` at a
+  # nonexistent named credential can fail to resolve during sync/deploy --
+  # GitHub Actions would still show green (it only calls the deploy hook
+  # and gets a 200 back; it has no visibility into what Render does next),
+  # while Render silently never actually updates the running image. That
+  # exact "GitHub succeeded but Render didn't reflect it" symptom is what
+  # led to removing this block. If GHCR ever goes private again, this
+  # needs re-adding -- but only after confirming a Registry Credential
+  # with that exact name genuinely exists under Render's Workspace
+  # Settings -> Registry Credentials, not before.
   runtime: image
   image:
     # Lowercased: GHCR (like all OCI registries) rejects uppercase
@@ -31,9 +43,6 @@ services:
     # ("Zapier-codes/zealot") -- see anthropic_deploy_main.yml's own note
     # on the same issue where it computes the per-deploy imgURL override.
     url: ghcr.io/zapier-codes/zealot:deploy-latest
-    creds:
-      fromRegistryCreds:
-        name: ghcr-zealot
   plan: free
   region: singapore
   # autoDeploy has no effect on an image-backed service (Render does not

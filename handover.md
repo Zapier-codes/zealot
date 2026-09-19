@@ -40,6 +40,60 @@ removed file or independently re-verified against the code.
 
 ## Task board
 
+### ✅ Fix: render.yaml referenced a Registry Credential that may not exist (this session)
+
+**Branch:** `fix/render-ghcr-public-drop-unused-registry-creds`, base
+`develop`.
+**Status:** confirmed the actual "Anthropic - Build & Deploy develop"
+GitHub workflow runs end-to-end green (both `build-and-push` and
+`deploy`/Trigger Render deploy) — the operator confirmed this directly
+in the Actions UI. So the GitHub-side half of this pipeline is not in
+question. This patch addresses the other half: what happens *after*
+Render receives that deploy-hook call.
+
+**What was found:** `render.yaml`'s `image:` block declared `creds:
+fromRegistryCreds: name: ghcr-zealot`, pointing at a named Registry
+Credential in the Render workspace. The comment immediately above it
+(pre-this-patch) literally called it a "placeholder name -- create the
+credential first" — i.e. it was never confirmed to actually exist as a
+real credential in the Render dashboard. The operator has now
+confirmed **this repo's GHCR package is public**, so no credential is
+needed at all to pull it.
+
+**Why this matters even though GitHub shows green:** the
+`anthropic_deploy_main.yml` `deploy` job only calls the Render deploy
+hook and checks that Render *accepted* the HTTP request (curl --fail
+on a 2xx). It has zero visibility into what Render does after that —
+if Render's Blueprint sync then tries to resolve a `creds` reference
+to a credential name that doesn't actually exist in the workspace, it
+can fail silently from GitHub's point of view: the workflow stays
+green forever, while Render never actually updates the running image.
+This is a plausible, concrete explanation for "GitHub succeeded but it
+didn't reflect on the Render backend" reported this session.
+
+**Fixed:** removed the `creds:` block entirely from `render.yaml`,
+since it's genuinely unneeded now that the package is public, and
+documented in-line why (including what to check before ever re-adding
+it, if GHCR ever goes private again).
+
+**Not fixed / can't be confirmed from this repo alone:**
+- Whether this actually *was* the cause of the disconnect — this
+  sandbox has no Render dashboard/API access. The operator should
+  trigger a fresh deploy (push to `develop`, or manually replay the
+  deploy hook) and confirm in Render's own Events/Deploys tab that a
+  new deploy actually starts and completes using the new image, not
+  just that the GitHub Actions job stays green.
+- Whether this service is connected to Render as a synced Blueprint at
+  all (vs. `render.yaml` being purely informational / applied manually
+  once). If it *is* a synced Blueprint and syncs independently of the
+  GitHub Actions push (e.g. on its own schedule, or on every push to
+  the branch it watches), it's worth checking whether that sync ever
+  resets `image.url` back to the floating `deploy-latest` tag and
+  clobbers the per-deploy immutable `imgURL=...deploy-<sha>` override
+  the workflow sets — `anthropic_deploy_main.yml`'s comment already
+  flags this as a real risk, unconfirmed either way.
+
+
 ### ✅ Revert: undo the test_docker_build.yml push-trigger, clean up dead .bak files (this session)
 
 **Branch:** `fix/revert-docker-ci-trigger-and-cleanup-workflows`, base
