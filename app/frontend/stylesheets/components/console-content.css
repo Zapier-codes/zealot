@@ -1,0 +1,245 @@
+/* 2026 console revamp, part 2 (Task 13b) — restyling the daisyui
+   *component* classes every console page is already built from
+   (`.d-table`, `.d-badge`, `.d-btn`, `.d-tab`, `.d-list`, `.d-alert`,
+   `.d-tooltip`, `.d-join`/`.d-input`, `.d-menu`/`.d-dropdown`,
+   `.d-collapse`, `.d-stat`) instead of hand-restyling every individual
+   page template.
+
+   Why this file instead of touching Apps/Channels/Releases/Schemes/
+   Debug Files/Teardowns/Webhooks/Collaborators/the 14 admin pages one
+   by one: every one of those pages is already built almost entirely
+   out of these same shared daisyui components (grep counts against
+   app/views at the time of writing: 239 `.d-btn`, 114 `.d-badge`, 97
+   `.d-tooltip`, 56 `.d-join`, 27 `.d-collapse`, 24 `.d-table`, 21
+   `.d-tab`, 17 `.d-list`, 16 `.d-alert`, 14 `.d-dropdown`). Restyling
+   the component once here reaches every page that uses it, same
+   philosophy as console.css's sidebar/navbar/header pass and card.css's
+   `.card` pass — this is the natural continuation of both, at the
+   layer where the actual page content lives instead of just the chrome
+   around it.
+
+   What's deliberately NOT here: this doesn't touch page-specific
+   layout/copy/information-architecture (e.g. reordering what's on the
+   Apps index, redesigning the admin System Info layout, adding new
+   dashboard widgets). That's genuinely bespoke per-page work a
+   restyle-the-shared-component pass can't cover, and would need a
+   follow-up session going through the page list in handover.md's
+   Task 13b entry one at a time. What IS here is every page picking up
+   a consistent "corporate/cinematic, not gamified" visual language:
+   restrained glass, soft primary-tinted glows on interactive/semantic
+   states, a hairline gradient accent instead of hard borders — same
+   restraint level as console.css, no neon, no bounce/scale-in
+   animations, everything keyed off daisyui's own theme CSS variables
+   via color-mix() so every user-selectable theme still works, and all
+   motion respects prefers-reduced-motion (Tailwind's `transition-*`
+   utilities already no-op under reduced motion via this project's
+   existing global reduced-motion handling — see landing.css's own note
+   on the same point; nothing here adds animation beyond simple
+   transitions on existing hover/focus states, which Tailwind's own
+   defaults already condition on that media query). */
+
+@layer components {
+  /* ------------------------------------------------------------------ */
+  /* Tables — Releases, Debug Files, most admin pages                    */
+  /* ------------------------------------------------------------------ */
+  .d-table thead tr {
+    @apply relative;
+
+    &::after {
+      content: "";
+      @apply absolute left-0 right-0 bottom-0 h-px pointer-events-none;
+      background: linear-gradient(
+        90deg,
+        color-mix(in oklch, var(--color-primary) 30%, transparent),
+        transparent 75%
+      );
+    }
+  }
+
+  .d-table tbody tr {
+    @apply relative transition-colors duration-150;
+
+    &:hover {
+      background: color-mix(in oklch, var(--color-base-content) 4%, transparent);
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Badges — status pills everywhere (114 uses at time of writing:      */
+  /* release status, channel state, webhook delivery result, etc.)       */
+  /* ------------------------------------------------------------------ */
+  .d-badge {
+    @apply shadow-sm;
+  }
+
+  .d-badge-success {
+    box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-success) 35%, transparent);
+  }
+
+  .d-badge-warning {
+    box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-warning) 35%, transparent);
+  }
+
+  .d-badge-error {
+    box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-error) 35%, transparent);
+  }
+
+  .d-badge-info {
+    box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-info) 35%, transparent);
+  }
+
+  .d-badge-primary {
+    box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-primary) 35%, transparent);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Tabs — app show page (schemes/channels/releases sub-nav), settings  */
+  /* ------------------------------------------------------------------ */
+  .d-tab-active {
+    @apply relative rounded-t-lg;
+    background: color-mix(in oklch, var(--color-primary) 10%, transparent);
+
+    &::after {
+      content: "";
+      @apply absolute left-0 right-0 bottom-0 h-0.5 rounded-full;
+      background: var(--color-primary);
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* List rows — Apps index, Collaborators                               */
+  /* ------------------------------------------------------------------ */
+  .d-list-row {
+    @apply relative transition-colors duration-150;
+
+    &::before {
+      content: "";
+      @apply absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-0 rounded-full;
+      background: var(--color-primary);
+      transition: height 150ms ease;
+    }
+
+    &:hover::before {
+      @apply h-2/3;
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Alerts — flash messages, inline warnings (e.g. archived-app notice)  */
+  /* ------------------------------------------------------------------ */
+  .d-alert {
+    @apply border-l-2 backdrop-blur-sm;
+  }
+
+  .d-alert-success {
+    border-left-color: var(--color-success);
+    background: color-mix(in oklch, var(--color-success) 10%, var(--color-base-100));
+  }
+
+  .d-alert-warning {
+    border-left-color: var(--color-warning);
+    background: color-mix(in oklch, var(--color-warning) 10%, var(--color-base-100));
+  }
+
+  .d-alert-error {
+    border-left-color: var(--color-error);
+    background: color-mix(in oklch, var(--color-error) 10%, var(--color-base-100));
+  }
+
+  .d-alert-info {
+    border-left-color: var(--color-info);
+    background: color-mix(in oklch, var(--color-info) 10%, var(--color-base-100));
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Buttons — restrained on purpose: 239 uses at time of writing,       */
+  /* including plain/ghost/neutral buttons that should stay quiet. Only */
+  /* semantic (primary/success/error/warning) solid buttons get the     */
+  /* glow; everything else just gets a tasteful hover lift.              */
+  /* ------------------------------------------------------------------ */
+  .d-btn {
+    @apply transition-all duration-150;
+
+    &:hover {
+      @apply -translate-y-px;
+    }
+  }
+
+  .d-btn-primary:hover {
+    box-shadow: 0 4px 14px color-mix(in oklch, var(--color-primary) 35%, transparent);
+  }
+
+  .d-btn-success:hover {
+    box-shadow: 0 4px 14px color-mix(in oklch, var(--color-success) 35%, transparent);
+  }
+
+  .d-btn-error:hover {
+    box-shadow: 0 4px 14px color-mix(in oklch, var(--color-error) 35%, transparent);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Tooltips — 97 uses; the single most common micro-interaction in    */
+  /* the whole console (archive/unarchive, copy buttons, timestamps)     */
+  /* ------------------------------------------------------------------ */
+  .d-tooltip:before {
+    @apply backdrop-blur-md shadow-lg;
+    background: color-mix(in oklch, var(--color-neutral) 92%, transparent);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Join groups / inputs — search bars, sort controls (apps/_search,    */
+  /* channels/filters/_list, and every other resource's equivalent)      */
+  /* ------------------------------------------------------------------ */
+  .d-join {
+    @apply rounded-lg shadow-sm;
+  }
+
+  .d-input:focus,
+  .d-select:focus,
+  .d-textarea:focus {
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-primary) 20%, transparent);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Dropdown / menu popovers — kebab menus, user menu, admin nav        */
+  /* ------------------------------------------------------------------ */
+  .d-dropdown .d-menu,
+  .d-dropdown-content.d-menu {
+    @apply bg-base-100/95 backdrop-blur-md shadow-xl border border-base-300/70;
+  }
+
+  .d-menu :where(li > *:not(ul, .d-menu-title, details, .d-btn)):active,
+  .d-menu :where(li > *:not(ul, .d-menu-title, details, .d-btn)).d-menu-active {
+    background: color-mix(in oklch, var(--color-primary) 14%, transparent);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Collapse panels — admin/settings accordions                         */
+  /* ------------------------------------------------------------------ */
+  .d-collapse {
+    @apply border border-base-300/70 rounded-lg;
+  }
+
+  .d-collapse-title {
+    @apply font-medium;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Stats — dashboard analytics widgets                                  */
+  /* ------------------------------------------------------------------ */
+  .d-stat:has(a) {
+    @apply transition-transform duration-150;
+
+    &:hover {
+      @apply -translate-y-0.5;
+    }
+  }
+
+  .d-stat-value a {
+    @apply transition-colors duration-150;
+
+    &:hover {
+      color: var(--color-primary);
+    }
+  }
+}

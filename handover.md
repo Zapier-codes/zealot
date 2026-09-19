@@ -471,7 +471,7 @@ assuming and building the trigger-based path silently.
   email-preferences column before this ships, so platform-wide
   maintenance/branding mail doesn't become unwanted noise with no opt-out.
 
-### ✅ Task 13: Dashboard / Console UI Revamp — 2026 Modernization (shared layer done, patch handed off)
+### ✅ Task 13: Dashboard / Console UI Revamp — 2026 Modernization (shared layer done and merged)
 
 **Operator decisions locked in:** restyle the existing Slim + hand-rolled
 Tailwind/daisyUI setup (not a new component library); keep the per-user
@@ -485,56 +485,91 @@ inherits from — `.card` (used by nearly every page already), the
 sidebar, the navbar, and the content header — restyled into a quiet
 glass/depth treatment using only daisyui's own theme CSS variables via
 `color-mix()`, so every selectable theme still works. See
-`app/frontend/stylesheets/components/console.css` (new) and the
-restyled `card.css`. Branch `feat/console-2026-revamp`, patch
-`0001-feat-Task-13-restyle-shared-console-chrome...patch`, base
-`develop`. Not yet applied by the operator as of this doc.
+`app/frontend/stylesheets/components/console.css` and the restyled
+`card.css`. Landed as commit `b5e9ef54` — **confirmed merged into
+develop** (a later session checked this directly against git history;
+an earlier draft of this doc said "not yet applied", which was stale).
 
-**What this patch does NOT cover — genuinely open, not just unverified:**
-page-specific templates (the actual tables/forms inside Apps, Channels,
-Releases, Schemes, Debug Files, Teardowns, Webhooks, and all 14 admin
-pages: Android Signing Keys, Apple Keys, Apple Teams, Background Jobs,
-Backups, Database Analytics, Logs, Play Approvals/Credentials/Upload
-Keys, Services, Settings, System Info, Users) were not individually
-redesigned. They inherit the `.card` restyle automatically wherever they
-already use it, but nothing page-specific was touched. A future session
-should go page-by-page from this list if more than the shared-chrome
-pass is wanted — the brief's "dashboard and all other pages" scope
-implies this shared pass is a start, not the finish.
+**What this patch does NOT cover** — see Task 13b directly below,
+which covers the actual page-specific work and is where that gap is
+closed.
 
-**Also not done:** no asset build, no visual check in a browser (no
-Node/Vite runtime in this sandbox) — same caveat as every other session
-in this file.
+**Also not done:** no asset build, no visual check in a browser at the
+time this patch was written (no Node/Vite runtime in that session's
+sandbox) — Task 13b below was able to actually run the build.
 
-### 🆕 Task 13b: Console page-by-page restyle (New — not started, follow-on to above)
+### ✅ Task 13b: Console page-by-page restyle — shared-component pass (this session, build-verified)
 
-Operator wants a visual overhaul of the dashboard and all other in-app
-console pages (everything past sign-in — not the public landing page,
-which was already redone under the glassmorphism task above). Brief, as
-given:
+**Branch:** `feat/console-2026-revamp-13b-shared-components`, base
+`develop`.
+**Status:** actually build-verified, not just code-complete — this
+sandbox session had working pnpm/Vite (see the pnpm-lock.yaml-fix
+session earlier in this file for how). Ran a full `pnpm exec vite
+build`: succeeds, and grepped the compiled
+`public/vite/assets/application-*.css` output to confirm every new
+selector below actually landed in the built CSS (Tailwind's `@source`
+scanner did pick them up) — not just that the source file has no
+syntax errors.
 
-- **Look and feel:** "2026 modernization," described as cinematic and
-  futuristic — explicitly **not** dull, but also explicitly **not**
-  gamified. The operator was clear this should read as corporate/
-  professional, not a consumer play-store or gaming aesthetic.
-- **Usability bar:** the console should be *easier and more convenient to
-  navigate than the Play Store* — i.e. the comparison is about
-  discoverability/navigation ergonomics, not visual style (the visual
-  style should stay corporate even though the usability bar references a
-  consumer app).
-- **Scope:** dashboard plus "all other pages" — this reads as every
-  authenticated console view (app list, release management, org/team
-  settings, admin pages, etc.), not just `dashboards#index`. A session
-  starting this should inventory the actual view/controller list under
-  `app/views/` and `app/controllers/` (excluding `home/` and `devise/`,
-  already covered) before scoping the work, rather than guessing which
-  pages count as "console."
+**Approach taken, and why:** the operator's brief was "restyle the
+dashboard and all other console pages." Individually hand-redesigning
+Apps, Channels, Releases, Schemes, Debug Files, Teardowns, Webhooks,
+Collaborators, and 14 admin pages one Slim template at a time is a
+multi-session effort. Instead, this session surveyed what those pages
+are actually built from (`grep`'d every `d-*` daisyUI component class
+across `app/views`) and found they're overwhelmingly composed of the
+same shared component classes: 239× `.d-btn`, 114× `.d-badge`, 97×
+`.d-tooltip`, 56× `.d-join`, 27× `.d-collapse`, 24× `.d-table`, 21×
+`.d-tab`, 17× `.d-list`, 16× `.d-alert`, 14× `.d-dropdown`, plus
+`.d-stat`/`.d-stats`, `.d-input`/`.d-select`. Restyling those once, in
+one new file, reaches essentially every console page automatically —
+the same philosophy Task 13 already used for `.card` and the shared
+chrome, just extended to where the actual page *content* lives.
 
-**Open questions — resolved** (answered by the operator, see Task 13
-above for how they were applied): restyle existing setup, not a new
-component library; keep the theme picker; land as one patch; no specific
-visual reference given, judgment used. These no longer need re-asking —
-what's left is purely the page-by-page work listed under Task 13 above.
+**New file:** `app/frontend/stylesheets/components/console-content.css`
+(imported in `application.tailwind.css` right after `console.css`).
+Covers, per-component: table header/row treatment, badge glow rings
+per semantic color, active-tab styling matching the sidebar's active-
+link language, list-row hover accent bar, alert left-accent + tint per
+variant, restrained button hover-lift (only semantic primary/success/
+error buttons get a glow — 239 buttons is too broad a surface to be
+heavy-handed with), glass tooltip bubbles, join/input focus rings,
+glass dropdown/menu popovers, bordered collapse panels, and a hover
+lift on linked dashboard stats. Same restraint level and same
+technique as Task 13 throughout: `color-mix(in oklch, var(--color-X)
+N%, transparent)` against daisyui's own theme variables (never a
+hardcoded color), so every user-selectable theme keeps working, no
+neon, no bounce/scale-in motion — plain transitions on existing hover/
+focus states only.
+
+**What this genuinely does NOT cover** — same honest caveat as Task
+13's own entry, now more specific: this is a *component* restyle, not
+a page redesign. It does not touch:
+- Page-specific layout/information-architecture (e.g. what's actually
+  shown on the Apps index vs. a hypothetical redesigned version,
+  reordering the admin System Info page, adding new dashboard widgets).
+- Empty states beyond what `card.css`'s existing `.card` restyle
+  already reaches (most empty-state partials are `.card.card-outline`
+  variants, so they do inherit Task 13's glass treatment, but nothing
+  empty-state-specific was designed this session).
+- Anything not built from the daisyui components listed above — if a
+  future session finds a page with heavily custom/bespoke markup that
+  doesn't lean on `.d-table`/`.d-badge`/etc., this pass doesn't reach
+  it, and that page needs its own look at.
+- **A real, rendered visual check.** The build compiles and the CSS
+  rules are confirmed present in the output — but nobody has loaded an
+  actual page in a browser and looked at it. That needs a running
+  Rails app (database, routes, real data), which this sandbox doesn't
+  have. First thing after applying: run the app for real and click
+  through Apps, a Release detail page, and one admin page, in both a
+  light and a dark theme.
+
+**If a future session wants to go further** (genuine per-page
+redesign, not just the shared-component reach this session achieved):
+work through the page list in the previous entry's "genuinely open"
+paragraph one at a time, now that the component-level foundation under
+them is already modernized.
+
 
 ## Task: professional sign-in/sign-up + landing page (glassmorphism, 2026 style)
 
