@@ -280,6 +280,12 @@ Rails.application.routes.draw do
     end
     resources :releases, only: %i[update destroy]
 
+    # Task #7: token-authenticated, admin-only mirror of the admin-namespace
+    # singleton (config/routes.rb line ~203). See Api::PlayCredentialsController
+    # and PlayCredentialPolicy for why admin-only is enforced explicitly here
+    # rather than relying on routing-level gating the way the admin namespace does.
+    resource :play_credential, only: %i[ show create destroy ]
+
     resources :debug_files, except: %i[new edit create] do
       collection do
         post :upload, action: :create

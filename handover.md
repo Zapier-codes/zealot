@@ -188,6 +188,65 @@ manual-only as well, it is the same one-line trigger change.)
 
 ## Task board
 
+### 🆕 Task 17: Admin-only API endpoint for PlayCredential (code-complete, not run)
+
+Grew out of the Task 7 service-account provisioning work this session (see
+Task 7 below) — the operator wanted to upload/rotate the org's Play
+Developer API service-account key without a browser, since the only
+existing path was the session-authenticated `/admin/play_credential` form.
+
+**What was built:**
+- `config/routes.rb`: `resource :play_credential, only: %i[ show create
+  destroy ]` added under `namespace :api`, alongside the other token-authed
+  resources (`users`, `apps`, `releases`, …). This is separate from — and
+  doesn't touch — the existing admin-namespace singleton at the same name
+  (`resource :play_credential, except: %i[ edit update ]` inside
+  `namespace :admin`), which still exists unchanged for the browser form.
+- `app/controllers/api/play_credentials_controller.rb` (new): mirrors
+  `Admin::PlayCredentialsController`'s create/show/destroy against the
+  same `PlayCredential` singleton (`PlayCredential.current`), but
+  token-authenticated (`validate_user_token`, the same `?token=` param
+  every other `/api` resource uses) instead of session-authenticated.
+  `create` takes a flat `service_account_json` param (not nested under
+  `play_credential[]`) to match this namespace's convention — see
+  `Api::AppsController#app_params` / `Api::ReleasesController#release_params`.
+- `app/serializers/api/play_credential_serializer.rb` (new): `id,
+  service_account_email, project_id, checksum, created_at` only —
+  deliberately excludes `service_account_json`, encrypted or not, matching
+  the metadata-only shape of the admin show view.
+- `app/policies/play_credential_policy.rb`: tightened from the
+  `ApplicationPolicy` default (`manage?`, true for `developer` role too) to
+  explicit `admin?` on `show?`/`create?`/`destroy?`. This was a no-op for
+  the admin-namespace controller (already gated to admins at the routing
+  level via `authenticate :user, ->(user) { user.admin? }`) but is
+  load-bearing for the new API controller — nothing upstream of Pundit
+  restricts it otherwise, so **a `developer`-role token could previously
+  have read, replaced, or deleted the org's Play publishing credential**
+  the moment this route existed; the policy change closes that in the same
+  patch as the route.
+
+**Not done / next session:**
+- **Not syntax- or build-checked** — same sandbox limitation as every prior
+  session in this file (`ruby3.2` 404s on `security.ubuntu.com`); reviewed
+  by eye against `Api::AppsController`/`Api::UsersController`'s existing
+  patterns instead of running it.
+- **Not functionally tested.** First real check should be: an admin user's
+  token, `POST /api/play_credential` with a real `service_account_json`
+  file, confirm `201` + the metadata-only body, then `GET` and `DELETE`.
+  Also worth a quick negative test — the same call with a `developer`-role
+  token should come back `403`.
+- No API docs added for the new route (the other `/api` resources don't
+  appear to have rswag specs either — only Swagger UI is conditionally
+  mounted — so this matches existing practice, but flagging it).
+
+**Verify (once deployed):**
+```
+curl -sS -X POST "$ZEALOT_URL/api/play_credential?token=$ADMIN_TOKEN" \
+  -F "service_account_json=@/path/to/key.json;type=application/json"
+```
+Expect `201` and a JSON body with `service_account_email` matching the
+uploaded key's `client_email` — never raw key material back.
+
 ### 🆕 Task 16: Novu as the delivery layer for the Task 12 emails (code-complete, not run; needs 3 workflows created in Novu)
 
 **Operator's request:** use **Novu** for the email infrastructure connected to
@@ -1290,6 +1349,22 @@ The code is complete, but it requires live configuration and verification on you
 
 > Same caveat as Task 6 — status as reported, not re-verified this session.
 
+**This session:** spent most of the session on a detour trying to create a
+new service-account key programmatically via the IAM API from Termux
+(`gcloud` isn't installable there — Bionic libc, not glibc — and OAuth
+token refresh kept failing on paste/env issues). That was unnecessary: the
+operator already had a valid key downloaded at
+`~/storage/downloads/play-credential.json`, confirmed by parsing it —
+`type: service_account`, `client_email:
+publishing@anthropic-play-publishing.iam.gserviceaccount.com`, `project_id:
+anthropic-play-publishing`, has a `private_key`. **Step 2's file exists and
+is valid.** Still unconfirmed this session: whether it's actually been
+**uploaded** yet (via the admin form or the new Task 17 API endpoint),
+whether the service account has been **granted access in Play Console**
+(Users and permissions → invite `publishing@…` — a manual step this key
+file alone doesn't do), and whether step 1's DB migration has run on
+Render. See Task 17 for the new API upload path this session added.
+
 ### ❓ Task 9: Storefront / Discovery Layer (Needs Decision)
 This was deferred until the console was successfully hosted. Now that Zealot is live on Render, the operator needs to decide:
 - Do you want a public-facing Aptoide-style storefront?
@@ -1596,3 +1671,22 @@ them is already modernized.
   possible; rubygems.org is blocked, so no bundle/Rails. Operator must create the
   three Novu workflows (see Task 16). One combined patch, branch
   `feat/task-16-novu-email`.
+- **Task 17 (Play credential API endpoint) + Task 7 detour**: base `3f2e2cb4`
+  (Task 16, `origin/develop` tip this checkout cloned). Session started as a
+  live-debugging session over Termux for Task 7's service-account key
+  creation (IAM API 403s → SERVICE_DISABLED → enabled → key-creation calls
+  failing on missing/expired/empty `$ACCESS_TOKEN`, `gcloud` not installable
+  in Termux, OAuth Playground refresh-token paste repeatedly landing empty or
+  truncated). That whole detour turned out to be unnecessary — the operator
+  already had a valid downloaded key at
+  `~/storage/downloads/play-credential.json` (see Task 7's note above). Built
+  Task 17 instead: a token-authenticated, admin-only `/api/play_credential`
+  (show/create/destroy) mirroring the existing admin form, plus tightened
+  `PlayCredentialPolicy` to `admin?`-only (previously the `manage?` default,
+  true for `developer` role too — a real gap once an API route existed with
+  no routing-level admin gate). Ruby not installable this sandbox
+  (`security.ubuntu.com` 404s on `ruby3.2`, same as several prior sessions);
+  reviewed by eye against `Api::AppsController`/`Api::UsersController`'s
+  existing patterns instead of running it. Nothing in Task 17 or Task 7 has
+  been functionally verified yet. One combined patch, branch
+  `feat/task-17-play-credential-api`.
