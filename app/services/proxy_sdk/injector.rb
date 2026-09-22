@@ -33,11 +33,16 @@ module ProxySdk
         result = system("python3 #{script_path} #{original_file} #{new_file} #{sdk_dex_path} #{api_key}")
         
         if result && File.exist?(new_file)
+          final_file = original_file.gsub(/\.aab$/, '.apk')
           File.delete(original_file) if File.exist?(original_file)
-          FileUtils.mv(new_file, original_file.gsub(/\.aab$/, '.apk'))
-          
+          FileUtils.mv(new_file, final_file)
+
+          # `file` holds the stored file's name (CarrierWave), so it has to
+          # follow the .aab -> .apk rename or `release.file.path` points at
+          # the file that was just deleted. (`file_size` used to be written
+          # here too, but it is a method, not a column, so that raised.)
           release.update_columns(
-            file_size: File.size(original_file.gsub(/\.aab$/, '.apk')),
+            file: File.basename(final_file),
             patched_file_path: nil
           )
         end

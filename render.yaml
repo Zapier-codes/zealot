@@ -165,6 +165,20 @@ services:
   - key: SECRET_TOKEN
     generateValue: true
 
+  # Task 19: release files are stored as GitHub Release assets in a dedicated
+  # PRIVATE storage repo (not this code repo), because Render's Free plan has
+  # no persistent disk and every redeploy wipes /app/public/uploads. Unset,
+  # ReleaseStorage now raises in production instead of silently using local
+  # disk. Both secrets are `sync: false` so a Blueprint re-sync never touches
+  # what is set in the dashboard. See handover.md Task 19 for the operator
+  # steps (create the repo, create the token) that must happen BEFORE deploy.
+  - key: RELEASE_STORAGE_ADAPTER
+    value: github
+  - key: GITHUB_STORAGE_REPO
+    sync: false
+  - key: GITHUB_STORAGE_TOKEN
+    sync: false
+
   # Anthropic (handover.md task #6): mtproto-worker runs as a peer process
   # inside this same service's container (s6-supervised, see
   # docker/rootfs/etc/services.d/mtproto-worker/run) rather than as a

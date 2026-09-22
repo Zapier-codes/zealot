@@ -64,6 +64,14 @@ class Release < ApplicationRecord
   mount_uploader :file, AppFileUploader
   mount_uploader :icon, AppIconUploader
 
+  # Task 19e: every destroy path (manual delete, bulk channel delete, the
+  # dependent: :destroy cascade from App/Scheme/Channel, demo mode's
+  # App.destroy_all) ends up calling #destroy on each release, so one
+  # after_destroy_commit here covers all of them. Runs after commit, and the
+  # job is best-effort, so a storage hiccup never blocks or rolls back a
+  # delete the user already asked for.
+  after_destroy_commit :enqueue_storage_cleanup
+
   scope :latest, -> { order(version: :desc).first }
 
   # Play Store publish-approval workflow (task #11 — bookkeeping only, see
@@ -223,6 +231,9 @@ class Release < ApplicationRecord
   end
 
   def file_extname
+    # Once the local copy is gone (ephemeral disk), the mirrored file's key
+    # still carries the real extension, so download URLs don't turn into .zip.
+    return File.extname(file_storage_key) if file_storage_key.present? && (file.blank? || !File.file?(file.path))
     return '.zip' if file.blank? || !File.file?(file&.path)
 
     File.extname(file.path)
@@ -436,6 +447,17 @@ class Release < ApplicationRecord
   end
 
   private
+
+  # The instance is frozen but still readable at this point (after_destroy
+  # runs before Rails freezes it for writes, and after_commit callbacks still
+  # see the in-memory attributes even though the row is gone), so the keys are
+  # captured here and passed to the job rather than re-queried by id.
+  def enqueue_storage_cleanup
+    keys = [file_storage_key, patched_file_storage_key, compressed_apks_storage_key].compact
+    return if keys.empty?
+
+    ReleaseStorageCleanupJob.perform_later(id, keys)
+  end
 
   def platform_type
     @platform_type ||= (device_type || Channel.device_types[channel.device_type])

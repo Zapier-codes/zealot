@@ -7,17 +7,24 @@ class TeardownJob < ApplicationJob
     @release_id = release_id
     @user_id = user_id
 
-    return unless file = determine_file!
+    # Task 19d: was `release&.file.file; File.exist?(file.path)` — only ever
+    # looked at local disk, so teardown (queued behind a sleeping Free-tier
+    # Render worker, or re-run later) silently did nothing once a redeploy
+    # had wiped it. Falls back to the mirrored copy in storage when the
+    # local file is gone.
+    ReleaseStorage.new(release).with_local_file do |path|
+      metadata = TeardownService.new(path).call
+      unless metadata
+        logger.error "Unable to parse metadata with release: #{@release_id}"
+        next
+      end
 
-    metadata = TeardownService.new(file.path).call
-    unless metadata
-      logger.error "Unable to parse metadata with release: #{@release_id}"
-      return
+      metadata.update_attribute(:user_id, @user_id) if @user_id.present?
+      update_release_resouces(metadata)
+      # broadcast_release_metadata
     end
-
-    metadata.update_attribute(:user_id, @user_id) if @user_id.present?
-    update_release_resouces(metadata)
-    # broadcast_release_metadata
+  rescue ReleaseStorage::MissingFileError => e
+    logger.error(e.message)
   rescue AppInfo::UnknownFormatError
     # ignore
   end
@@ -42,16 +49,6 @@ class TeardownJob < ApplicationJob
 
     metadata.update_attribute(:release_id, release.id)
     release.update(release_type: metadata.release_type) if release.release_type.blank?
-  end
-
-  def determine_file!
-    file = release&.file.file
-    unless file && File.exist?(file.path)
-      logger.error('File was not found, it had been clean or deleted')
-      return
-    end
-
-    file
   end
 
   def release

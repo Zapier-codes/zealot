@@ -37,11 +37,12 @@ module Anthropic
     end
 
     # @param release [Release] must have play_store_target? and an .aab
-    #   file present; raises NotConfiguredError if either credential is
-    #   missing, PublishError wrapping the underlying Google::Apis error
-    #   on any API failure (edit creation, upload, track assignment, or
-    #   commit — Google does not partially apply an edit, so a failure at
-    #   any step means nothing published for this attempt).
+    #   present, locally or (Task 19d) mirrored to storage; raises
+    #   NotConfiguredError if either credential is missing, PublishError
+    #   wrapping the underlying Google::Apis error on any API failure (edit
+    #   creation, upload, track assignment, or commit — Google does not
+    #   partially apply an edit, so a failure at any step means nothing
+    #   published for this attempt) or the file being unobtainable.
     # @return [String] the edit id that was committed, recorded on the
     #   release by the caller (AnthropicPlayPublishJob) for audit purposes
     def publish!(release)
@@ -50,20 +51,29 @@ module Anthropic
       package_name = release.bundle_id.presence || release.app.play_package_name
       track = release.app.play_publish_track.presence || 'internal'
 
-      signed_bundle_path = sign_bundle_for_upload(release.file.path)
+      # Task 19d: was `release.file.path` directly. Publish runs on admin
+      # approval, which can be hours or days after upload — long enough for a
+      # Render redeploy to have wiped the local copy — so this now falls back
+      # to the mirrored copy in storage.
+      signed_bundle_path = nil
+      ReleaseStorage.new(release).with_local_file do |local_path|
+        signed_bundle_path = sign_bundle_for_upload(local_path)
 
-      @credential.with_credentials_file do |creds_path|
-        client = build_client(creds_path)
+        @credential.with_credentials_file do |creds_path|
+          client = build_client(creds_path)
 
-        edit = client.insert_edit(package_name, {})
-        upload_bundle(client, package_name, edit.id, signed_bundle_path)
-        assign_to_track(client, package_name, edit.id, track, release)
-        client.commit_edit(package_name, edit.id)
+          edit = client.insert_edit(package_name, {})
+          upload_bundle(client, package_name, edit.id, signed_bundle_path)
+          assign_to_track(client, package_name, edit.id, track, release)
+          client.commit_edit(package_name, edit.id)
 
-        edit.id
+          edit.id
+        end
       end
     rescue Google::Apis::Error => e
       raise PublishError, "Play Developer API call failed: #{e.class} #{e.message}"
+    rescue ReleaseStorage::StorageError => e
+      raise PublishError, "Could not obtain the release file to publish: #{e.message}"
     ensure
       FileUtils.rm_f(signed_bundle_path) if signed_bundle_path && signed_bundle_path != release&.file&.path
     end

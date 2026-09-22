@@ -188,6 +188,245 @@ manual-only as well, it is the same one-line trigger change.)
 
 ## Task board
 
+### 🆕 Task 19: Release files on GitHub Releases (private storage repo) + Telegram archive moved to GitHub Actions (19a–19e code-complete; 19f, 19g planned)
+
+**Why.** Render's Free plan has no persistent disk (`disk:` in `render.yaml` is
+commented out), so every redeploy wipes `/app/public/uploads`: uploaded
+APK/AAB files, and the pipeline artifacts `compressed_apks_storage_key` points
+at, are lost. `RELEASE_STORAGE_ADAPTER` was unset and silently fell back to
+`local`. `ReleaseStorage` only ever covered pipeline artifacts (and only
+`store_compressed_apks` has a caller); the primary file is still CarrierWave
+`storage :file`.
+
+**Decisions (operator, this session):**
+
+| # | Decision |
+|---|---|
+| D1 | File backend is **GitHub Releases**, not R2 (zero cost; GitHub documents no total-size or bandwidth limit, ≤ 1000 assets per release, each file **under 2 GiB**). The existing `r2` adapter stays available. |
+| D2 | Storage lives in a **separate private repo**, never this code repo. This repo is public, so release assets in it would be downloadable by anyone (users can register, and patched APKs embed `PROXIES_API_KEY`), and `publish_release.yml` runs on **every tag push**, so each stored build's tag could trigger a Docker publish. The operator first wanted to tolerate a public repo "for now"; agreed instead to start private (costs the same). `GITHUB_STORAGE_ALLOW_PUBLIC=true` is the explicit opt-out. |
+| D3 | Downloads use the **authenticated API** for both public and private repos (API answers with a short-lived signed URL; Rails redirects the user to it or fetches it), so flipping visibility later needs no code change. |
+| D4 | The Telegram MTProto archive **stays**, but runs on **GitHub Actions** (scheduled batch), not as an s6 sidecar in the Render container. |
+| D5 | GitHub Actions does: build/deploy, scheduled cleanup, and the Telegram archive batch. It is storage compute only; Postgres stays the source of truth. |
+
+**Slices (TSF):**
+
+| ID | Goal | Depends on | Files (predicted) | Acceptance check | Risk |
+|---|---|---|---|---|---|
+| 19a ✅ | `github` adapter behind `ReleaseStorage` | none | `release_storage/github_adapter.rb`, its spec | spec (fake GitHub) + local WEBrick e2e | low (new file, unused until 19b/19c) |
+| 19b ✅ | Register it; **raise in production when the adapter is unset**; declare env vars | 19a | `release_storage.rb`, `release_storage_spec.rb`, `.env.example`, `render.yaml` | spec | low; the only callers are `AnthropicAssetDeliveryJob` and (19c) `ReleaseFileMirrorJob`, and both rescue and log |
+| 19c ✅ | Mirror the primary APK/AAB (and the patched internal APK) to storage **after** `ProxySdk::Injector` finishes; record the keys on the release (migration); `Download::ReleasesController` serves the local file if present, else redirects to the signed storage URL | 19a, 19b, operator steps below | migration + `schema.rb`, `release_file_mirror_job.rb`, `proxy_sdk_injection_job.rb`, `proxy_sdk/injector.rb`, `release_download.rb`, download controller, `release.rb`, `release_storage.rb`, 3 specs | mirror → wipe local file → download still works (fake GitHub, see Verification) | **medium**: touches the upload and download paths; see the regression note below |
+| 19d ✅ | Jobs that read `release.file.path` (`TeardownJob`, `Anthropic::PlayPublishService`) fetch to a tmp file via `ReleaseStorage#with_local_file` when the local copy is gone | 19c | `release_storage.rb`, `teardown_job.rb`, `play_publish_service.rb`, 3 specs | job/service still works after a simulated redeploy (local file deleted) | low |
+| 19e ✅ | Delete stored objects when a release is destroyed (`CleanOldReleasesJob` → `release.destroy` was removing only the local file; `ReleaseStorage#delete` had no callers) | 19c | `release.rb`, `release_storage_cleanup_job.rb`, 2 specs | destroy → keys gone from storage; GitHub release/tag removed once empty | low |
+| 19f | Telegram archive → Actions: token-authed admin-only endpoints (candidates with signed URLs; record location), one-shot worker script replacing the Express server, workflow on `schedule` + `workflow_dispatch` **only**; then remove the s6 service, Dockerfile build step, `MTPROTO_WORKER_*` / `TELEGRAM_*` env vars from `render.yaml`, and the GoodJob cron entry (replacement before removal) | 19c (candidates need files in storage) | `mtproto-worker/`, new controller, workflow, Dockerfile, `render.yaml`, `good_job.rb` | one real archive → retrieve round trip (never done, see Task 6) | medium; can't be verified in a sandbox |
+| 19g | Scheduled cleanup workflow that wakes the Render service (free web services sleep, so in-process GoodJob crons don't fire while asleep) | 19e | one workflow | manual `workflow_dispatch` run | low; ❓ decide whether needed |
+
+**Open questions:** ❓ after a successful archive, should the storage copy be
+deleted (real cold tier) or kept (backup)? Today the job never deletes it, and
+nothing in Rails calls `retrieve`. ❓ keep the `mtproto_archived_*` columns
+(planned: yes, unchanged).
+
+**Done this session (19a + 19b, one combined patch, base `ac8dae78`):**
+- `app/services/release_storage/github_adapter.rb`: stdlib `Net::HTTP` only, no
+  new gem. One GitHub release per Zealot release, tag `a<app>-r<release>`, key
+  path flattened into the asset name (`pipeline/release.apks.br` →
+  `pipeline__release.apks.br`). `put` replaces an existing asset of the same
+  name; `get` streams to `<path>.part` then renames; `url_for` returns the
+  signed redirect target (GitHub sets the expiry: redirect immediately, never
+  store it); `delete` also removes the release and tag once empty. Retries
+  429/5xx/network errors 3× with 1s/2s backoff. The token is sent only to the
+  API and upload hosts, never to the signed download URL, and never appears in
+  error messages (query strings are stripped). Files ≥ 2 GiB are rejected
+  before any request. Keys outside `uploads/apps/a<id>/r<id>/…` are rejected
+  rather than piled into one shared release.
+- Preflight, once per process per 10 min: the token must reach the repo with
+  write access, and a **public** repo is refused unless
+  `GITHUB_STORAGE_ALLOW_PUBLIC=true`.
+- `ReleaseStorage`: `github` registered; `RELEASE_STORAGE_ADAPTER` unset now
+  raises in production (was: silent `local`). Non-production unchanged.
+- `render.yaml`: `RELEASE_STORAGE_ADAPTER=github`, `GITHUB_STORAGE_REPO` and
+  `GITHUB_STORAGE_TOKEN` as `sync: false`. `.env.example` documents all four
+  vars. Per the note in `render.yaml` about `runtime: image`, a Blueprint
+  re-sync may not apply these; set them in the Render dashboard.
+
+**Done in 19c (same combined patch, still base `ac8dae78`):**
+- **Mirror.** `ProxySdkInjectionJob` now always enqueues `ReleaseFileMirrorJob`
+  in an `ensure`, after the injector has run (even if it raised), because the
+  injector rewrites/renames files and the mirror must copy what is left.
+  The job mirrors the primary file (`releases.file_storage_key`) and, for
+  Play-targeted Android releases, the patched internal APK
+  (`releases.patched_file_storage_key`). Keys equal the local path under
+  `public/` (`uploads/apps/a<app>/r<release>/binary/<file>`). It is
+  best-effort: failures are logged, the key stays blank, the release keeps
+  serving from local disk, and an upload is never blocked. It does nothing on
+  the `local` adapter. Backfill: `rails runner 'ReleaseFileMirrorJob.backfill'`.
+- **The uploaded file's GitHub asset keeps its real name** (`app.apk`, not
+  `binary__app.apk`) because a signed download URL names the file after the
+  asset. Pipeline artifacts still flatten (`pipeline__release.apks.br`).
+- **Downloads.** New `ReleaseDownload` picks, in order: local patched APK →
+  local primary file → signed storage URL (patched key first when the release
+  has a patched APK, else the primary key) → 404. The controller redirects
+  with `Cache-Control: no-store`; storage errors become a 404, not a 500.
+- `Release#file_extname` falls back to the stored key's extension once the
+  local file is gone, so download URLs don't turn into `.zip`.
+- Migration `20260921100000` adds the two key columns. It runs on deploy
+  (`30-zealot-upgrade` → `zealot:upgrade`). `schema.rb` also gains
+  `patched_file_path`, which migration `20240102000000` added but `schema.rb`
+  never had (a fresh `db:schema:load` would have lacked it).
+
+**⚠️ Regressions found on `develop` and fixed here (all from commit `f8a8da89`,
+the Proxies SDK injection, which rewrote files wholesale):**
+1. `Download::ReleasesController` had **no `show` action** (`Release#download_url`
+   points at it), and its `set_release` used `params[:channel_id]` /
+   `params[:release_id]`, which the only route (`/download/releases/:id[/:filename]`)
+   never provides. As far as the code shows, every release download 404'd.
+   Restored `show` (password check, redirect to the filename URL),
+   `set_release` via `params[:id]`, `rescue_from RecordNotFound`, and the
+   `download_events` web hook the old `download` action fired.
+2. `ProxySdk::Injector` (internal path) called `update_columns(file_size: ...)`.
+   `file_size` is an alias for the `size` method, not a column, so that raised
+   after the file had already been swapped. Removed.
+3. Same branch: an `.aab` was replaced by an `.apk` on disk but the `file`
+   column kept the `.aab` name, so `release.file.path` pointed at the deleted
+   file. It now updates `file` to the new name.
+4. Quirk left alone: for `.aab` input the output name gets its suffix applied
+   twice (`app_proxy_proxy.apk`); harmless, consistent, cosmetic.
+
+**❓ Decision needed, deliberately NOT restored:** the same commit also removed
+the `serve_brotli` (`.apks.br` with `Content-Encoding: br`) and `delta`
+(bsdiff) branches from the download controller. Restoring them would make
+Brotli-capable browsers download the `.apks` bundle instead of the patched
+APK, which fights the SDK design, so I left the current "patched → original"
+behaviour and did not bring them back. The GitHub adapter also cannot store
+`Content-Encoding`, so the old redirect-to-CDN Brotli path would not work on it
+anyway. Say if you want either back (it is its own slice).
+
+**Done in 19e (same combined patch):**
+- `Release` gets one `after_destroy_commit` hook. Every destroy path (manual
+  delete, bulk channel delete, the `dependent: :destroy` cascades from
+  App/Scheme/Channel, demo mode's `App.destroy_all`) ends up calling
+  `#destroy` on each release, so this one hook covers all of them; confirmed
+  by checking `dependent: :destroy` is set at every level of that chain.
+  Captures `file_storage_key`, `patched_file_storage_key` and
+  `compressed_apks_storage_key` from the frozen-but-still-readable instance
+  and hands them to the new `ReleaseStorageCleanupJob`, which deletes each
+  from storage. Best-effort: a failure is logged, not raised, because the
+  release the user asked to delete is already gone either way.
+- On the `github` adapter this also removes the empty GitHub release and its
+  tag once the last asset for that release is gone (existing behaviour of
+  `GithubAdapter#delete`), so a fully-mirrored release cleans up in one shot.
+- **Before this**, deleting a release only removed the local copy;
+  `compressed_apks_storage_key` objects on R2 (or later GitHub) piled up
+  forever. That gap is now closed.
+- **Not covered by this slice:** if `CleanOldReleasesJob`'s "reduce older
+  versions to their newest build" mode (see the earlier answer on when
+  releases get destroyed) or the retained-builds job run before 19c mirrors a
+  release, there is nothing in storage yet to delete — nothing breaks, there
+  is just nothing to do.
+
+**Done in 19d (same combined patch):**
+- New `ReleaseStorage#with_local_file`: yields the local path if it's still
+  there (no network call); otherwise downloads the mirrored copy to a
+  tempdir, yields that, and removes it once the block returns (even on
+  error). Raises `MissingFileError` (a `StorageError`) if neither exists.
+- `TeardownJob` (parses AppInfo metadata right after upload) and
+  `Anthropic::PlayPublishService#publish!` (signs and uploads to Play,
+  possibly days after upload once an admin approves) now go through it
+  instead of reading `release.file.path` directly. `PlayPublishService` wraps
+  a `MissingFileError`/`StorageError` as its own `PublishError` so
+  `AnthropicPlayPublishJob`'s existing rescue handles it the same as any
+  other publish failure.
+- **`ReleaseParser#parse!` was checked and deliberately left alone**: it's
+  called synchronously inside `Release.upload_file`, i.e. during the upload
+  request itself, on the file that was just written — there's no redeploy
+  window for it to fall into.
+- **`AnthropicAssetDeliveryJob` was also checked**: it already returns early
+  when there's no local `.aab` (`return unless release.file.path.to_s
+  .end_with?('.aab')`), so it degrades safely rather than needing the same
+  fallback; left as-is since fetching a multi-hundred-MB .aab just to bail on
+  a non-.aab check would be wasted work in the common case.
+
+**Operator steps before this does anything (a session cannot do them):**
+1. Create a **private** repo, e.g. `Zapier-codes/zealot-storage`, with an
+   initial commit (a README is enough; the API needs a default branch to tag).
+2. Create a fine-grained token: owner `Zapier-codes`, **only that repo**,
+   repository permission **Contents: Read and write**, with an expiry you will
+   remember to rotate. `GITHUB_TOKEN` cannot be used; it only reaches the repo
+   a workflow runs in.
+3. In Render set `RELEASE_STORAGE_ADAPTER=github`, `GITHUB_STORAGE_REPO`,
+   `GITHUB_STORAGE_TOKEN`. Until then production `ReleaseStorage` calls raise a
+   clear `ConfigurationError`; nothing else breaks (the asset-delivery and
+   file-mirror jobs rescue and log it).
+4. Check: in a Rails console, `ReleaseStorage.new(Release.last).adapter.exist?('uploads/apps/a1/r1/x')`
+   should return `false` without raising (that runs the repo, access and
+   visibility preflight).
+5. After deploying, verify deletes too: destroy a test release and confirm
+   its assets are gone from the storage repo (and, once its last asset is
+   gone, that the GitHub release for that release id is gone).
+6. After the first deploy with the vars set, mirror what is already on
+   disk: `rails runner 'ReleaseFileMirrorJob.backfill'` (only files still on
+   Render's disk since the last deploy can be saved; older ones are gone).
+7. Then check in the browser: open a release's install/download link. It should
+   download as before, and after the next redeploy it should still download
+   (now via a redirect to a signed GitHub URL).
+   Also confirm an **iOS** OTA install (`itms-services`) still works through
+   the redirect; that path is unverified.
+8. Exercise 19d for real once you have a play_store_target release: mirror
+   it, delete the local file, then trigger a Play publish (or re-run
+   teardown) and confirm it still completes by fetching from storage.
+9. For 19f (later): the four `TELEGRAM_*` values must be copied into GitHub
+   **Actions secrets** by the operator.
+
+**Verification (be honest about it):**
+- Ran under Ruby 3.2.3 (project is 3.4.8) with `ruby-rspec` from apt (also
+  installed `ruby-activerecord`/`ruby-sqlite3` for the 19e model spec below)
+  and a throwaway `rails_helper` shim (no Rails/Bundler/rubygems; also stubs
+  the `app_info` and `google-apis-androidpublisher_v3` gems, neither
+  installed here): 76 examples across `github_adapter_spec`,
+  `release_storage_spec`, `release_download_spec`,
+  `release_file_mirror_job_spec`, `injector_spec`,
+  `release_storage_cleanup_job_spec`, the 19e model spec, `teardown_job_spec`
+  and `play_publish_service_spec` pass. Mutations (token sent to the signed
+  URL; public-repo guard dropped; injector writing `file_size` again;
+  download preferring the redirect over a local file; mirror re-uploading
+  stored files; cleanup job not skipping the local adapter; callback firing
+  with no keys; `with_local_file` always downloading instead of using the
+  local file; `PlayPublishService` signing `release.file.path` directly;
+  `TeardownJob` bypassing `with_local_file` entirely) each fail a spec.
+- `play_publish_service_spec.rb` only covers the file-obtaining wiring; the
+  Google API call is stubbed out entirely (no gem in this sandbox), same
+  limitation the file's own header comment already states for the rest of
+  the class.
+- `release_storage_cleanup_callback_spec.rb` runs the `after_destroy_commit` +
+  `dependent: :destroy` pattern against a **real** in-memory-SQLite
+  ActiveRecord model, not a double — but it's a parallel harness with the
+  8-line callback copied in, not `app/models/release.rb` itself (that class
+  needs the full Rails app: CarrierWave, several concerns, enums). The
+  8-line method actually in `release.rb` was edited directly and is small
+  enough that this is believed to be a fair proxy; flagged as a gap regardless.
+- The real `Net::HTTP` transport and the whole chain (mirror job → real
+  `ReleaseStorage` → `GithubAdapter` → HTTP → delete the local file →
+  `ReleaseDownload` redirect → download) ran against a local WEBrick stand-in
+  for GitHub: a 25 MB file round-tripped byte-for-byte, the signed URL
+  carried no `Authorization`, and the asset was named `my_app.apk`.
+- **Not verified:** anything against the real `api.github.com`; that a
+  fine-grained token can upload assets and that the asset endpoint redirects as
+  documented; the signed URL's lifetime; the controller itself (no Rails, no
+  request spec); the migration; rubocop; the app booting with Zeitwerk; iOS
+  OTA through the redirect. Treat as code-complete, not run.
+- Revert: 19a is new files (delete them). 19b/19c/19d/19e: restore the
+  touched files to `ac8dae78` and drop the migration (`db:rollback` first if
+  it already ran).
+
+**Corrections to earlier notes in this file / the sidecar docs:** the
+mtproto-worker README and s6 run script still say the Telegram session string
+was never generated, but Task 6 below records the operator setting all four
+`TELEGRAM_*` vars on Render (with `MTPROTO_ARCHIVE_ENABLED` flipped `false`
+while debugging the 502, which was actually caused by 18 deploys in ~14 h, not
+the worker). Treat the credentials as possibly existing; nothing has been
+archived end-to-end. The Express worker's own comment records that connecting
+to Telegram at boot once OOM-killed the Free-tier container, which is part of
+why 19f moves it off Render.
+
 ### ✅ Fix: missing / untranslated locale keys found while verifying Tasks 12–18 (this session, code-complete, not run)
 
 Found by running a key-parity check (en vs zh-CN, deep-merged across every
@@ -1519,6 +1758,10 @@ branch `fix/home-controller-site-title-nameerror`, base `develop`. Not
 yet applied as of this doc.
 
 ### 🟡→ Task 6: Telegram MTProto Cold Storage (operator reports fully wired)
+**Update (Task 19, decision D4):** the worker is planned to move off Render
+onto a GitHub Actions scheduled batch (slice 19f). Until 19f lands, everything
+below still describes what is deployed.
+
 Operator states all live credentials (`TELEGRAM_API_ID`, `TELEGRAM_API_HASH`,
 `TELEGRAM_SESSION_STRING`, `TELEGRAM_ARCHIVE_CHAT_ID`) are now set on Render
 and `MTPROTO_ARCHIVE_ENABLED` is intended to be `true`. Not independently
@@ -1939,3 +2182,16 @@ them is already modernized.
   to Google verbatim as “translation missing…”), and several keys present in
   only one language. Ruby 3.2.3 installable again; no bundle/Rails. One combined
   patch, branch `fix/locale-gaps`.
+- **Task 19 (19a-19e)**: base `ac8dae78` (`origin/develop` tip this checkout
+  cloned; still not applied by the operator, so this patch replaces every
+  one given earlier — apply only this one). Same decisions as before
+  (GitHub Releases, private storage repo, Telegram archive kept but moved to
+  Actions later, GitHub as storage only). Added 19d: `TeardownJob` and
+  `Anthropic::PlayPublishService` now fetch from storage via the new
+  `ReleaseStorage#with_local_file` when the local copy is gone, instead of
+  reading `release.file.path` directly; checked and deliberately left
+  `ReleaseParser#parse!` and `AnthropicAssetDeliveryJob` alone (reasons in the
+  Task 19 entry). 19f and 19g remain planned. Ruby 3.2.3 + rspec +
+  activerecord/sqlite3 via apt; 76 specs plus the earlier end-to-end HTTP run
+  passed (sandbox shim with gem stubs, not the real app, Google API, or
+  GitHub). One combined patch, branch `feat/task-19a-19b-github-release-storage`.
