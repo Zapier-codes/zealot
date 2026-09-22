@@ -1,20 +1,19 @@
 {
   "name": "zealot-mtproto-worker",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "HTTP sidecar wrapping GramJS to archive/retrieve our own release artifacts via Telegram MTProto cold storage (task #6). Called only by the Zealot Rails app's Anthropic::MtprotoArchiveService, never exposed publicly.",
+  "description": "One-shot batch script wrapping GramJS to archive our own release artifacts via Telegram MTProto cold storage (task #6). Run by .github/workflows/mtproto_archive.yml on a schedule, against the Zealot Rails app's token-authed Api::MtprotoArchiveController (task #19f) -- never exposed publicly, never runs as a server.",
   "type": "module",
   "scripts": {
-    "start": "node --loader ts-node/esm src/index.ts",
+    "archive": "node dist/archive_batch.js",
+    "archive:dev": "node --loader ts-node/esm src/archive_batch.ts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "express": "^4.19.2",
     "teleproto": "^1.229.0"
   },
   "devDependencies": {
-    "@types/express": "^4.17.21",
     "@types/node": "^20.14.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.0"

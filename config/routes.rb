@@ -286,6 +286,12 @@ Rails.application.routes.draw do
     # rather than relying on routing-level gating the way the admin namespace does.
     resource :play_credential, only: %i[ show create destroy ]
 
+    # Task 19f: token-authenticated, admin-only interface between Rails and
+    # the GitHub Actions Telegram-archive batch (mtproto-worker/src/archive_batch.ts).
+    # See Api::MtprotoArchiveController and MtprotoArchivePolicy.
+    get 'mtproto_archive/candidates', to: 'mtproto_archive#candidates'
+    post 'mtproto_archive/:id/complete', to: 'mtproto_archive#complete'
+
     resources :debug_files, except: %i[new edit create] do
       collection do
         post :upload, action: :create

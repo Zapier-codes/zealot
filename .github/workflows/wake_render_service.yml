@@ -1,0 +1,105 @@
+name: Anthropic - Wake Render free-tier service for scheduled jobs
+
+# Task 19g (see ../handover.md): Render's Free plan spins the whole
+# zealot-web container down after 15 minutes without inbound HTTP traffic
+# (https://render.com/docs/free -- "Spinning down on idle"), and spins it
+# back up on the next request. That suspension is of the *entire*
+# container, not just the Puma process handling requests: the `job` s6
+# service (bin/good_job, config/initializers/good_job.rb) that runs
+# GoodJob's own cron scheduler is asleep right along with it. A cron
+# scheduled for `0 6 * * *` simply never fires on a day the container
+# happens to be asleep at 06:00 -- GoodJob does not backfill missed
+# occurrences once it wakes up, it only evaluates cron going forward from
+# whenever the process next starts.
+#
+# This workflow does NOT attempt to keep the service awake around the
+# clock. Render's Free plan grants 750 instance-hours per *workspace* per
+# calendar month, shared across every free service in it (see the same
+# docs page); zealot-web is the only free service this render.yaml
+# defines, so 24/7 uptime for a 31-day month (744h) would fit, but with
+# only ~6 hours of margin against a hard cap whose breach suspends every
+# free service in the workspace until the next month -- a far worse outage
+# than the one this workflow exists to reduce. That tradeoff was judged not
+# worth it for what's actually needed here: not continuous uptime, just a
+# reasonable chance for the handful of fixed-time daily crons to fire.
+#
+# Instead, this pings a few times (spaced under the 15-minute spin-down
+# window so the container stays continuously up across each bracket)
+# around each fixed-time cron currently in config/initializers/good_job.rb,
+# converted from Rails' configured Asia/Shanghai time zone
+# (config/application.rb) to the UTC GitHub Actions cron runs in:
+#   - sync_apple_devices / reset_for_demo_mode: 00:00 Asia/Shanghai (CST,
+#     UTC+8) = 16:00 UTC the previous day
+#   - clean_old_releases: 06:00 CST = 22:00 UTC the previous day
+# If Rails' TIME_ZONE env var or config.time_zone default ever changes,
+# these UTC times need recomputing -- they are not derived automatically.
+#
+# This is a best-effort mitigation, not a guarantee: GitHub Actions'
+# schedule trigger can itself be delayed under load (documented behavior,
+# not specific to this workflow), and a delayed tick could still miss the
+# window on an occasional day. It also does nothing for the two
+# minutes-based crons (anthropic_play_approval_expiry every 15 min,
+# anthropic_play_setup_recheck every 10 min) beyond whatever chance they
+# get during these brackets or during real user traffic -- guaranteeing
+# those would require the near-continuous uptime this workflow deliberately
+# avoids. If that gap ever matters enough to revisit, that's the tradeoff
+# to re-open, not a sign this workflow is broken.
+#
+# Pings Rails' own health_check endpoint (config/initializers/health_check.rb
+# sets config.uri = '/api/health', not the health_check gem's own default
+# '/health_check') rather than a demo/asset URL, so a run also verifies
+# more than just "the container booted" -- the configured `standard_checks`
+# (database, cache) must both pass for a 200. If a session ever sets
+# ZEALOT_HEALTH_CHECK_IP_WHITELIST on Render, GitHub Actions' runner IPs
+# (ephemeral, drawn from Azure ranges, not practical to whitelist) would
+# get rejected -- this repo does not set that var as of this workflow, but
+# flagging it since it's set outside this Blueprint file if set at all.
+#
+# Requires the same `ZEALOT_URL` repo variable task #19f's workflow uses
+# (Settings -> Secrets and variables -> Actions -> Variables) -- not
+# duplicated as a separate var since it's the same instance.
+
+on:
+  schedule:
+    # Bracket 16:00 UTC (sync_apple_devices / reset_for_demo_mode at 00:00
+    # CST) -- 10 min before, on the time, 10 min after, so the container is
+    # continuously up for the ~20 minutes surrounding it rather than
+    # relying on a single cold-boot-exactly-on-the-minute request.
+    - cron: "50 15 * * *"
+    - cron: "0 16 * * *"
+    - cron: "10 16 * * *"
+    # Bracket 22:00 UTC (clean_old_releases at 06:00 CST) the same way.
+    - cron: "50 21 * * *"
+    - cron: "0 22 * * *"
+    - cron: "10 22 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  # An on-demand dispatch shouldn't pile up behind a scheduled bracket tick
+  # -- they're doing the same trivial thing (one HTTP GET), no need to
+  # queue rather than just letting one supersede the other.
+  group: anthropic-wake-render-service
+  cancel-in-progress: true
+
+jobs:
+  wake:
+    name: Ping health check to wake the service
+    runs-on: ubuntu-latest
+    steps:
+      - name: GET ${ZEALOT_URL}/api/health
+        env:
+          ZEALOT_URL: ${{ vars.ZEALOT_URL }}
+        run: |
+          if [ -z "$ZEALOT_URL" ]; then
+            echo "::error::ZEALOT_URL repo variable is not set (Settings -> Secrets and variables -> Actions -> Variables)"
+            exit 1
+          fi
+          # Generous timeout and a couple of retries: the first request
+          # after a real spin-down takes Render about a minute to serve
+          # (https://render.com/docs/free), and a plain curl (unlike a
+          # browser hitting Render's edge) waits out that cold start rather
+          # than getting an interim loading page.
+          curl --fail --silent --show-error \
+            --max-time 90 \
+            --retry 2 --retry-delay 15 \
+            "${ZEALOT_URL%/}/api/health"

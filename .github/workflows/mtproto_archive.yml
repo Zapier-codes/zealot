@@ -1,0 +1,77 @@
+name: Anthropic - Telegram MTProto archive batch
+
+# Task 19f (see ../handover.md): runs mtproto-worker/src/archive_batch.ts
+# once per trigger, archiving eligible release artifacts to Telegram cold
+# storage. Replaces the old always-on mtproto-worker sidecar that used to
+# run inside the Rails container (removed this slice, alongside
+# AnthropicMtprotoArchiveJob's cron scan and Anthropic::MtprotoArchiveService
+# on the Rails side).
+#
+# Deliberately schedule + workflow_dispatch ONLY — never push/pull_request.
+# This does real, one-way work (archives files into a Telegram chat and
+# marks them archived in Rails via a POST); it must not fire on every push
+# to a branch the way the deploy/test workflows do.
+#
+# Required repo secrets (Settings -> Secrets and variables -> Actions):
+#   TELEGRAM_API_ID / TELEGRAM_API_HASH / TELEGRAM_SESSION_STRING /
+#     TELEGRAM_ARCHIVE_CHAT_ID -- moved here from Render's env vars, see
+#     mtproto-worker/README.md "Setup" for why and how.
+#   ZEALOT_ADMIN_TOKEN -- an admin user's Zealot API token.
+# Required repo variable (Settings -> Secrets and variables -> Actions ->
+# Variables tab -- not sensitive, but kept out of the workflow file itself
+# so this stays portable across forks/environments):
+#   ZEALOT_URL -- e.g. https://zealot.example.com
+
+on:
+  schedule:
+    # 03:30 UTC daily -- matches the old GoodJob cron's `30 3 * * *`
+    # (config/initializers/good_job.rb, before this slice removed it).
+    # GitHub Actions cron is always UTC; the old cron ran in the container's
+    # TZ (Dockerfile sets TZ=Asia/Shanghai), so this is not the same wall
+    # clock time as before -- flagged since nothing here depends on the
+    # exact hour, but worth knowing if release timing is ever compared
+    # against archive timing.
+    - cron: "30 3 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  # One archive batch in flight at a time -- a manually-dispatched run
+  # should not race the scheduled one (both would hand out and act on
+  # overlapping candidate lists otherwise, since Rails only marks a release
+  # archived once the /complete call lands).
+  group: anthropic-mtproto-archive
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    name: Archive eligible releases to Telegram
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mtproto-worker/package-lock.json
+
+      - name: Install dependencies
+        working-directory: mtproto-worker
+        run: npm ci
+
+      - name: Build
+        working-directory: mtproto-worker
+        run: npm run build
+
+      - name: Run archive batch
+        working-directory: mtproto-worker
+        env:
+          ZEALOT_URL: ${{ vars.ZEALOT_URL }}
+          ZEALOT_ADMIN_TOKEN: ${{ secrets.ZEALOT_ADMIN_TOKEN }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_SESSION_STRING: ${{ secrets.TELEGRAM_SESSION_STRING }}
+          TELEGRAM_ARCHIVE_CHAT_ID: ${{ secrets.TELEGRAM_ARCHIVE_CHAT_ID }}
+        run: npm run archive

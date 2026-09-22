@@ -60,25 +60,16 @@ RUN bundle lock --add-platform ruby
 RUN bundle exec bootsnap precompile --gemfile app/ lib/
 RUN SECRET_KEY_BASE=precompile_placeholder bin/rails assets:precompile
 
-# Anthropic (handover.md task #6): build the mtproto-worker sidecar here too.
-# Decision (session 22): run it as a peer process inside this same image,
-# supervised by s6 alongside caddy/job/zealot, rather than as a second
-# Render service. Render's Free plan (what render.yaml uses for zealot-web
-# and zealot-db) only covers web services, static sites and cron jobs — a
-# private service or background worker needs Starter ($7/mo) or above, per
-# Render's own current instance-type docs (confirmed this session via web
-# search, since this is exactly the kind of platform-pricing detail that
-# drifts). A same-container sidecar costs nothing extra, needs no new
-# Render resource, and satisfies the worker's own "not exposed publicly,
-# internal only" requirement for free via localhost — it never needs a
-# public URL or Render's private network at all. Built here (not installed
-# fresh at runtime) so the final image doesn't need npm, only a bare `node`
-# binary to run the already-compiled output. No extra COPY needed —
-# `COPY . $APP_ROOT` above already brought mtproto-worker/ in.
-RUN cd mtproto-worker && \
-    npm ci && \
-    npm run build && \
-    npm prune --omit=dev
+# Anthropic (handover.md task #6, moved off this image in task #19f):
+# mtproto-worker used to be built and shipped here, run as a peer process
+# inside this same image supervised by s6 alongside caddy/job/zealot. As of
+# task #19f it runs as a one-shot script in its own GitHub Actions workflow
+# (.github/workflows/mtproto_archive.yml) instead — see
+# mtproto-worker/README.md "Deployment (superseded by task 19f)" for why.
+# It no longer needs to be built into this image at all, and mtproto-worker/
+# is now excluded from the build context entirely via .dockerignore (so the
+# `COPY . $APP_ROOT` above never brings it in) rather than being copied in
+# and left unused.
 
 # Remove folders not needed in resulting image
 RUN rm -rf docker node_modules tmp/cache spec .browserslistrc babel.config.js \
@@ -153,15 +144,10 @@ WORKDIR $APP_ROOT
 
 COPY docker/rootfs /
 COPY --from=builder $APP_ROOT $APP_ROOT
-# ^ this already brings in mtproto-worker/{dist,node_modules,package.json}
-# (built+pruned in the builder stage above — see that stage's comment) — no
-# separate COPY needed. src/ isn't copied since the builder stage's own
-# cleanup (`rm -rf docker node_modules ...`) runs after the mtproto-worker
-# build but doesn't touch anything under mtproto-worker/ by name; src/ just
-# rides along unused at runtime (dist/ is what actually gets exec'd). Worth
-# trimming mtproto-worker/src (and package-lock.json/tsconfig.json) from
-# the final image in a future session if image size matters enough to
-# bother — harmless as-is, just a few KB of dead weight.
+# ^ mtproto-worker/ is no longer built or shipped in this image at all as
+# of task #19f (see mtproto-worker/README.md "Architecture (task 19f)") —
+# it's excluded from the build context entirely via .dockerignore, so
+# there's nothing to strip out here.
 
 # Copy compiled bsdiff binaries from builder stage
 COPY --from=builder /usr/local/bin/bsdiff /usr/local/bin/bsdiff

@@ -188,7 +188,7 @@ manual-only as well, it is the same one-line trigger change.)
 
 ## Task board
 
-### 🆕 Task 19: Release files on GitHub Releases (private storage repo) + Telegram archive moved to GitHub Actions (19a–19e code-complete; 19f, 19g planned)
+### 🆕 Task 19: Release files on GitHub Releases (private storage repo) + Telegram archive moved to GitHub Actions (19a–19g code-complete)
 
 **Why.** Render's Free plan has no persistent disk (`disk:` in `render.yaml` is
 commented out), so every redeploy wipes `/app/public/uploads`: uploaded
@@ -217,8 +217,8 @@ at, are lost. `RELEASE_STORAGE_ADAPTER` was unset and silently fell back to
 | 19c ✅ | Mirror the primary APK/AAB (and the patched internal APK) to storage **after** `ProxySdk::Injector` finishes; record the keys on the release (migration); `Download::ReleasesController` serves the local file if present, else redirects to the signed storage URL | 19a, 19b, operator steps below | migration + `schema.rb`, `release_file_mirror_job.rb`, `proxy_sdk_injection_job.rb`, `proxy_sdk/injector.rb`, `release_download.rb`, download controller, `release.rb`, `release_storage.rb`, 3 specs | mirror → wipe local file → download still works (fake GitHub, see Verification) | **medium**: touches the upload and download paths; see the regression note below |
 | 19d ✅ | Jobs that read `release.file.path` (`TeardownJob`, `Anthropic::PlayPublishService`) fetch to a tmp file via `ReleaseStorage#with_local_file` when the local copy is gone | 19c | `release_storage.rb`, `teardown_job.rb`, `play_publish_service.rb`, 3 specs | job/service still works after a simulated redeploy (local file deleted) | low |
 | 19e ✅ | Delete stored objects when a release is destroyed (`CleanOldReleasesJob` → `release.destroy` was removing only the local file; `ReleaseStorage#delete` had no callers) | 19c | `release.rb`, `release_storage_cleanup_job.rb`, 2 specs | destroy → keys gone from storage; GitHub release/tag removed once empty | low |
-| 19f | Telegram archive → Actions: token-authed admin-only endpoints (candidates with signed URLs; record location), one-shot worker script replacing the Express server, workflow on `schedule` + `workflow_dispatch` **only**; then remove the s6 service, Dockerfile build step, `MTPROTO_WORKER_*` / `TELEGRAM_*` env vars from `render.yaml`, and the GoodJob cron entry (replacement before removal) | 19c (candidates need files in storage) | `mtproto-worker/`, new controller, workflow, Dockerfile, `render.yaml`, `good_job.rb` | one real archive → retrieve round trip (never done, see Task 6) | medium; can't be verified in a sandbox |
-| 19g | Scheduled cleanup workflow that wakes the Render service (free web services sleep, so in-process GoodJob crons don't fire while asleep) | 19e | one workflow | manual `workflow_dispatch` run | low; ❓ decide whether needed |
+| 19f ✅ | Telegram archive → Actions: token-authed admin-only endpoints (candidates with signed URLs; record location), one-shot worker script replacing the Express server, workflow on `schedule` + `workflow_dispatch` **only**; then remove the s6 service, Dockerfile build step, `MTPROTO_WORKER_*` / `TELEGRAM_*` env vars from `render.yaml`, and the GoodJob cron entry (replacement before removal) | 19c (candidates need files in storage) | `mtproto-worker/`, new controller, workflow, Dockerfile, `render.yaml`, `good_job.rb` | one real archive → retrieve round trip (never done, see Task 6) | medium; can't be verified in a sandbox |
+| 19g ✅ | Scheduled cleanup workflow that wakes the Render service (free web services sleep, so in-process GoodJob crons don't fire while asleep) | 19e | one workflow | manual `workflow_dispatch` run | low; ❓ decide whether needed — decided: targeted brackets, not 24/7 (see below) |
 
 **Open questions:** ❓ after a successful archive, should the storage copy be
 deleted (real cold tier) or kept (backup)? Today the job never deletes it, and
@@ -373,8 +373,11 @@ anyway. Say if you want either back (it is its own slice).
 8. Exercise 19d for real once you have a play_store_target release: mirror
    it, delete the local file, then trigger a Play publish (or re-run
    teardown) and confirm it still completes by fetching from storage.
-9. For 19f (later): the four `TELEGRAM_*` values must be copied into GitHub
-   **Actions secrets** by the operator.
+9. **19f (now code-complete):** the four `TELEGRAM_*` values must be moved
+   (not copied — they should no longer be set on Render at all) into GitHub
+   **Actions secrets**, alongside a new `ZEALOT_ADMIN_TOKEN` secret and
+   `ZEALOT_URL` variable. See `mtproto-worker/README.md` "Setup" for the
+   exact steps and where each one goes.
 
 **Verification (be honest about it):**
 - Ran under Ruby 3.2.3 (project is 3.4.8) with `ruby-rspec` from apt (also
@@ -426,6 +429,154 @@ the worker). Treat the credentials as possibly existing; nothing has been
 archived end-to-end. The Express worker's own comment records that connecting
 to Telegram at boot once OOM-killed the Free-tier container, which is part of
 why 19f moves it off Render.
+
+**Done in 19f (this session, code-complete, base `4371a469`):**
+- **Rails side.** New `Api::MtprotoArchiveController` (token-authed, admin-
+  only via new `MtprotoArchivePolicy`): `GET /api/mtproto_archive/candidates`
+  returns releases eligible for archiving (same age/size/batch thresholds
+  `AnthropicMtprotoArchiveJob` used — `MTPROTO_ARCHIVE_AFTER_DAYS` /
+  `_MIN_BYTES` / `_BATCH_SIZE`, unchanged defaults), each with a signed,
+  short-lived download URL from `ReleaseStorage#url_for`; `POST
+  /api/mtproto_archive/:id/complete` records `mtproto_archived_location` +
+  `mtproto_archived_at`, called by the worker script once a release is
+  actually archived. Routes added under `namespace :api`, alongside
+  `play_credential` from Task 17 (same admin-only posture, same reasoning:
+  nothing upstream of Pundit restricts an `/api` controller to admins the
+  way the session-authenticated admin namespace is gated at the routing
+  level — see `MtprotoArchivePolicy`'s header comment for why it needs an
+  explicit `policy_class:` rather than the model-backed pattern
+  `PlayCredentialPolicy` uses). **Deleted** `Anthropic::MtprotoArchiveService`
+  (the Rails→worker HTTP client — Rails no longer talks to a worker
+  process at all) and `AnthropicMtprotoArchiveJob` (its cron-scan role is
+  now split between the new `candidates` endpoint and the worker script's
+  own loop). Removed the `anthropic_mtproto_archive` cron entry and its
+  enable/disable guard from `good_job.rb`.
+- **Worker side.** `mtproto-worker/src/index.ts` (the Express sidecar)
+  replaced with `mtproto-worker/src/archive_batch.ts`: a one-shot script
+  that does `candidates` → download from the signed URL → archive via the
+  unchanged `MtprotoClient` → `complete`, logging and continuing past any
+  one candidate's failure, exiting non-zero only if any candidate failed or
+  a run-wide error occurred (can't reach Rails, missing env). `package.json`
+  drops the `express`/`@types/express` dependencies (nothing listens on a
+  port anymore) and repoints scripts at `archive` (compiled) /
+  `archive:dev` (ts-node). `mtproto_client.ts` itself is unchanged.
+- **Infra removed.** `docker/rootfs/etc/services.d/mtproto-worker/` (the s6
+  run script) deleted. Dockerfile no longer builds mtproto-worker into the
+  image at all — `mtproto-worker/*` is now excluded from the Docker build
+  context via `.dockerignore`. `render.yaml` no longer sets
+  `MTPROTO_WORKER_URL`, `MTPROTO_WORKER_SHARED_SECRET`, or any of the four
+  `TELEGRAM_*` vars — `MTPROTO_ARCHIVE_ENABLED` is the one var that stays,
+  now purely a Rails-side kill switch for the `candidates` endpoint,
+  independent of the GitHub Actions schedule.
+- **Infra added.** `.github/workflows/mtproto_archive.yml`: `schedule`
+  (`30 3 * * *` UTC, matching the old cron's clock numbers though not its
+  timezone — the container ran `Asia/Shanghai`, Actions cron is always UTC,
+  flagged as a difference worth knowing about but not acted on) +
+  `workflow_dispatch` **only**, deliberately never `push`/`pull_request`
+  since this does one-way, real-world work (archives a file, marks a
+  release archived). `concurrency` prevents a manual dispatch from racing
+  the scheduled run. Needs five new GitHub Actions repo secrets
+  (`TELEGRAM_API_ID/HASH/SESSION_STRING/ARCHIVE_CHAT_ID`, moved off Render,
+  plus a new `ZEALOT_ADMIN_TOKEN`) and one repo variable (`ZEALOT_URL`) —
+  see `mtproto-worker/README.md` "Setup" for the exact operator steps.
+
+**Verification (be honest about it):**
+- **Actually run, not just reviewed:** `npm install` (fresh lockfile, 0
+  vulnerabilities), `npm run typecheck`, and `npm run build` for
+  `mtproto-worker` all passed clean under Node 22 in this sandbox. The
+  Rails↔script HTTP contract — `GET candidates` → stream-download from the
+  signed URL → `encodeLocation` (the real function from the compiled
+  `dist/mtproto_client.js`) → `POST complete` — was exercised end-to-end
+  against a throwaway local Node HTTP server standing in for
+  `Api::MtprotoArchiveController` (candidates payload shape, a real byte
+  stream download, the complete callback, and a bad-token 401), with only
+  the actual Telegram upload (`MtprotoClient#archive`) stubbed out, since
+  this sandbox has no real `TELEGRAM_*` credentials or network path to
+  Telegram. All new/changed Ruby files (`ruby -c`) parse clean. The new
+  `MtprotoArchivePolicy`'s `admin?` gating was checked with a small
+  throwaway Ruby harness (fake user structs, not a real `User` model) —
+  admin allowed, non-admin denied, on both `candidates?`/`complete?`.
+- **Not verified:** `Api::MtprotoArchiveController` itself against a real
+  Rails boot (no Rails/Bundler in this sandbox, same limitation every prior
+  session in this file has had — no request spec, no `rubocop`, no Zeitwerk
+  autoload check that `MtprotoArchivePolicy`/the controller actually
+  resolve); a real GitHub Actions run of the new workflow (no way to
+  trigger Actions from this sandbox); a real Telegram archive; the
+  Dockerfile actually still builds now that a `RUN` step and its
+  preconditions changed (reviewed by eye, not built — same as every
+  Dockerfile edit in this file's history that lacked a real `docker build`).
+  **One real archive → retrieve round trip is still never done** — same
+  open item Task 6 has carried since it was written; 19f only gets the
+  plumbing in place, it doesn't complete that verification.
+- Revert: `app/jobs/anthropic_mtproto_archive_job.rb` and
+  `app/services/anthropic/mtproto_archive_service.rb` were deleted — restore
+  from `4371a469` to bring them back. `docker/rootfs/etc/services.d/
+  mtproto-worker/run` and `mtproto-worker/src/index.ts` likewise. Everything
+  else (`Dockerfile`, `render.yaml`, `.dockerignore`, `good_job.rb`,
+  `routes.rb`, `mtproto-worker/package.json`) is a diff against `4371a469`.
+
+**Done in 19g (this session, code-complete):** the ❓ "decide whether
+needed" from the slice table is answered here rather than left open — a
+new `.github/workflows/wake_render_service.yml`, plus the reasoning for why
+it's *not* a 24/7 keep-alive:
+
+- **Why not just ping it continuously.** Render's Free plan grants 750
+  instance-hours per **workspace** per calendar month (confirmed live
+  against `render.com/docs/free`, since this is exactly the kind of
+  platform detail that drifts and shouldn't be assumed — same caution
+  prior sessions applied to the private-service pricing note this file
+  already carried for Task 6). `zealot-web` is the only free service this
+  `render.yaml` defines, so keeping it up all of a 31-day month (744h)
+  would still technically fit under 750h — but with only ~6 hours of
+  margin for the whole month, against a cap whose breach suspends **every**
+  free service in the workspace until the next month. That failure mode is
+  worse than the problem this workflow exists to reduce, so this
+  deliberately doesn't attempt continuous uptime.
+- **What it does instead.** Six `schedule` cron entries (plus
+  `workflow_dispatch` for a manual run, matching the slice's own acceptance
+  check), bracketing each of the two fixed-time daily crons still in
+  `good_job.rb` with a ping 10 minutes before, on the time, and 10 minutes
+  after — close enough together (under the 15-minute spin-down window) that
+  the container stays continuously up across each ~20-minute bracket rather
+  than gambling on a single request landing in the exact right minute.
+  Converted from Rails' configured `Asia/Shanghai` time zone
+  (`config/application.rb`) to the UTC GitHub Actions cron runs in:
+  `sync_apple_devices`/`reset_for_demo_mode` (00:00 CST → 16:00 UTC) and
+  `clean_old_releases` (06:00 CST → 22:00 UTC). Pings
+  `{ZEALOT_URL}/api/health` — the actual configured `health_check` gem
+  mount from `config/initializers/health_check.rb` (`config.uri =
+  '/api/health'`, not the gem's own `/health_check` default) — so a
+  successful run also confirms the `standard_checks` (database, cache) are
+  passing, not just that the container booted.
+- **What it deliberately doesn't cover.** The two minute-based crons
+  (`anthropic_play_approval_expiry` every 15 min, `anthropic_play_setup_recheck`
+  every 10 min) only get whatever chance real traffic or these two brackets
+  happen to give them — guaranteeing those would require close to the
+  continuous uptime this workflow avoids. GitHub Actions' `schedule`
+  trigger is also documented as best-effort (can be delayed under load),
+  so an occasional bracket landing late enough to miss its target minute
+  is expected, not a bug. Flagging both honestly rather than as fully
+  solved.
+- **Caveat worth operator attention:** `config/initializers/health_check.rb`
+  supports an IP-whitelist env var, `ZEALOT_HEALTH_CHECK_IP_WHITELIST`. It's
+  unset in this repo's `render.yaml`/`.env.example` as of this session, but
+  if an operator sets it directly on Render outside this Blueprint,
+  GitHub Actions' runner IPs (ephemeral, drawn from Azure's ranges) can't
+  practically be whitelisted and this workflow would start failing with a
+  403 — see the workflow file's own comment on this.
+- **Verification:** the workflow's YAML parses (`yaml.safe_load`); its
+  cron expressions were hand-checked against the UTC times above; the
+  embedded `curl` invocation (including the `${ZEALOT_URL%/}` trailing-
+  slash trim) was run for real against a throwaway local Node HTTP stand-in
+  for `/api/health` in this sandbox, confirming both the success path (200
+  → exit 0) and that `--fail` correctly turns a non-2xx response into a
+  non-zero exit. **Not verified:** an actual run against Render (no way to
+  trigger GitHub Actions or reach a live Render instance from this
+  sandbox), and — since `standard_checks = %w[database cache]` runs real
+  checks against the live app — whether those checks themselves pass on
+  the deployed instance is unverifiable from here either way.
+- Revert: delete `.github/workflows/wake_render_service.yml`; nothing else
+  changed for this slice.
 
 ### ✅ Fix: missing / untranslated locale keys found while verifying Tasks 12–18 (this session, code-complete, not run)
 
@@ -1757,25 +1908,31 @@ matching the existing convention in `device_attributes.rb` and
 branch `fix/home-controller-site-title-nameerror`, base `develop`. Not
 yet applied as of this doc.
 
-### 🟡→ Task 6: Telegram MTProto Cold Storage (operator reports fully wired)
-**Update (Task 19, decision D4):** the worker is planned to move off Render
-onto a GitHub Actions scheduled batch (slice 19f). Until 19f lands, everything
-below still describes what is deployed.
+### 🟡→ Task 6: Telegram MTProto Cold Storage (code moved to GitHub Actions in 19f; live wiring not yet re-verified there)
+**Update (Task 19f, code-complete):** the worker has moved off Render onto a
+GitHub Actions scheduled batch — see Task 19's "Done in 19f" section above
+for what changed. Everything in this section below the next paragraph
+describes the **old**, now-removed Render/s6 deployment, kept for history;
+treat it as superseded architecture, not current state.
 
-Operator states all live credentials (`TELEGRAM_API_ID`, `TELEGRAM_API_HASH`,
-`TELEGRAM_SESSION_STRING`, `TELEGRAM_ARCHIVE_CHAT_ID`) are now set on Render
-and `MTPROTO_ARCHIVE_ENABLED` is intended to be `true`. Not independently
-re-verified against the code this session (no Node runtime in this sandbox).
+The operator's four `TELEGRAM_*` credentials, previously set on Render (see
+below), need to be **copied to GitHub Actions repo secrets** instead (they
+are no longer read from Render at all — `render.yaml` no longer even
+declares those vars) — plus a new `ZEALOT_ADMIN_TOKEN` secret and
+`ZEALOT_URL` variable. This is an operator step no session can do; see
+`mtproto-worker/README.md` "Setup". Remaining step, unchanged from before
+19f: **do one real archive → retrieve round trip against a test chat** to
+confirm the wiring actually works end-to-end — still not verified, only
+(now differently) configured.
 
-**Note from this session's 502 debugging:** `MTPROTO_ARCHIVE_ENABLED` was
-temporarily flipped to `false` on Render to rule the worker out as the
-cause of a 502 the operator was seeing. It was ruled out — see the 502
-investigation note below — but the flag was left `false` and needs to be
-flipped back to `true` before Task 6 can be considered live again.
-
-Remaining step: **do one real archive → retrieve round trip against a
-test chat** to confirm the wiring actually works end-to-end — this has
-not been verified, only configured.
+**Pre-19f state, for history:** operator stated all live credentials
+(`TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_SESSION_STRING`,
+`TELEGRAM_ARCHIVE_CHAT_ID`) were set on Render and `MTPROTO_ARCHIVE_ENABLED`
+was intended to be `true`, with the caveat that `MTPROTO_ARCHIVE_ENABLED`
+had been temporarily flipped to `false` while debugging a 502 (see the 502
+investigation note below — the worker was ruled out as the cause, but the
+flag was left `false`). None of this was ever independently re-verified
+against the code before 19f removed the Render-side pieces it referred to.
 
 ### 502 investigation (this session)
 Operator reported `zealot-web` returning 502. Root-caused via Render logs

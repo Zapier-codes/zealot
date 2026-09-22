@@ -21,6 +21,11 @@ public/uploads/*
 public/system/*
 vendor/bundle/*
 node_modules/*
+
+# Task 19f: mtproto-worker no longer builds into or runs from this image —
+# it's a one-shot script run by .github/workflows/mtproto_archive.yml
+# instead. See mtproto-worker/README.md "Architecture (task 19f)".
+mtproto-worker/*
 config/master*.key
 config/credentials.yml*
 Guardfile
