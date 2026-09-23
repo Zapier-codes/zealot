@@ -450,10 +450,12 @@ en:
         title: Setup checklist
         progress: "%{done}/%{total} done"
         next: Next
+        internal_live: "✓ Live for internal distribution — your team can install this build now."
+        play_section: Google Play publishing (optional)
         steps:
           name: Name your app
-          package_id: Set the Play package ID
           first_upload: Upload your first build
+          package_id: Set the Play package ID
           published: Publish to Google Play
         edit_package_id: Set package ID
         review_approvals: Review in Play approvals

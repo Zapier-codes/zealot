@@ -1,5 +1,5 @@
 - steps = app.setup_checklist_steps
-- ordered_keys = %i[name package_id first_upload published]
+- ordered_keys = %i[name first_upload package_id published]
 - next_key = ordered_keys.find { |key| !steps[key] }
 - done_count = steps.values.count(true)
 - percent = steps.empty? ? 0 : (done_count * 100.0 / steps.size).round
@@ -10,9 +10,15 @@
       h3.d-card-title.text-base = t('apps.show.setup_checklist.title')
       span.text-xs.opacity-60 = t('apps.show.setup_checklist.progress', done: done_count, total: steps.size)
     progress.d-progress.d-progress-primary.mb-3 value=percent max="100"
+    - if steps[:first_upload]
+      .d-alert.d-alert-success.d-alert-soft.mb-3.text-sm
+        = t('apps.show.setup_checklist.internal_live')
     ul.d-steps.d-steps-vertical
       - ordered_keys.each do |key|
         - done = steps[key]
+        - if key == :package_id
+          li.d-step.opacity-50.pointer-events-none
+            span.text-xs.uppercase.tracking-wide = t('apps.show.setup_checklist.play_section')
         li class="d-step #{'d-step-primary' if done} #{'font-semibold' if key == next_key}"
           span = t("apps.show.setup_checklist.steps.#{key}")
           - if key == next_key

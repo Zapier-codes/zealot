@@ -182,6 +182,13 @@ class App < ApplicationRecord
   # collaborator finishing a later step, a step undone) instead of only
   # firing once off a `?created=1`-style redirect param. Ordered hash so
   # callers can rely on iteration order for "which step is next."
+  #
+  # Anthropic: `first_upload` becoming true means the app is ALREADY live
+  # for internal distribution (that's what an upload does, regardless of
+  # Play). `package_id` and `published` are Google Play publishing only —
+  # optional, admin-approval-gated, and irrelevant to teams that only want
+  # internal distribution. The view renders this distinction explicitly
+  # rather than presenting all four as one undifferentiated "finish line."
   def setup_checklist_steps
     {
       name: name.present?,

@@ -444,10 +444,12 @@ zh-CN:
         title: 设置清单
         progress: "已完成 %{done}/%{total}"
         next: 下一步
+        internal_live: "✓ 已在内部分发渠道上线，团队现在即可安装此版本。"
+        play_section: Google Play 发布（可选）
         steps:
           name: 为应用命名
-          package_id: 设置 Play 包名
           first_upload: 上传第一个版本
+          package_id: 设置 Play 包名
           published: 发布到 Google Play
         edit_package_id: 设置包名
         review_approvals: 前往 Play 审批
