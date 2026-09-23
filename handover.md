@@ -243,7 +243,7 @@ slices, not bolted onto the same session/patch.**
 | ID | Goal | Depends on | Files | Acceptance check | Risk |
 |---|---|---|---|---|---|
 | 20a ✅ | Fix the crash-on-invalid-submit, the silent no-op on the first app, and the modal-eats-its-own-errors bug — the three things standing between "click Create" and *any* correct outcome | none | `apps_controller.rb`, `apps/_form.html.slim`, `modal_controller.js`; removed dead `apps/create.turbo_stream.slim` | invalid name → modal stays open, shows the error, in place; valid submit → lands on the new app's own show page, not the index; first-app-ever case no longer depends on a list append | low — see Verification |
-| 20b 🆕 | Setup-checklist / progress UI on the app show page for a freshly created app (name ✓ → package id → first upload → publish), the actual "Play-Console-dashboard" landing experience 20a's redirect now makes possible | 20a | new partial + controller flag (e.g. `@app.newly_created?` via a `?created=1` param or similar — ❓ operator to confirm the exact signal), locales | create an app → checklist renders with correct next step highlighted | medium — new UI surface, needs its own session |
+| 20b ✅ | Setup-checklist / progress UI on the app show page (name ✓ → package id → first upload → publish), the actual "Play-Console-dashboard" landing experience 20a's redirect now makes possible | 20a | `app/models/app.rb`, `app/views/apps/_setup_checklist.html.slim` (new), `app/views/apps/show.html.slim`, `config/locales/zealot/{en,zh-CN}.yml` | create an app → checklist renders with correct next step highlighted | low — pure Ruby/view addition, no controller/route/migration change |
 | 20c 🆕 | Apply the same `turbo:submit-end->modal#close` success-only guard's *visual* half — i.e. actually style/animate the in-frame error state (shake, inline field errors, etc.) now that 20a stops the modal from eating it before it can be seen | 20a | CSS/JS only, shared across all ~10 modal forms listed above, not just apps | trigger a validation error on 2–3 of those forms, confirm errors are visible and not just non-crashing | low, but touches many templates — review each |
 | 20d 🆕 | The "gamified, modern" full pass: whatever specific mechanics the operator wants (progress bar, badges/streaks for first upload+publish, empty-state illustration on `/apps`, etc.) | 20a, ideally 20b | ❓ scope not yet defined by the operator | ❓ | ❓ — needs operator decisions first per the TSF ordering formula (❓ resolved before anything is built on a guess) |
 
@@ -291,6 +291,66 @@ visit.
 - Revert: restore `apps_controller.rb`'s `create` method, `apps/_form.html.slim`'s
   `simple_form_for` line, and `modal_controller.js`'s `close`/`clear` methods
   to `4cfb01e8`; restore `apps/create.turbo_stream.slim` from the same commit.
+
+**Done in 20b (this session, base `9b32811b`).** The ❓ from 20b's slice card
+(what signals "freshly created" — a `?created=1` param or similar) is
+resolved by not needing a signal at all: the checklist is **fully
+state-driven**, computed from what's actually true in the database on every
+render, not a one-shot flag tied to the create redirect. This is the
+industry-standard shape (GitHub/Stripe/Linear-style setup checklists): it
+stays correct across revisits, a different collaborator finishing a later
+step, or a step somehow becoming un-done, instead of only firing once and
+then lying. No controller flag, no query param, no new route.
+- `App#setup_checklist_steps`: ordered hash of 4 booleans — `name` (always
+  true post-save), `package_id` (`play_package_name.present?`),
+  `first_upload` (`total_releases.positive?`), `published` (new
+  `App#play_releases_published?`, checking `Release.play_publish_published`
+  across the app's channels — distinct from `play_approval_status`,
+  admin sign-off only, and `play_setup_status`, Play-Console readiness only).
+  `App#setup_checklist_complete?` is `.values.all?`.
+- `app/views/apps/_setup_checklist.html.slim` (new): daisyUI `d-steps
+  d-steps-vertical`, one `d-step` per key, `d-step-primary` when done, a
+  "Next" `d-badge` on the first incomplete step. Package-id step links to
+  `edit_app_path` (opens in the `#modal` frame, same as the existing edit
+  button) when the current user can manage the app; publish step links to
+  `admin_play_approvals_path` when the current user is admin **and** a
+  build has been uploaded (no point sending anyone to an empty approval
+  queue). No link on `first_upload` — the upload action is already right
+  below the checklist in the schemes/channels partial.
+- `apps/show.html.slim`: renders the partial only while
+  `!@app.setup_checklist_complete?` — once every step is done the card
+  disappears entirely rather than sticking around as a dismissible banner
+  (kept out of scope for this slice; 20d is where that kind of polish
+  belongs if wanted).
+- Locales: `apps.show.setup_checklist.*` added to both `en.yml` and
+  `zh-CN.yml` together (title, progress counter, per-step copy, the two
+  action-link labels, "Next" badge).
+- **Verification (be honest about it):** same standing constraint as every
+  recent session — Ruby is not installable in this sandbox
+  (`security.ubuntu.com` 404s on `ruby3.2`), so no `ruby -c`, no spec, no
+  Rails boot, nothing rendered in a real browser. What *was* checked: both
+  locale files parse as valid YAML (`python3 -c 'import yaml; ...'`); the
+  `Release.play_publish_published` scope call mirrors the exact pattern
+  already in this file (`Release...play_publish_waiting_for_setup`,
+  `app.rb:165`) rather than being invented; the Tailwind-vs-daisyUI class
+  prefix convention (`d-` only on daisyUI components, plain utility classes
+  like `flex`/`items-center` unprefixed) was confirmed against three other
+  templates before use; `current_user&.manage?(app:)` / `current_user&.admin?`
+  and the `edit_app_path`/`admin_play_approvals_path` route names were all
+  confirmed against existing call sites, not assumed. Genuinely unverified:
+  the Slim indentation/interpolation compiles correctly, and the four steps
+  render with the right one bolded/badged for each state. Next session (or
+  the operator) should smoke-test: (1) a brand-new app with no package id,
+  no upload → checklist shows, "Set the Play package ID" is next/badged;
+  (2) set a package id, upload a build → "Publish to Google Play" becomes
+  next; (3) an admin with a Play-approved-and-published release → checklist
+  disappears from that app's page entirely.
+- Revert: delete `app/views/apps/_setup_checklist.html.slim`; remove the
+  three new `App` methods (`setup_checklist_steps`,
+  `setup_checklist_complete?`, `play_releases_published?`) added just before
+  `def archive` in `app/models/app.rb`; remove the two-line conditional
+  render added to `apps/show.html.slim`; remove the `setup_checklist:` block
+  from both locale files' `apps.show:` section.
 
 ### 🟡 Task 19: Release files on GitHub Releases (private storage repo) + Telegram archive moved to GitHub Actions (19a–19e, 19g done and verified; 19f wiring verified, real round trip still open)
 

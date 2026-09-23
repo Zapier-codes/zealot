@@ -1,0 +1,23 @@
+- steps = app.setup_checklist_steps
+- ordered_keys = %i[name package_id first_upload published]
+- next_key = ordered_keys.find { |key| !steps[key] }
+- done_count = steps.values.count(true)
+
+.d-card.d-card-border.mb-4.setup-checklist
+  .d-card-body.py-4
+    .flex.items-center.justify-between.mb-2
+      h3.d-card-title.text-base = t('apps.show.setup_checklist.title')
+      span.text-xs.opacity-60 = t('apps.show.setup_checklist.progress', done: done_count, total: steps.size)
+    ul.d-steps.d-steps-vertical
+      - ordered_keys.each do |key|
+        - done = steps[key]
+        li class="d-step #{'d-step-primary' if done} #{'font-semibold' if key == next_key}"
+          span = t("apps.show.setup_checklist.steps.#{key}")
+          - if key == next_key
+            span.d-badge.d-badge-sm.d-badge-primary.ml-2 = t('apps.show.setup_checklist.next')
+          - if key == :package_id && !done && current_user&.manage?(app: app)
+            = link_to t('apps.show.setup_checklist.edit_package_id'), edit_app_path(app), \
+              class: 'd-link d-link-primary text-xs ml-2', data: { turbo_frame: :modal }
+          - if key == :published && !done && steps[:first_upload] && current_user&.admin?
+            = link_to t('apps.show.setup_checklist.review_approvals'), admin_play_approvals_path, \
+              class: 'd-link d-link-primary text-xs ml-2'

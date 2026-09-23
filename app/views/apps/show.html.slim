@@ -23,6 +23,9 @@
         data: { tip: t('apps.show.destroy_app'), turbo_method: :delete, turbo_confirm: "#{t('apps.messages.confirm.delete_app', name: @app.name)}" }
 
 = turbo_frame_tag @app do
+  - unless @app.setup_checklist_complete?
+    = render 'apps/setup_checklist', app: @app
+
   = render 'schemes', app: @app
 
   - if current_user&.manage?(app: @app)

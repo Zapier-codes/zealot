@@ -440,6 +440,17 @@ zh-CN:
       role: 权限
       it_is_you: 你的账户
       collaborator_owner: 拥有者
+      setup_checklist:
+        title: 设置清单
+        progress: "已完成 %{done}/%{total}"
+        next: 下一步
+        steps:
+          name: 为应用命名
+          package_id: 设置 Play 包名
+          first_upload: 上传第一个版本
+          published: 发布到 Google Play
+        edit_package_id: 设置包名
+        review_approvals: 前往 Play 审批
     new:
       title: 新建应用
     edit:

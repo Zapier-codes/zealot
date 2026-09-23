@@ -174,6 +174,34 @@ class App < ApplicationRecord
     end
   end
 
+  # Task 20b — Play-Console-style setup checklist shown on the app's own
+  # page (see AppsController#show / apps/_setup_checklist). Deliberately
+  # state-driven, not a one-shot "just created" flag: each step reflects
+  # what is actually true in the database right now, so the checklist is
+  # correct however the app got into that state (re-visits, another
+  # collaborator finishing a later step, a step undone) instead of only
+  # firing once off a `?created=1`-style redirect param. Ordered hash so
+  # callers can rely on iteration order for "which step is next."
+  def setup_checklist_steps
+    {
+      name: name.present?,
+      package_id: play_package_name.present?,
+      first_upload: total_releases.positive?,
+      published: play_releases_published?
+    }
+  end
+
+  def setup_checklist_complete?
+    setup_checklist_steps.values.all?
+  end
+
+  # Whether Google has actually published a release of this app (distinct
+  # from play_approval_status, which only tracks admin sign-off, and from
+  # play_setup_status, which tracks whether Play Console itself is ready).
+  def play_releases_published?
+    Release.where(channel_id: channel_ids).play_publish_published.exists?
+  end
+
   def archive
     update(archived: true)
   end

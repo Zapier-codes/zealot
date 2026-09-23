@@ -446,6 +446,17 @@ en:
       role: Role
       it_is_you: You
       collaborator_owner: Owner
+      setup_checklist:
+        title: Setup checklist
+        progress: "%{done}/%{total} done"
+        next: Next
+        steps:
+          name: Name your app
+          package_id: Set the Play package ID
+          first_upload: Upload your first build
+          published: Publish to Google Play
+        edit_package_id: Set package ID
+        review_approvals: Review in Play approvals
     new:
       title: New app
     edit:
