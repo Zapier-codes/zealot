@@ -17,7 +17,7 @@ class SchemesController < ApplicationController
   end
 
   def create
-    channels = scheme_params.delete(:channel_attributes)[:name].reject(&:blank?)
+    channels = (scheme_params.delete(:channel_attributes) || {}).fetch(:name, []).reject(&:blank?)
     @scheme = @app.schemes.new(scheme_params)
     authorize @scheme
 

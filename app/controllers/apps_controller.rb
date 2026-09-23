@@ -163,8 +163,8 @@ class AppsController < ApplicationController
   end
 
   def process_scheme_and_channel
-    @schemes = app_params.delete(:scheme_attributes)[:name].reject(&:empty?)
-    @channels = app_params.delete(:channel_attributes)[:name].reject(&:empty?)
+    @schemes = (app_params.delete(:scheme_attributes) || {}).fetch(:name, []).reject(&:empty?)
+    @channels = (app_params.delete(:channel_attributes) || {}).fetch(:name, []).reject(&:empty?)
   end
 
   def set_app
