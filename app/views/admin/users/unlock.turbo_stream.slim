@@ -1,2 +1,2 @@
-= turbo_stream.replace @user
+= turbo_stream.replace :status_actions, partial: 'admin/users/status_actions', locals: { user: @user }
 = turbo_stream.append :notifications, partial: 'layouts/notifications'

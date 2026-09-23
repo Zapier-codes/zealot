@@ -16,13 +16,21 @@
 module EmailNotifications
   SILENCE_KEY = :zealot_email_notifications_silenced
 
-  # Trigger identifiers of the three Novu workflows. Create workflows with
-  # these identifiers in the Novu dashboard, or override them via ENV.
+  # Trigger identifiers of the Novu workflows. Create workflows with these
+  # identifiers in the Novu dashboard, or override them via ENV.
   DEFAULT_WORKFLOWS = {
     release_deployed: 'zealot-release-deployed',
     notice: 'zealot-notice',
-    campaign: 'zealot-campaign'
+    campaign: 'zealot-campaign',
+    invite: 'zealot-invite'
   }.freeze
+
+  # `invite` is transactional, not one of EmailPreferences::KINDS: a
+  # just-created account has no opt-outs to check yet, and setting a
+  # password is essential to using the account at all — same reasoning as
+  # the "payment receipts... no switch" note above. NovuDeliveryJob treats
+  # these kinds as always-on instead of calling user.wants_email?(kind).
+  TRANSACTIONAL_KINDS = %w[invite].freeze
 
   module_function
 
@@ -104,6 +112,18 @@ module EmailNotifications
                  broadcast_payload(user, :campaigns, subject, body))
   end
 
+  # Sent once, right after an admin creates an account with no password (see
+  # Admin::UsersController#create). `set_password_url` is a Devise
+  # :recoverable reset-password link built by the caller (set_reset_password_token
+  # generates the token the same way "forgot password" does; we just supply
+  # our own mailer/Novu delivery instead of Devise's built-in one).
+  def deliver_invite(user, set_password_url:)
+    return NotificationMailer.invite(user, set_password_url).deliver_later unless novu?
+
+    enqueue_novu(:invite, :invite, user, "invite-#{user.id}-#{SecureRandom.hex(4)}",
+                 invite_payload(user, set_password_url))
+  end
+
   # Synchronous, raises on failure — for `rake zealot:email:test`.
   def deliver_test_via_novu!(user, subject:, body:)
     NovuClient.trigger(
@@ -182,6 +202,23 @@ module EmailNotifications
       manageLabel: I18n.t('notification_mailer.footer.manage'),
       preferencesUrl: Rails.application.routes.url_helpers.email_preferences_url(user.email_preferences_token)
     }
+  end
+
+  # No opt-out footer here (see TRANSACTIONAL_KINDS): "you opted in to..."
+  # doesn't make sense for an account someone else just created.
+  def invite_payload(user, set_password_url)
+    with_user_locale(user) do
+      {
+        siteTitle: Setting.site_title,
+        siteUrl: Rails.application.routes.url_helpers.root_url,
+        subject: I18n.t('notification_mailer.invite.subject', site: Setting.site_title),
+        heading: I18n.t('notification_mailer.invite.heading', site: Setting.site_title),
+        intro: I18n.t('notification_mailer.invite.intro', email: user.email),
+        ctaLabel: I18n.t('notification_mailer.invite.cta'),
+        footer: I18n.t('notification_mailer.footer.why_invite'),
+        setPasswordUrl: set_password_url
+      }
+    end
   end
 
   def with_user_locale(user, &block)

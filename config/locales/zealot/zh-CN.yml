@@ -30,6 +30,7 @@ zh-CN:
       title: 用户
       new:
         title: 创建用户
+        password_hint: 留空则发送邮件让对方自行设置密码
       index:
         title: :'admin.users.title'
         new_user: :'admin.users.new.title'
@@ -1196,6 +1197,7 @@ zh-CN:
         file: 应用文件
     success:
       create: "%{key}创建成功"
+      invite: "%{key}创建成功，已发送邮件让对方设置密码"
       update: "%{key}更新成功"
       archived: "%{key}归档成功"
       unarchived: "%{key}取消归档成功"
@@ -1270,6 +1272,7 @@ zh-CN:
   notification_mailer:
     footer:
       why_kind: "您收到这封邮件，是因为您订阅了%{kind}。"
+      why_invite: "您收到这封邮件，是因为管理员为您创建了一个账户。"
       manage: 管理邮件通知设置
       kinds:
         deploys: 新版本发布通知
@@ -1283,6 +1286,11 @@ zh-CN:
       open: 查看版本
     notice:
       about_app: "关于您的应用：%{app}"
+    invite:
+      subject: "您已被邀请加入 %{site}"
+      heading: "您已被邀请加入 %{site}"
+      intro: "管理员为您创建了一个账户（%{email}）。请设置密码以开始使用。"
+      cta: 设置密码
     play_publish_failed:
       subject: "Google Play 发布失败：%{app}"
       body: |-

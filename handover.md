@@ -188,6 +188,168 @@ manual-only as well, it is the same one-line trigger change.)
 
 ## Task board
 
+### 🆕 Task 21: Admin "add user" was silently failing to create the account + lock/unlock/update on the edit page were wiping the whole page + invite email now uses the Task 16 Novu pipeline (code-complete, not run)
+
+**Why (operator report).** In the admin UI, adding a new user didn't work —
+no account was created, no obvious error — and separately, activating /
+deactivating / suspending a user (together with seeing their apps) wasn't
+working either. Two unrelated root causes, both in `admin/users`, fixed
+together since they were reported together.
+
+**Root cause 1 — blank password fails validation.** `Admin::UsersController#create` built the user from
+`user_params` and called `@user.save` directly. The form (`_form.html.slim`)
+deliberately does **not** mark `password` as `required: true` — an admin
+adding someone shouldn't have to invent a password on their behalf. But
+`User` includes Devise's `:validatable`, whose `password_required?` returns
+`true` for **any new, unpersisted record**, no exceptions. So the moment an
+admin left password blank (which the form invites them to do), validation
+failed and the user was never created — matching the report exactly. This
+had nothing to do with the Task 20c modal/shake work (that's structurally
+fine and unrelated); it's a plain validation gap in `create` that `update`
+already had the equivalent guard for ("skip password if not set" — see that
+action a few lines down) but `create` never did. Separately, *any other*
+validation failure (duplicate email, blank username, ...) hit the same
+missing-turbo_stream-template bug Task 20a already diagnosed and fixed for
+`AppsController` — no `new.turbo_stream.slim` existed here either, so a
+failed save crashed (`ActionView::MissingTemplate`) instead of re-showing
+the form with errors. Fixed the same way: `formats: [:html]` on that
+render call.
+
+**Root cause 2 — the edit page and the index row shared one Turbo frame
+id.** `admin/users/edit.html.slim` wrapped its *entire* page content (form,
+collaborators, API token, lock/unlock/destroy) in
+`turbo_frame_tag @user`. `admin/users/_user.html.slim` — the compact
+one-line row rendered on the *index* page — uses the exact same frame id
+(`dom_id(user)`, Rails' default). `lock.turbo_stream.slim`,
+`unlock.turbo_stream.slim` and `update.turbo_stream.slim` all did
+`turbo_stream.replace @user`, which (via `User#to_partial_path` and
+Rails' `prefix_partial_path_with_controller_namespace`) implicitly renders
+the **index row partial** as the replacement. That's correct when
+triggered *from the index page* (row updates in place) but wrong when
+triggered *from the edit page*, where frame `user_N` currently holds the
+whole edit UI: clicking Lock/Unlock, or saving the profile form, replaced
+the entire page with a single compact summary line — no form, no buttons,
+nothing left to act on. That's what "activate/deactivate/suspend... not
+working" actually was. (A user's apps, shown via `@user.collaborators` on
+the edit page, were never actually broken — they just vanished along with
+everything else in the same collapse.) Also found, same root cause: an
+existing `edit.turbo_stream.slim` (only reachable via the "can't lock the
+default admin" guard) already targeted a `:user_form` frame that never
+existed anywhere — dead on arrival before this fix.
+
+**Fix, in two parts:**
+
+1. **Made `create` actually succeed.** Blank password → the account is
+   created with a random, unusable password (`Devise.friendly_token[0, 20]`,
+   same generator already used for OAuth accounts in
+   `app/models/concerns/user_omniauth.rb`) instead of failing validation.
+   Any other validation failure now re-renders `new` with `formats: [:html]`
+   explicitly, instead of crashing.
+2. **Turned that into a real invite flow, not just a silent random
+   password nobody can use** (operator's ask this session: "supposed to be
+   like how industry standards do it" — GitHub/GitLab/Slack-style: admin
+   adds email, invitee gets a link, invitee sets their own password).
+   `create` now: `skip_confirmation!` (avoids a redundant separate "confirm
+   your email" landing alongside the invite — clicking the set-password
+   link already proves mailbox ownership), builds a Devise `:recoverable`
+   reset-password token (`@user.set_reset_password_token` — the exact
+   generator "forgot password" uses, just without Devise's own mailer), and
+   sends it through **the Task 16 Novu pipeline** rather than
+   `send_reset_password_instructions`' bare Devise mailer, so it behaves
+   like every other Zealot email (opt-in-aware where that applies, SMTP
+   fallback, GoodJob retry/backoff on transient Novu failures).
+   If the admin *does* type a password, that's honored as-is and no invite
+   email is sent — they've chosen to hand credentials over directly (e.g. a
+   shared/service account).
+3. **Split the edit page into two independently-addressable frames**
+   instead of one page-wide frame colliding with the index row. New
+   `_profile_card.html.slim` (form, self-contained with its own
+   `turbo_frame_tag :user_form`) and `_status_actions.html.slim`
+   (lock/unlock/destroy buttons, `turbo_frame_tag :status_actions`).
+   `update.turbo_stream.slim` now replaces `:user_form`;
+   `lock.turbo_stream.slim`/`unlock.turbo_stream.slim` now replace
+   `:status_actions`; the pre-existing (broken) `edit.turbo_stream.slim`
+   now has a real `:user_form` frame to target. The index page and its row
+   partial (`_user.html.slim`, `dom_id(user)`) are untouched — no collision
+   left on either side. Also dropped a vestigial `data-action:
+   "modal#close"` on the lock/unlock links (leftover copy-paste; the edit
+   page was never inside a modal, so it was a silent no-op, not a bug, but
+   dead code adjacent to the fix).
+
+**Files:**
+- `app/controllers/admin/users_controller.rb` — fix 1 above.
+- `app/views/admin/users/_form.html.slim` — hint under the password field
+  on the *new* form only, explaining blank = invite email.
+- `app/services/email_notifications.rb` — new `:invite` workflow id
+  (`zealot-invite`, overridable via `NOVU_WORKFLOW_INVITE`),
+  `deliver_invite`, `invite_payload`. Added `TRANSACTIONAL_KINDS = %w[invite]`
+  — `invite` is not one of `EmailPreferences::KINDS`; a brand-new account has
+  no opt-outs to check and can't function without a password, same
+  reasoning as the "payment receipts... no switch" note already in this
+  file.
+- `app/jobs/novu_delivery_job.rb` — skips the `wants_email?(kind)` opt-out
+  lookup for `TRANSACTIONAL_KINDS` (that lookup would otherwise raise
+  `ArgumentError`, since `EmailPreferences.email_kind!` only recognizes the
+  three opt-out kinds).
+- `app/mailers/notification_mailer.rb` + new
+  `app/views/notification_mailer/invite.{html.slim,text.erb}` — SMTP
+  fallback path, same visual style as the other three automated emails.
+- `app/views/layouts/notification_mailer.html.slim` — shared footer now
+  special-cases `@kind == :invite` with its own line instead of the
+  generic "you opted in to..." (which doesn't fit an admin-created account).
+- `config/locales/zealot/{en,zh-CN}.yml` — `notification_mailer.invite.*`,
+  `notification_mailer.footer.why_invite`, `admin.users.new.password_hint`,
+  `activerecord.success.invite`, added together in both files (see the
+  "missing/untranslated locale keys" fix entry below this one — same class
+  of bug, avoided here by construction).
+- `lib/tasks/zealot/email.rake` — `zealot:email:status` now lists the
+  `invite` workflow too.
+- `app/views/admin/users/edit.html.slim` — split into the two frames
+  (fix 3).
+- `app/views/admin/users/_profile_card.html.slim`,
+  `_status_actions.html.slim` — new, extracted from `edit.html.slim`.
+- `app/views/admin/users/{update,lock,unlock,edit}.turbo_stream.slim` —
+  retargeted to the new frame ids (fix 3).
+
+**⚠️ Operator action required before this can actually deliver in
+production, same as Task 16's original three workflows:** create a
+**`zealot-invite`** workflow in the Novu dashboard (or set
+`NOVU_WORKFLOW_INVITE` to point at an existing one). Task 16 confirmed Novu
+is the **live active provider** in production (`NOVU_API_KEY` set,
+`ZEALOT_EMAIL_PROVIDER` unset, SMTP env vars unset) — until `zealot-invite`
+exists, every invite trigger gets a `PermanentError` from
+`NovuClient#handle` (workflow not found is not a `processed` status), which
+`NovuDeliveryJob` discards permanently (logged via `Rails.error` + GoodJob,
+not retried, not surfaced to the admin who clicked "Add user"). The account
+itself is still created either way — only the email silently never arrives.
+
+**Not verified this session** (no Ruby in this sandbox, same limitation
+every session on this file has hit — `apt-get install ruby` fails on
+`security.ubuntu.com`; `api.novu.co` also isn't reachable here to
+curl-verify the new workflow the way Task 16 verified the original three).
+Treat as code-complete, not run. Before relying on it:
+1. Create the `zealot-invite` Novu workflow.
+2. Create a user via `/admin/users` with password left blank.
+3. Confirm exactly **one** email arrives (not an invite email plus a
+   separate Devise confirmation email — `skip_confirmation!` is what's
+   supposed to prevent the second one).
+4. Confirm the link in that email lands on the actual "set your password"
+   page (`edit_password_url(@user, reset_password_token: ...)`) and that
+   submitting it lets the new user log in.
+5. Create a second user *with* a password typed in — confirm no invite
+   email is sent for that one.
+6. Submit the new-user form with a *duplicate* email (or blank username) —
+   confirm the form re-shows with a validation error instead of a blank
+   screen/crash.
+7. From a user's edit page: click Lock, then Unlock — confirm only the
+   status-actions card updates each time, the rest of the page (form,
+   collaborators, API token) stays intact.
+8. From a user's edit page: change the nickname/role and save — confirm
+   only the profile-form card updates, the rest of the page stays intact.
+9. Confirm a user's apps still show under "Collaborators" on their edit
+   page (unaffected by this fix, but worth confirming nothing else in the
+   restructure knocked it loose).
+
 ### ✅ Fix: zealot-web repeatedly OOM-killed on Render (duplicate GoodJob scheduler)
 
 **Branch:** `fix/goodjob-duplicate-scheduler-oom`, base `e7ae1ed6` (`origin/develop`
@@ -2922,3 +3084,25 @@ them is already modernized.
   parse of both locale files and grep-confirmed no other references to
   the removed `body_html` key. One combined patch, branch
   `feat/task-20d-progress-empty-state`.
+- **Task 21 (admin "add user" + lock/unlock/update broken)**: base
+  `b9a63ff0` (Task 20d), rebased onto `a0b293be` (`origin/develop` tip at
+  the time this patch was regenerated, after two other sessions' GoodJob/
+  Render memory fixes and a setup-checklist copy fix landed in between —
+  none of those touched `admin/users`, so only `handover.md`'s task-board
+  ordering needed a manual merge, done by hand in this sandbox since
+  `git am` doesn't resolve conflicts). Operator
+  reported two symptoms together — "add user doesn't add" and
+  "activate/deactivate/suspend... not working, together with their apps" —
+  which turned out to be two unrelated root causes in the same controller/
+  views, fixed in one patch since reported in one message: (1) blank
+  password unconditionally failed Devise validation on `create` (the form
+  never marks it required), now turned into a real invite-email flow
+  through the Task 16 Novu pipeline instead of just generating an unusable
+  password; (2) `edit.html.slim`'s page-wide frame shared its id with the
+  index row partial, so `turbo_stream.replace @user` from lock/unlock/
+  update replaced the whole edit page with a one-line summary — split into
+  independent `:user_form`/`:status_actions` frames instead. A user's apps
+  (shown via collaborators) were never actually broken, just collapsed
+  along with everything else. Ruby still not installable this sandbox;
+  YAML/structure checked by hand, nothing run in a browser. One combined
+  commit, branch `fix/admin-users-turbo-stream`.

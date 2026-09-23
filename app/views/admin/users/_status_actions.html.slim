@@ -1,0 +1,27 @@
+= turbo_frame_tag :status_actions do
+  .card
+    .card-body
+      .flex.justify-between
+        .space-x-1
+          - if user.access_locked?
+            - if default_admin_in_demo_mode?(current_user)
+              button.d-btn.d-btn-primary.d-btn-disabled
+                = t('admin.users.edit.unlock_user')
+            - else
+              = link_to t('admin.users.edit.unlock_user'), unlock_admin_user_path(user), \
+                class: 'd-btn d-btn-primary', data: { turbo_method: :delete }
+          - else
+            - if default_admin_in_demo_mode?(current_user)
+              button.d-btn.d-btn-warning.d-btn-disabled
+                = t('admin.users.edit.lock_user')
+            - else
+              = link_to t('admin.users.edit.lock_user'), lock_admin_user_path(user), \
+                class: 'd-btn d-btn-warning', data: { turbo_method: :put }
+
+        - if default_admin_in_demo_mode?(current_user)
+          button.d-btn.d-btn-error.d-btn-disabled
+            = t('admin.users.edit.destroy_user')
+        - else
+          = link_to t('admin.users.edit.destroy_user'), admin_user_path(user), class: 'd-btn d-btn-error', \
+            data: { turbo_frame: '_top', turbo_method: :delete, \
+            turbo_confirm: t('admin.users.index.destroy_user_confirm', user: user.username) }

@@ -16,7 +16,7 @@ namespace :zealot do
       puts "Enabled:    #{EmailNotifications.enabled?}"
       if EmailNotifications.novu?
         puts "Novu API:   #{NovuClient.api_url} (key #{NovuClient.configured? ? 'set' : 'MISSING'})"
-        %i[release_deployed notice campaign].each do |name|
+        %i[release_deployed notice campaign invite].each do |name|
           puts "Workflow:   #{name} -> #{EmailNotifications.workflow_id(name)}"
         end
       end

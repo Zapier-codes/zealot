@@ -1,0 +1,9 @@
+<%= t('.heading', site: Setting.site_title) %>
+
+<%= t('.intro', email: @user.email) %>
+
+<%= t('.cta') %>: <%= @set_password_url %>
+
+--
+<%= t('notification_mailer.footer.why_invite') %>
+<%= t('notification_mailer.footer.manage') %>: <%= @preferences_url %>

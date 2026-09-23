@@ -18,9 +18,43 @@ class Admin::UsersController < ApplicationController
     @user = User.new_with_session(user_params, session)
     authorize @user
 
-    return render :new, status: :unprocessable_entity unless @user.save
+    # Industry-standard "invite" flow: an admin creating an account for
+    # someone else shouldn't be inventing a password on that person's
+    # behalf (the form deliberately doesn't mark password as required — see
+    # _form.html.slim). Devise's :validatable still requires *some* value on
+    # a new record (password_required? is true for !persisted?), so a blank
+    # submission used to fail validation and the user was never created.
+    #
+    # Leaving it blank now creates the account with an unusable random
+    # password and emails the new user a "set your password" link, sent
+    # through the same Task 12/16 automated-email pipeline (Novu, with SMTP
+    # as fallback) as every other Zealot email, rather than Devise's own
+    # bare mailer. skip_confirmation! avoids a redundant separate "confirm
+    # your email" message landing at the same time: clicking the
+    # set-password link already proves the recipient controls the address.
+    # If the admin does type a password, that's honored as-is and no invite
+    # email is sent, since they've chosen to hand credentials over directly.
+    invite = @user.password.blank?
+    if invite
+      @user.password = Devise.friendly_token[0, 20]
+      @user.skip_confirmation!
+    end
 
-    flash.now[:notice] = t('activerecord.success.create', key: t('admin.users.title'))
+    # Any *other* validation failure (duplicate email, blank username, ...)
+    # still needs to re-render the form with errors instead of crashing: see
+    # the Task 21 (turbo-stream) note below — Turbo prefers a
+    # text/vnd.turbo-stream.html Accept header on this modal-frame form, and
+    # with no explicit format here Rails would try (and fail to find)
+    # new.turbo_stream.slim before ever reaching this line's HTML render.
+    return render :new, formats: [:html], status: :unprocessable_entity unless @user.save
+
+    if invite
+      set_password_url = edit_password_url(@user, reset_password_token: @user.set_reset_password_token)
+      EmailNotifications.deliver_invite(@user, set_password_url: set_password_url) if EmailNotifications.enabled?
+    end
+
+    notice_key = invite ? 'invite' : 'create'
+    flash.now[:notice] = t("activerecord.success.#{notice_key}", key: t('admin.users.title'))
     respond_to do |format|
       format.html { redirect_to admin_users_path }
       format.turbo_stream

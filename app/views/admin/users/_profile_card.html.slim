@@ -1,0 +1,5 @@
+= turbo_frame_tag :user_form do
+  .card
+    .card-header
+      h3.card-title = t('admin.users.edit.profile')
+    == render 'form', user: user

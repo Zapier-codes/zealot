@@ -30,6 +30,7 @@ en:
       title: Users
       new:
         title: New user
+        password_hint: Leave blank to email the user a link to set their own password.
       index:
         title: :admin.users.title
         new_user: :admin.users.new.title
@@ -1186,6 +1187,7 @@ en:
         owner: Owner
     success:
       create: "Created %{key} successfully"
+      invite: "Created %{key} successfully. An email was sent so they can set their own password."
       update: "Updated %{key} successfully"
       archived: "Archived %{key} successfully"
       unarchived: "Actived %{key} successfully"
@@ -1258,6 +1260,7 @@ en:
   notification_mailer:
     footer:
       why_kind: "You are receiving this email because you opted in to %{kind}."
+      why_invite: "You are receiving this email because an administrator created an account for you."
       manage: Change your email preferences
       kinds:
         deploys: new build notifications
@@ -1271,6 +1274,11 @@ en:
       open: Open release
     notice:
       about_app: "About your app: %{app}"
+    invite:
+      subject: "You've been invited to %{site}"
+      heading: "You've been invited to %{site}"
+      intro: "An administrator created an account for you (%{email}). Set a password to get started."
+      cta: Set your password
     play_publish_failed:
       subject: "Google Play publish failed: %{app}"
       body: |-

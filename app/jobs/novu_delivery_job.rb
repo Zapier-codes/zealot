@@ -4,8 +4,10 @@
 # Fanning out to recipients stays in ReleaseDeployNotificationJob /
 # EmailBroadcastJob, so a Novu hiccup only retries that one recipient.
 #
-# `kind` (deploys / notices / campaigns) is re-checked here: the user may have
-# opted out, or been locked, between enqueue and delivery.
+# `kind` (deploys / notices / campaigns / invite) is re-checked here: the user
+# may have opted out, or been locked, between enqueue and delivery. `invite`
+# has no opt-out (EmailNotifications::TRANSACTIONAL_KINDS) — it's essential to
+# using the account at all, not a preference.
 class NovuDeliveryJob < ApplicationJob
   queue_as :default
 
@@ -22,7 +24,8 @@ class NovuDeliveryJob < ApplicationJob
 
   def perform(workflow_id, user_id, kind, payload, transaction_id)
     user = User.find(user_id)
-    return unless user.locked_at.nil? && user.wants_email?(kind)
+    return unless user.locked_at.nil?
+    return unless EmailNotifications::TRANSACTIONAL_KINDS.include?(kind) || user.wants_email?(kind)
 
     NovuClient.trigger(
       workflow_id: workflow_id,
