@@ -1,6 +1,17 @@
 #!/usr/bin/with-contenv sh
 
-echo "Starting Zealot Job worker"
-cd /app
-export ZEALOT_JOB_WORKER=true
-./bin/good_job 2>&1 | tee -a /app/log/job.log
+# Anthropic: only boots a second Rails process here when
+# ZEALOT_SEPARATE_WORKER=true -- see ../zealot/run for the embedded-mode
+# half of this toggle. Default (unset/false) is embedded mode: GoodJob's
+# scheduler/cron already runs inside the web process, so this service
+# intentionally stays idle instead of paying for a duplicate Rails boot
+# the free-tier 512Mi container can't afford.
+if echo "${ZEALOT_SEPARATE_WORKER:-}" | grep -qi '^true$'; then
+  echo "Starting Zealot Job worker"
+  cd /app
+  export ZEALOT_JOB_WORKER=true
+  ./bin/good_job 2>&1 | tee -a /app/log/job.log
+else
+  echo "Zealot Job worker idle (ZEALOT_SEPARATE_WORKER is not 'true') -- GoodJob is running embedded in the web process instead"
+  exec tail -f /dev/null
+fi

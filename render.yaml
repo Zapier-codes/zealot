@@ -165,6 +165,34 @@ services:
   - key: SECRET_TOKEN
     generateValue: true
 
+  # Anthropic: OOM fix, phase 2 (see docker/rootfs/etc/services.d/zealot/run
+  # and .../job/run for the actual toggle logic). Default false: GoodJob's
+  # scheduler/cron runs embedded in the web (Puma) process instead of in a
+  # second dedicated `bin/good_job` process, so this 512Mi instance isn't
+  # paying for a duplicate Rails boot. Flip to true once this service has
+  # more headroom (e.g. after moving off the free instance size to a
+  # bigger plan) to go back to a separate worker process. This alone does
+  # NOT provision a second Render service -- it just un-merges the two
+  # processes within this one service/container. A genuinely separate,
+  # independently-scaled worker service (its own memory ceiling) is a
+  # further step on top of this, not yet set up here -- ask for it when
+  # actually ready to pay for a second service.
+  - key: ZEALOT_SEPARATE_WORKER
+    value: false
+
+  # Anthropic: OOM fix, phase 2 continued -- the other suspected OOM
+  # contributor flagged in handover.md, untouched by the scheduler fix.
+  # Caps ImageMagick's own memory/map/area use per operation so a single
+  # CarrierWave variant-processing job can't balloon past what this
+  # instance can afford. Conservative values for a 512Mi box; raise if
+  # variant processing starts failing/timing out instead of OOMing.
+  - key: MAGICK_MEMORY_LIMIT
+    value: 128MiB
+  - key: MAGICK_MAP_LIMIT
+    value: 128MiB
+  - key: MAGICK_AREA_LIMIT
+    value: 64MP
+
   # Task 19: release files are stored as GitHub Release assets in a dedicated
   # PRIVATE storage repo (not this code repo), because Render's Free plan has
   # no persistent disk and every redeploy wipes /app/public/uploads. Unset,

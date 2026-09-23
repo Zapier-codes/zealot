@@ -259,6 +259,54 @@ patch deploys, watch `GET /v1/services/{id}/events` for a while — if
 scheduler duplication was the dominant cause; if they continue, the image
 processing is the bigger contributor and should be prioritized next.
 
+### ✅ Fix, phase 2: embed GoodJob in the web process (switchable), cap ImageMagick memory
+
+**Branch:** `fix/embedded-goodjob-switchable-worker`, base `6dd21805` (the
+scheduler-duplication fix above).
+**Status:** code-complete, not run (same Ruby/s6-in-sandbox limitation as
+the phase-1 fix above -- reviewed by eye).
+
+**Why phase 2:** phase 1 stopped both processes from independently running
+the scheduler, but didn't stop the container from running *two full Rails
+boots* side by side (`bin/puma` + `bin/good_job` as separate OS
+processes) -- itself a large fixed memory cost on a 512Mi box, independent
+of the duplication bug. `WEB_CONCURRENCY=1` (render.yaml) means Puma never
+forks here, so there's no fork-safety reason `good_job` needs to be a
+separate process at all -- GoodJob supports running embedded in the web
+process for exactly this single-instance case.
+
+**What changed:**
+- `docker/rootfs/etc/services.d/zealot/run` (web/Puma) and `.../job/run`
+  (worker) both now gate on a new `ZEALOT_SEPARATE_WORKER` env var
+  (default unset/false = embedded). Embedded: `zealot/run` exports
+  `ZEALOT_JOB_WORKER=true` itself (so `good_job.rb`'s existing
+  `is_job_worker` gate makes the web process run the scheduler/cron), and
+  `job/run` skips booting `bin/good_job` entirely -- it just
+  `tail -f /dev/null`s so s6 has something cheap to keep "up" instead of
+  restart-looping a real process. Setting `ZEALOT_SEPARATE_WORKER=true`
+  flips both back to the phase-1 behavior (web enqueue-only, `job/run`
+  boots its own `bin/good_job`).
+- `render.yaml`: added `ZEALOT_SEPARATE_WORKER` (`false`) with the
+  upgrade path documented inline, plus `MAGICK_MEMORY_LIMIT` /
+  `MAGICK_MAP_LIMIT` / `MAGICK_AREA_LIMIT` to cap the other suspected OOM
+  contributor from phase 1 (CarrierWave/MiniMagick variant processing).
+
+**Important:** `ZEALOT_SEPARATE_WORKER=true` alone does not provision a
+second Render service -- it only un-merges the two processes within this
+one service's container, so it's only useful paired with a bigger
+instance size on this same service. A genuinely separate, independently-
+scaled worker service (its own memory ceiling, per Render docs this
+requires a paid plan -- Background Worker/Private Service have no free
+instance) is further follow-up, not set up here.
+
+**Verification still needed from the operator:** apply via
+`git am` + push same as phase 1, redeploy, then watch
+`GET /v1/services/{id}/events` -- expect `oomKilled` events to stop or
+become much rarer given phase 1 + this. If they persist, the
+`MAGICK_*` caps may need tightening further, or variant processing should
+move off this container (same pattern as the Telegram archive move, task
+19f) rather than just being capped.
+
 ### ✅ Task 20: Create-app flow was broken (crash on validation errors, silent no-op on the first-ever app) + modernizing it to a Play-Console-style flow (20a–20d done — see TSF split below)
 
 **Why (operator report).** As admin or developer, filling in the "New app"

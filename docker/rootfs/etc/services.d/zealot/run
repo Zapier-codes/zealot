@@ -2,4 +2,22 @@
 
 echo "Starting Zealot"
 cd /app
+
+# Anthropic: on a single 512Mi instance, running GoodJob's scheduler/cron in
+# its own dedicated process (bin/good_job, see ../job/run) means paying for
+# a second full Rails boot -- a real memory cost on top of what caused the
+# duplicate-scheduler OOM this env var replaced (see good_job.rb). Default
+# here is "embedded": this web process sets ZEALOT_JOB_WORKER=true itself,
+# so it also runs the scheduler/cron in-process, and ../job/run stays idle
+# (no second Rails boot). Puma is single-mode here (WEB_CONCURRENCY=1 in
+# render.yaml, no forking), so there's no fork-safety reason to keep them
+# apart.
+#
+# Set ZEALOT_SEPARATE_WORKER=true (e.g. after moving to a bigger instance)
+# to go back to a dedicated worker process: this web process then stays
+# enqueue-only and ../job/run boots bin/good_job as its own process again.
+if ! echo "${ZEALOT_SEPARATE_WORKER:-}" | grep -qi '^true$'; then
+  export ZEALOT_JOB_WORKER=true
+fi
+
 ./bin/puma -C /app/config/puma.rb 2>&1 | tee -a /app/log/zealot.log
