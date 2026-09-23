@@ -1,4 +1,12 @@
 #!/usr/bin/with-contenv sh
 
+# Anthropic: skip Caddy entirely on a dedicated worker-only service (see
+# render.yaml's commented-out `zealot-worker` block and ../job/run) --
+# there's nothing for it to proxy there, no point paying for it.
+if echo "${ZEALOT_WORKER_ONLY:-}" | grep -qi '^true$'; then
+  echo "Caddy disabled (ZEALOT_WORKER_ONLY=true)"
+  exec tail -f /dev/null
+fi
+
 echo "Starting Caddy"
 /usr/sbin/caddy run --config /etc/Caddyfile > /dev/null 2>&1

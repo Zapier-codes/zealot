@@ -307,6 +307,19 @@ become much rarer given phase 1 + this. If they persist, the
 move off this container (same pattern as the Telegram archive move, task
 19f) rather than just being capped.
 
+**Phase 3 (drafted, inactive):** `render.yaml` now has a commented-out
+`zealot-worker` service block for a genuinely separate, independently-
+scaled worker (own memory ceiling), gated by a new `ZEALOT_WORKER_ONLY`
+env var (`docker/rootfs/etc/services.d/{caddy,zealot}/run` both skip
+their process when it's true, so that container only runs
+`bin/good_job`). Commented out deliberately -- Render has no free
+instance for Background Worker/Private Service, so this shouldn't get
+provisioned (and billed) until the operator is actually on a paid plan.
+Activation steps are inline in the comment block, including the
+`anthropic_deploy_main.yml` change needed so both services get the same
+image on every push, not just `zealot-web`. Not done here -- ask for it
+when actually ready to activate.
+
 ### ✅ Task 20: Create-app flow was broken (crash on validation errors, silent no-op on the first-ever app) + modernizing it to a Play-Console-style flow (20a–20d done — see TSF split below)
 
 **Why (operator report).** As admin or developer, filling in the "New app"

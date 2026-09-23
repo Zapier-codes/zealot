@@ -3,6 +3,16 @@
 echo "Starting Zealot"
 cd /app
 
+# Anthropic: skip Puma entirely on a dedicated worker-only service (see
+# render.yaml's commented-out `zealot-worker` block) -- there's no HTTP
+# traffic to serve there, and booting Puma's own Rails process on top of
+# ../job/run's would be exactly the duplicate-boot cost this whole set of
+# changes exists to avoid.
+if echo "${ZEALOT_WORKER_ONLY:-}" | grep -qi '^true$'; then
+  echo "Puma disabled (ZEALOT_WORKER_ONLY=true) -- this service only runs the GoodJob worker"
+  exec tail -f /dev/null
+fi
+
 # Anthropic: on a single 512Mi instance, running GoodJob's scheduler/cron in
 # its own dedicated process (bin/good_job, see ../job/run) means paying for
 # a second full Rails boot -- a real memory cost on top of what caused the
@@ -13,7 +23,8 @@ cd /app
 # render.yaml, no forking), so there's no fork-safety reason to keep them
 # apart.
 #
-# Set ZEALOT_SEPARATE_WORKER=true (e.g. after moving to a bigger instance)
+# Set ZEALOT_SEPARATE_WORKER=true (e.g. after moving to a bigger instance,
+# or once a dedicated `zealot-worker` service exists -- see render.yaml)
 # to go back to a dedicated worker process: this web process then stays
 # enqueue-only and ../job/run boots bin/good_job as its own process again.
 if ! echo "${ZEALOT_SEPARATE_WORKER:-}" | grep -qi '^true$'; then

@@ -193,6 +193,63 @@ services:
   - key: MAGICK_AREA_LIMIT
     value: 64MP
 
+# Anthropic: dedicated worker service, drafted for when you're on a paid
+# plan and want the job worker fully isolated (its own memory ceiling,
+# scalable independently of the web service) instead of just embedding it
+# in zealot-web or un-merging the two processes within one bigger
+# container. Render has no free instance for Background Worker/Private
+# Service (only Web Services, Postgres, Redis are free) -- confirmed
+# against Render's own docs/support, so this stays commented out until
+# you're actually paying for it; a Blueprint sync ignores commented-out
+# YAML, so this doesn't get provisioned by accident.
+#
+# To activate:
+#   1. Uncomment this block.
+#   2. On zealot-web above, set ZEALOT_SEPARATE_WORKER=true too --
+#      otherwise BOTH this worker and zealot-web's embedded mode would
+#      run the scheduler/cron, reintroducing the original duplicate-
+#      scheduler OOM bug this whole fix started from.
+#   3. `.github/workflows/anthropic_deploy_main.yml` currently only calls
+#      zealot-web's deploy hook with the per-commit imgURL override --
+#      it needs a second deploy-hook call added for zealot-worker (same
+#      imgURL) so both services actually update together on every push,
+#      not just zealot-web.
+#   4. `render blueprint deploy` (or a dashboard Blueprint re-sync) to
+#      actually create the service.
+#
+# - type: worker
+#   name: zealot-worker
+#   runtime: image
+#   image:
+#     url: ghcr.io/zapier-codes/zealot:deploy-latest
+#   plan: starter  # cheapest plan with a Background Worker instance
+#   region: singapore  # match zealot-web's region -- same private network,
+#                      # and both need to reach the same Postgres/Supabase
+#   envVars:
+#   - key: ZEALOT_SEPARATE_WORKER
+#     value: true
+#   - key: ZEALOT_WORKER_ONLY
+#     value: true  # skip Caddy + Puma in this container -- see
+#                  # docker/rootfs/etc/services.d/{caddy,zealot}/run
+#   - key: ZEALOT_DATABASE_URL
+#     sync: false  # same Supabase connection string as zealot-web
+#   - key: RELEASE_STORAGE_ADAPTER
+#     value: github
+#   - key: GITHUB_STORAGE_REPO
+#     sync: false
+#   - key: GITHUB_STORAGE_TOKEN
+#     sync: false
+#   - key: MAGICK_MEMORY_LIMIT
+#     value: 128MiB
+#   - key: MAGICK_MAP_LIMIT
+#     value: 128MiB
+#   - key: MAGICK_AREA_LIMIT
+#     value: 64MP
+#   - key: SECRET_TOKEN
+#     sync: false  # must match zealot-web's -- copy the generated value
+#                  # from the dashboard rather than generateValue: true
+#                  # here, or the two services will disagree on it
+
   # Task 19: release files are stored as GitHub Release assets in a dedicated
   # PRIVATE storage repo (not this code repo), because Render's Free plan has
   # no persistent disk and every redeploy wipes /app/public/uploads. Unset,
