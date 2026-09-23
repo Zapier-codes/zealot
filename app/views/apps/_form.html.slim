@@ -5,27 +5,27 @@ ruby:
 = simple_form_for app, data: { action: 'turbo:submit-end->modal#close' } do |f|
   = f.error_notification
 
-        = f.input :name, required: true
-        / Task 18: the applicationId Play will fix from the first uploaded
-        / bundle. Not a Play Console "create app" field — it is verified
-        / against every Play-targeted AAB and adopted from the first one
-        / when left blank. Shown on create and edit.
-        = f.input :play_package_name, required: false, input_html: { placeholder: 'com.example.app' }
-        - if new_or_create_route?
-          = f.simple_fields_for :scheme_attributes do |n|
-            = n.input :name, as: :check_boxes, collection: preset_schemes, checked: schemes, required: false
-          = f.simple_fields_for :channel_attributes do |n|
-            = n.input :name, as: :check_boxes, collection: preset_channels, checked: channels, required: false
-        - else
-          / Task #7: which Play Console track this App's approved releases
-          / publish to. Only shown once the App already exists — a brand
-          / new App has no Play Console listing yet (handover.md: first
-          / listing is manual), so there's nothing for this to mean until
-          / then.
-          = f.input :play_publish_track, collection: %w[internal alpha beta production], \
-            include_blank: false, label: t('simple_form.labels.app.play_publish_track'), \
-            hint: t('simple_form.hints.app.play_publish_track')
-          - if app.play_package_name.present? && app.play_setup_message.present?
-            p.small.text-muted = app.play_setup_message
-      .card-footer
-        = f.button :submit
+  = f.input :name, required: true
+  / Task 18: the applicationId Play will fix from the first uploaded
+  / bundle. Not a Play Console "create app" field — it is verified
+  / against every Play-targeted AAB and adopted from the first one
+  / when left blank. Shown on create and edit.
+  = f.input :play_package_name, required: false, input_html: { placeholder: 'com.example.app' }
+  - if new_or_create_route?
+    = f.simple_fields_for :scheme_attributes do |n|
+      = n.input :name, as: :check_boxes, collection: preset_schemes, checked: schemes, required: false
+    = f.simple_fields_for :channel_attributes do |n|
+      = n.input :name, as: :check_boxes, collection: preset_channels, checked: channels, required: false
+  - else
+    / Task #7: which Play Console track this App's approved releases
+    / publish to. Only shown once the App already exists — a brand
+    / new App has no Play Console listing yet (handover.md: first
+    / listing is manual), so there's nothing for this to mean until
+    / then.
+    = f.input :play_publish_track, collection: %w[internal alpha beta production], \
+      include_blank: false, label: t('simple_form.labels.app.play_publish_track'), \
+      hint: t('simple_form.hints.app.play_publish_track')
+    - if app.play_package_name.present? && app.play_setup_message.present?
+      p.small.text-muted = app.play_setup_message
+  .card-footer
+    = f.button :submit
