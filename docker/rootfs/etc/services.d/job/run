@@ -2,4 +2,5 @@
 
 echo "Starting Zealot Job worker"
 cd /app
+export ZEALOT_JOB_WORKER=true
 ./bin/good_job 2>&1 | tee -a /app/log/job.log

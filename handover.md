@@ -188,6 +188,77 @@ manual-only as well, it is the same one-line trigger change.)
 
 ## Task board
 
+### ✅ Fix: zealot-web repeatedly OOM-killed on Render (duplicate GoodJob scheduler)
+
+**Branch:** `fix/goodjob-duplicate-scheduler-oom`, base `e7ae1ed6` (`origin/develop`
+tip this checkout cloned).
+**Status:** code-complete, not run (Ruby not installable this sandbox — same
+`security.ubuntu.com` 404 on `ruby3.2` prior sessions hit; reviewed by eye
+instead).
+
+**How this was found:** operator reported `zealot-deploy-latest.onrender.com`
+not loading, screenshotted the Render dashboard showing "Failed service".
+GitHub Actions' `Anthropic - Build & Deploy develop` was green the whole
+time (as usual — see "Which workflow is the deploy pipeline?" above, a green
+run there proves nothing about Render's own state). Debugged directly
+against the Render API from the operator's Termux shell (session had no
+Render dashboard/API access itself, per the standing note on that below):
+`GET /v1/services/{id}/deploys` showed every recent deploy `live` or
+cleanly `deactivated` — no build/deploy failure at all. Logs pulled via
+`GET /v1/logs` around the failure window showed a completely clean
+container boot and Puma/GoodJob startup, no exceptions. The actual cause
+only showed up in `GET /v1/services/{id}/events`: **repeated
+`server_failed` → `oomKilled` events (memoryLimit: 512Mi)** — 5 failures in
+~3.5h, 4 of them explicit OOM kills, one an HTTP health-check timeout.
+Render auto-restarts after each kill, which is why the app looks perfectly
+healthy on any spot-check — it's mid-recovery from its last crash, not
+actually stable. **Lesson for future sessions chasing "Render says failed
+but everything I check looks fine": check `/events`, not just `/deploys`
+and `/logs` — deploy-failure and runtime-crash are different event types
+and neither of the other two endpoints surfaces an OOM kill.**
+
+**Root cause, confirmed in code:** `config/initializers/good_job.rb` set
+`execution_mode = :async` and `enable_cron = true` **unconditionally**.
+This file loads identically in both the web process (`bin/puma`, via
+`docker/rootfs/etc/services.d/zealot/run`) and the separate dedicated
+worker process (`bin/good_job`, via
+`docker/rootfs/etc/services.d/job/run`) — so **both** independently ran a
+GoodJob scheduler (up to `max_threads` each) and **both** registered the
+same 5 cron jobs. This was directly visible in production logs as repeated
+`"Failed enqueuing ... a before_enqueue callback halted the enqueuing
+execution"` — GoodJob's own advisory-lock safety valve catching the two
+processes racing to enqueue the same cron job. On the Render free tier's
+512Mi limit, a whole duplicate Rails boot's worth of threads + DB
+connections + cron polling was a real, direct contributor to the OOM
+kills.
+
+**Fix:** gated `execution_mode`/`enable_cron` on a new `ZEALOT_JOB_WORKER`
+env var (`ActiveModel::Type::Boolean.new.cast(ENV['ZEALOT_JOB_WORKER'])`),
+set to `true` only in the worker process's entrypoint
+(`docker/rootfs/etc/services.d/job/run`) and the `Procfile`'s `worker:`
+line (for Heroku/foreman-style deploys of this fork, kept in sync even
+though Render/Docker is the primary target). Web process now runs
+`execution_mode: :external` — it still enqueues jobs normally via
+ActiveJob, it just no longer also runs its own scheduler/cron polling.
+This is GoodJob's own documented pattern for a separate-worker-process
+deployment (`bin/good_job start` runs its own scheduler regardless of the
+app's `execution_mode` config, by design — that's what makes it usable as
+the external executor); nothing here changes cron behavior or job
+execution semantics, only which single process runs them.
+
+**Not fixed / left open:** the other suspected OOM contributor —
+CarrierWave/MiniMagick image-variant processing warnings seen on boot
+(`Use of 'process convert: format' with conditionals...`) — is untouched
+by this patch. Operator's stated direction is to move heavy/batch-shaped
+work like this to GitHub Actions, same pattern as the Telegram archive
+move (Task 19f). That's a bigger change (needs a token-authed handoff
+endpoint + workflow, same shape as 19f) and is real follow-up work, not
+done here. **Verification still needed from the operator:** after this
+patch deploys, watch `GET /v1/services/{id}/events` for a while — if
+`oomKilled` events stop (or become much rarer) with this alone, the
+scheduler duplication was the dominant cause; if they continue, the image
+processing is the bigger contributor and should be prioritized next.
+
 ### ✅ Task 20: Create-app flow was broken (crash on validation errors, silent no-op on the first-ever app) + modernizing it to a Play-Console-style flow (20a–20d done — see TSF split below)
 
 **Why (operator report).** As admin or developer, filling in the "New app"

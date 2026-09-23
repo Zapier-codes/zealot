@@ -46,19 +46,35 @@ end
 
 Rails.application.reloader.to_prepare do
   Rails.application.configure do
+    # Both the web (Puma) process and the dedicated job-worker process
+    # (`bin/good_job`, see docker/rootfs/etc/services.d/job/run) load this
+    # same initializer. Previously `execution_mode` and `enable_cron` were
+    # unconditional, so BOTH processes independently ran a GoodJob
+    # scheduler (up to max_threads each) and BOTH registered the same cron
+    # jobs — visible in production logs as repeated "Failed enqueuing ...
+    # a before_enqueue callback halted the enqueuing execution" (GoodJob's
+    # own advisory-lock safety valve catching the two processes racing to
+    # enqueue the same cron job). On a memory-constrained instance (Render
+    # free tier, 512Mi) this duplicate scheduler + duplicate cron polling
+    # was a real contributor to repeated OOM kills. Only the worker process
+    # sets ZEALOT_JOB_WORKER=true, so only it now runs the scheduler/cron;
+    # the web process still enqueues jobs normally, it just doesn't also
+    # execute/poll for them itself.
+    is_job_worker = ActiveModel::Type::Boolean.new.cast(ENV['ZEALOT_JOB_WORKER'])
+
     config.good_job.dashboard_default_locale = I18n.default_locale
     config.good_job.preserve_job_records = true
     config.good_job.retry_on_unhandled_error = false
     config.good_job.on_thread_error = -> (exception) { Rails.error.report(exception) }
-    config.good_job.execution_mode = :async
+    config.good_job.execution_mode = is_job_worker ? :async : :external
     config.good_job.queues = '*'
     config.good_job.max_threads = (ENV['ZEALOT_WORKER_CONCURRENCY'] || '5').to_i
     config.good_job.poll_interval = (ENV['ZEALOT_WORKER_POLL_INTERVAL'] || '30').to_i
     config.good_job.shutdown_timeout = (ENV['ZEALOT_WORKER_SHUTDOWN_TIMEOUT'] || '30').to_i
 
     begin
-      config.good_job.enable_cron = true
-      config.good_job.cron = CRON_JOBS_SETUP.call
+      config.good_job.enable_cron = is_job_worker
+      config.good_job.cron = CRON_JOBS_SETUP.call if is_job_worker
     rescue ActiveRecord::StatementInvalid
       # initialize zealot, ignore
     end
