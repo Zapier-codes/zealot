@@ -40,16 +40,41 @@ class AppsController < ApplicationController
   def create
     @app = App.new(app_params)
     authorize @app
-    return render :new, status: :unprocessable_entity unless @app.save
+    unless @app.save
+      # Bug fix (Task 20a): this used to be a bare `render :new,
+      # status: :unprocessable_entity` with no format. The "New app" link
+      # opens this form inside the #modal turbo frame, so Turbo sends an
+      # Accept header that prefers turbo_stream. With no `apps/new.turbo_stream.slim`
+      # template and no explicit format here, Rails tried to satisfy that
+      # preference and raised ActionView::MissingTemplate on every invalid
+      # submission — the request 500'd, the modal never updated, and (per
+      # the modal_controller fix below) the dialog had already torn itself
+      # down, so validation errors were never visible. Forcing :html makes
+      # Rails render `apps/new.html.slim`, which (via render_modal) is
+      # itself wrapped in `turbo_frame_tag :modal` — Turbo matches that
+      # frame id in the response and swaps it into the still-open #modal
+      # frame in place, which is the standard way Turbo re-displays
+      # in-frame form errors.
+      return render :new, status: :unprocessable_entity, formats: [:html]
+    end
 
     create_owner
     create_schemes_and_channels
 
-    flash.now[:notice] = t('activerecord.success.create', key: "#{@app.name} #{t('apps.title')}")
-    respond_to do |format|
-      format.html { redirect_to apps_path }
-      format.turbo_stream
-    end
+    # Bug fix (Task 20a): creation used to respond with turbo_stream,
+    # appending the new app to `ul#apps` and staying on the index page.
+    # `ul#apps` only renders when `@apps.present?` (see apps/index.html.slim),
+    # so the very first app an account ever creates had no `#apps` target to
+    # append to — Turbo silently dropped the stream, the record existed in
+    # the database, but nothing appeared on screen until a manual reload.
+    # Redirecting straight to the new app's own page sidesteps that target
+    # entirely and matches how Play Console's "Create app" behaves: it lands
+    # you on the new app's own dashboard, not back on a list. `_form.html.slim`
+    # sets `data-turbo-frame="_top"` on this form (new/create only) so this
+    # redirect breaks out of the `#modal` frame instead of trying to load the
+    # app's page inside it.
+    redirect_to @app, status: :see_other,
+                notice: t('activerecord.success.create', key: "#{@app.name} #{t('apps.title')}")
   end
 
   def update

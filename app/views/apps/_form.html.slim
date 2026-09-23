@@ -2,7 +2,18 @@ ruby:
   schemes ||= 0
   channels ||= 0
 
-= simple_form_for app, data: { action: 'turbo:submit-end->modal#close' } do |f|
+ruby:
+  # Task 20a: only the new/create submission should break out of the
+  # #modal turbo frame (so a successful create's redirect_to @app does a
+  # real top-level navigation to the new app's page, matching Play
+  # Console's "land on the new app" behaviour). Edit/update keeps the
+  # default frame-scoped target — it already relies on its own
+  # update.turbo_stream response, which isn't frame-scoped anyway, and
+  # leaving it as-is keeps this slice to one behaviour.
+  form_data = { action: 'turbo:submit-end->modal#close' }
+  form_data[:turbo_frame] = '_top' if new_or_create_route?
+
+= simple_form_for app, data: form_data do |f|
   = f.error_notification
 
   = f.input :name, required: true

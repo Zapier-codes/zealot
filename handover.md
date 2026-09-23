@@ -188,6 +188,110 @@ manual-only as well, it is the same one-line trigger change.)
 
 ## Task board
 
+### ✅ Task 20: Create-app flow was broken (crash on validation errors, silent no-op on the first-ever app) + modernizing it to a Play-Console-style flow (20a done this session; 20b–20d planned for future sessions — see TSF split below)
+
+**Why (operator report).** As admin or developer, filling in the "New app"
+form and clicking Create did not land on any next screen, and no app
+appeared — looked like nothing had happened.
+
+**Root-caused to three separate, stacked bugs, not one:**
+
+1. `AppsController#create`'s failure branch was a bare
+   `render :new, status: :unprocessable_entity` with no format. The "New
+   app" link opens this form inside the `#modal` turbo frame, so Turbo's
+   form submission sends an Accept header that prefers turbo_stream; there
+   was no `apps/new.turbo_stream.slim`, so **every invalid submission
+   raised `ActionView::MissingTemplate` (a 500)** — no re-render, no
+   errors shown, nothing routes anywhere. This is the "doesn't route,
+   nothing shows up" case for a submission with a validation problem.
+2. On a **valid** submission, `create` responded with `format.turbo_stream`,
+   which appended the new app to `ul#apps`. `apps/index.html.slim` only
+   renders `ul#apps` when `@apps.present?`; a fresh account's **first**
+   app ever has no such element to append to, so Turbo silently dropped
+   the update. The record **was** created (`@app.save` had already
+   returned true) — it just never appeared until a manual reload. This is
+   almost certainly what looked like "the app draft is not created": it
+   was, invisibly.
+3. Independent of both: `ModalComponent`'s form partials all wire
+   `data-action="turbo:submit-end->modal#close"`, and `modal_controller#close`
+   called `clear()` (removes the dialog from the DOM) unconditionally —
+   on a failed submission as much as a successful one. Even once bug 1 is
+   fixed and the server correctly re-renders the form with errors inside
+   the frame, the modal was tearing itself down before/alongside that
+   render, so the errors were never visible anyway. This one isn't
+   apps-specific — the same `turbo:submit-end->modal#close` pattern is
+   reused by ~10 other forms in the app (users, apple_teams, apple_keys,
+   backups, settings, channels, schemes, collaborators, new_owner), all of
+   which had the identical "errors flash and vanish" problem.
+
+**Is this how Google Play Console does it, or are we missing something?**
+Missing something. Play Console's own "Create app" does not append a row
+to a list and leave you on it — it navigates you straight into the new
+app's own dashboard/setup-checklist page. This codebase's modal-then-
+append-to-a-list-you-stay-on pattern is a different, more fragile shape
+(bug 2 above is a direct consequence of it: the append has nowhere to go
+when the list is empty). 20a's fix (`redirect_to @app` on success,
+breaking out of the `#modal` frame) moves this repo onto the Play Console
+shape — land on the app's own page — rather than patching the append
+target and keeping the fragile pattern.
+
+**Task-splitting (per this file's TSF, "operator's instruction, supersedes
+any older ordering"): this is deliberately cut so 20a alone is a complete,
+shippable fix on its own, and the "modern, gamified" ask is its own later
+slices, not bolted onto the same session/patch.**
+
+| ID | Goal | Depends on | Files | Acceptance check | Risk |
+|---|---|---|---|---|---|
+| 20a ✅ | Fix the crash-on-invalid-submit, the silent no-op on the first app, and the modal-eats-its-own-errors bug — the three things standing between "click Create" and *any* correct outcome | none | `apps_controller.rb`, `apps/_form.html.slim`, `modal_controller.js`; removed dead `apps/create.turbo_stream.slim` | invalid name → modal stays open, shows the error, in place; valid submit → lands on the new app's own show page, not the index; first-app-ever case no longer depends on a list append | low — see Verification |
+| 20b 🆕 | Setup-checklist / progress UI on the app show page for a freshly created app (name ✓ → package id → first upload → publish), the actual "Play-Console-dashboard" landing experience 20a's redirect now makes possible | 20a | new partial + controller flag (e.g. `@app.newly_created?` via a `?created=1` param or similar — ❓ operator to confirm the exact signal), locales | create an app → checklist renders with correct next step highlighted | medium — new UI surface, needs its own session |
+| 20c 🆕 | Apply the same `turbo:submit-end->modal#close` success-only guard's *visual* half — i.e. actually style/animate the in-frame error state (shake, inline field errors, etc.) now that 20a stops the modal from eating it before it can be seen | 20a | CSS/JS only, shared across all ~10 modal forms listed above, not just apps | trigger a validation error on 2–3 of those forms, confirm errors are visible and not just non-crashing | low, but touches many templates — review each |
+| 20d 🆕 | The "gamified, modern" full pass: whatever specific mechanics the operator wants (progress bar, badges/streaks for first upload+publish, empty-state illustration on `/apps`, etc.) | 20a, ideally 20b | ❓ scope not yet defined by the operator | ❓ | ❓ — needs operator decisions first per the TSF ordering formula (❓ resolved before anything is built on a guess) |
+
+**Done in 20a (this session, base `4cfb01e8`):**
+- `AppsController#create`: failure path now explicitly `formats: [:html]`
+  so Rails always renders `apps/new.html.slim` (which is wrapped in
+  `turbo_frame_tag :modal` by `render_modal`) instead of trying to satisfy
+  a turbo_stream Accept preference with no matching template. Success path
+  now `redirect_to @app, status: :see_other` with the existing success
+  flash message, replacing the turbo_stream-append-to-index response.
+- `apps/_form.html.slim`: `data-turbo-frame="_top"` added to the form,
+  gated to `new_or_create_route?` only (edit/update untouched — it already
+  works via its own `update.turbo_stream.slim`, which isn't frame-scoped),
+  so the new redirect actually breaks out of `#modal` instead of trying to
+  load the app's show page inside the small dialog frame.
+- `app/frontend/javascript/controllers/modal_controller.js`: `close()` now
+  takes the Turbo event and no-ops when `event.detail.success === false`,
+  instead of always clearing. Applies to every form using the
+  `turbo:submit-end->modal#close` pattern, not just apps — all of them had
+  the same "error flashes and is immediately removed" bug.
+- Removed `apps/create.turbo_stream.slim` (dead: nothing calls
+  `format.turbo_stream` from `create` anymore; grepped the repo first to
+  confirm no other reference).
+
+**Verification (be honest about it):** Ruby is not installable in this
+sandbox this session (`apt-get install ruby` — `security.ubuntu.com` 404s
+on `ruby3.2`/`libruby3.2`, same failure several earlier sessions in this
+file recorded), so **no `ruby -c`, no spec, no Rails boot.**
+`modal_controller.js` passed `node --check`. Everything else — the Slim
+templates, the frame-swap behavior, the `redirect_to`/`turbo-frame="_top"`
+interaction — was reasoned through against the existing code (confirmed
+`turbo_frame_tag :modal` lives in `application.html.slim` as the initial
+empty target, confirmed `render_modal`/`ModalComponent` re-wraps any
+content including `apps/new.html.slim` in a frame with that same id,
+confirmed no other file references the deleted `create.turbo_stream.slim`)
+but **not run against a real Rails app or exercised in a browser.**
+Treat as code-complete, not run — same standing caveat this file uses
+elsewhere. Next session (or the operator) should smoke-test: (1) submit
+the New app form with a blank name → error should show in place, modal
+should stay open; (2) submit it valid on an account with zero existing
+apps → should land on the new app's own page, not the index; (3) submit
+it valid on an account that already has apps → same landing behavior,
+and the index's list should show the new app correctly on a subsequent
+visit.
+- Revert: restore `apps_controller.rb`'s `create` method, `apps/_form.html.slim`'s
+  `simple_form_for` line, and `modal_controller.js`'s `close`/`clear` methods
+  to `4cfb01e8`; restore `apps/create.turbo_stream.slim` from the same commit.
+
 ### 🟡 Task 19: Release files on GitHub Releases (private storage repo) + Telegram archive moved to GitHub Actions (19a–19e, 19g done and verified; 19f wiring verified, real round trip still open)
 
 **Why.** Render's Free plan has no persistent disk (`disk:` in `render.yaml` is
