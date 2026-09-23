@@ -7,5 +7,6 @@
 @import "./components/landing";
 @import "./components/console";
 @import "./components/console-content";
+@import "./components/modal";
 
 @import "./apps";

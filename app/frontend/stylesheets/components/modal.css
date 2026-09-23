@@ -1,0 +1,37 @@
+@layer components {
+  /* Task 20c: applied by modal_controller#shake to .d-modal-box when a
+     modal form's frame re-renders with validation errors already in the
+     markup, so the in-place swap (20a's fix stopped it from being eaten
+     before it could render at all) actually gets noticed. Removed again
+     on animationend so a second failed submit in the same dialog can
+     retrigger it. */
+  .shake-error {
+    animation: modal-shake-error 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+  }
+}
+
+@keyframes modal-shake-error {
+  10%,
+  90% {
+    transform: translateX(-1px);
+  }
+  20%,
+  80% {
+    transform: translateX(2px);
+  }
+  30%,
+  50%,
+  70% {
+    transform: translateX(-4px);
+  }
+  40%,
+  60% {
+    transform: translateX(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shake-error {
+    animation: none;
+  }
+}

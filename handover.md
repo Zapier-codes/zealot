@@ -188,7 +188,7 @@ manual-only as well, it is the same one-line trigger change.)
 
 ## Task board
 
-### ✅ Task 20: Create-app flow was broken (crash on validation errors, silent no-op on the first-ever app) + modernizing it to a Play-Console-style flow (20a done this session; 20b–20d planned for future sessions — see TSF split below)
+### ✅ Task 20: Create-app flow was broken (crash on validation errors, silent no-op on the first-ever app) + modernizing it to a Play-Console-style flow (20a–20c done; 20d planned — see TSF split below)
 
 **Why (operator report).** As admin or developer, filling in the "New app"
 form and clicking Create did not land on any next screen, and no app
@@ -244,7 +244,7 @@ slices, not bolted onto the same session/patch.**
 |---|---|---|---|---|---|
 | 20a ✅ | Fix the crash-on-invalid-submit, the silent no-op on the first app, and the modal-eats-its-own-errors bug — the three things standing between "click Create" and *any* correct outcome | none | `apps_controller.rb`, `apps/_form.html.slim`, `modal_controller.js`; removed dead `apps/create.turbo_stream.slim` | invalid name → modal stays open, shows the error, in place; valid submit → lands on the new app's own show page, not the index; first-app-ever case no longer depends on a list append | low — see Verification |
 | 20b ✅ | Setup-checklist / progress UI on the app show page (name ✓ → package id → first upload → publish), the actual "Play-Console-dashboard" landing experience 20a's redirect now makes possible | 20a | `app/models/app.rb`, `app/views/apps/_setup_checklist.html.slim` (new), `app/views/apps/show.html.slim`, `config/locales/zealot/{en,zh-CN}.yml` | create an app → checklist renders with correct next step highlighted | low — pure Ruby/view addition, no controller/route/migration change |
-| 20c 🆕 | Apply the same `turbo:submit-end->modal#close` success-only guard's *visual* half — i.e. actually style/animate the in-frame error state (shake, inline field errors, etc.) now that 20a stops the modal from eating it before it can be seen | 20a | CSS/JS only, shared across all ~10 modal forms listed above, not just apps | trigger a validation error on 2–3 of those forms, confirm errors are visible and not just non-crashing | low, but touches many templates — review each |
+| 20c ✅ | Apply the same `turbo:submit-end->modal#close` success-only guard's *visual* half — i.e. actually style/animate the in-frame error state (shake, inline field errors, etc.) now that 20a stops the modal from eating it before it can be seen | 20a | `modal_controller.js`, new `components/modal.css`, `application.tailwind.css` | trigger a validation error on 2–3 of those forms, confirm errors are visible and not just non-crashing | low — CSS/JS only, one shared controller, no template changes |
 | 20d 🆕 | The "gamified, modern" full pass: whatever specific mechanics the operator wants (progress bar, badges/streaks for first upload+publish, empty-state illustration on `/apps`, etc.) | 20a, ideally 20b | ❓ scope not yet defined by the operator | ❓ | ❓ — needs operator decisions first per the TSF ordering formula (❓ resolved before anything is built on a guess) |
 
 **Done in 20a (this session, base `4cfb01e8`):**
@@ -351,6 +351,68 @@ then lying. No controller flag, no query param, no new route.
   `def archive` in `app/models/app.rb`; remove the two-line conditional
   render added to `apps/show.html.slim`; remove the `setup_checklist:` block
   from both locale files' `apps.show:` section.
+
+**Done in 20c (this session, base `a3ae7ef0` — `origin/develop` tip, 20b
+confirmed landed).** Confirmed the ~10-form count from 20a's note by
+grepping the codebase for the shared pattern first (`grep -rl
+"turbo:submit-end->modal#close" app/views`): backups, users, apple_teams,
+settings, apple_keys, channels, schemes, collaborators, apps' new/edit and
+new_owner forms — all `simple_form_for`, all rendered through the same
+`ModalComponent` (`app/components/modal_component.html.slim`), so a single
+shared fix covers every one of them without touching any of the 10
+templates.
+- `modal_controller.js`: `connect()` now also calls a new `shake()` when
+  `hasErrors()` is true. This works because of how Turbo Frame swaps work
+  here — `ModalComponent`'s `<dialog data-controller="modal">` lives
+  *inside* the `turbo_frame_tag :modal`, so a failed submission's re-render
+  replaces that whole dialog node, not just its contents; Stimulus
+  disconnects the old controller instance and connects a fresh one on the
+  new dialog, running `connect()` again exactly as it does for a brand-new
+  open — except this time the server-rendered error markup is already in
+  the DOM when `connect()` runs, so checking for it there needed no new
+  wiring (no extra data-action, no controller flag). `hasErrors()` checks
+  for SimpleForm's `d-alert-error` (the `f.error_notification` summary,
+  only present on forms that call it) or `d-input-error` (every invalid
+  field, unconditionally — see `config/initializers/simple_form_daisyui.rb`),
+  so it catches all 10 forms whether or not they render the summary.
+- New `app/frontend/stylesheets/components/modal.css`: a `shake-error`
+  keyframe animation applied to `.d-modal-box`, removed again on
+  `animationend` so a second failed submit in the same open dialog
+  re-triggers it; disabled under `prefers-reduced-motion: reduce`, matching
+  the same convention already used in `components/auth.css` and
+  `components/card.css` (this codebase already respects that media query
+  elsewhere — followed it rather than introducing a one-off). Imported from
+  `application.tailwind.css` alongside the other `components/*` files.
+- Deliberately did **not** touch any of the 10 form templates themselves —
+  the per-field red-border/error-text styling (`d-input-error`, the
+  `text-error` full_error wrap) and the summary alert box
+  (`d-alert d-alert-error`) already exist via the SimpleForm/daisyUI config
+  checked this session; the actual gap was that a silent in-place frame
+  swap is easy to miss, which the shake addresses without duplicating
+  styling that was already correct.
+- **Verification (be honest about it):** same standing constraint — no
+  Ruby in this sandbox, no Rails boot, nothing exercised in a browser. What
+  *was* checked: `node --check` passed on `modal_controller.js`; the CSS's
+  braces balance and its structure mirrors `components/auth.css`'s
+  existing `@layer components` + top-level `@keyframes` +
+  `prefers-reduced-motion` pattern exactly; all 10 forms were opened and
+  confirmed to use `simple_form_for` inside `ModalComponent` (not a
+  hand-rolled form that would skip the daisyUI error classes) before
+  relying on `.d-alert-error`/`.d-input-error` existing in their markup.
+  Genuinely unverified: that Turbo Frame really does a full node replace
+  here (reasoned from `ModalComponent`'s template structure and Turbo's
+  documented default frame-swap behavior, not observed in a browser), and
+  that the animation actually reads as a "shake" and not something jankier
+  once real CSS runs. Next session (or the operator) should smoke-test:
+  submit 2–3 of the ~10 forms (start with `apps/new`, already exercised by
+  20a's own smoke-test list, plus one admin form like `apple_keys/new`)
+  with an invalid value → dialog should visibly shake and show the error,
+  not just silently re-render it; submit invalid twice in a row without
+  closing the dialog → should shake both times.
+- Revert: restore `modal_controller.js`'s `connect()` to just
+  `this.element.showModal()` and remove `hasErrors()`/`shake()`; delete
+  `app/frontend/stylesheets/components/modal.css`; remove the
+  `@import "./components/modal";` line from `application.tailwind.css`.
 
 ### 🟡 Task 19: Release files on GitHub Releases (private storage repo) + Telegram archive moved to GitHub Actions (19a–19e, 19g done and verified; 19f wiring verified, real round trip still open)
 
