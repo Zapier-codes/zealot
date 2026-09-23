@@ -11,6 +11,12 @@
       - if current_user&.manage?(app: app)
         div class="flex gap-2"
           - if !app.archived
+            / Task 22: direct route to the upload page (releases#new, where the
+            / .aab/.apk file picker lives). This row sits in a turbo frame, so
+            / target _top or the page would try to load inside the frame.
+            = button_link_to '', new_channel_release_path(channel), 'upload', \
+              class: 'd-btn-xs d-btn-ghost d-btn-circle d-tooltip d-tooltip-left', \
+              data: { tip: t('apps.show.upload_build'), turbo_frame: '_top' }
             = button_link_to '', edit_app_scheme_channel_path(app.id, scheme.id, channel.id), 'edit', \
               class: 'd-btn-xs d-btn-ghost d-btn-circle d-tooltip d-tooltip-left', \
               data: { tip: t('apps.show.edit_channel'), turbo_frame: :modal }

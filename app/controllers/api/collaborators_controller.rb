@@ -14,6 +14,11 @@ class Api::CollaboratorsController < Api::BaseController
 
   # POST /api/apps/:app_id/collaborators
   def create
+    # Task 23: create never authorized, so any token holder could add
+    # themselves (with any role) to any app through this endpoint, which
+    # would defeat every per-app check. Only an admin or the app's owner may.
+    authorize Collaborator.new(app: @app), :create?
+
     collaborator = @app.collaborators.find_by(user_id: params[:user_id])
     raise Zealot::Error::RecordExisted.new(model: collaborator) if collaborator
 

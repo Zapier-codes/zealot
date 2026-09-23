@@ -157,6 +157,44 @@ class App < ApplicationRecord
     )
   end
 
+  # All releases of this app, across its schemes and channels.
+  def play_releases_scope
+    Release.where(channel_id: Channel.where(scheme_id: schemes.select(:id)).select(:id))
+  end
+
+  # Task 23: every Play-targeted release of an app goes to the same Play
+  # package and track (play_package_name / play_publish_track live on the App),
+  # so they form one update line. Google only accepts a bundle whose
+  # versionCode is higher than every one already uploaded, so the highest
+  # versionCode that an admin approved and that hasn't failed (published,
+  # publishing, or waiting for Play setup) is what a new Play-targeted upload
+  # has to beat. Requests still *pending* don't count — a new upload replaces
+  # them (see supersede_pending_play_releases!), which is what lets the owner
+  # re-upload a fixed build under the same versionCode before approval.
+  # Rejected, expired and failed ones never (fully) reached Google — an edit
+  # is not partially applied. nil when there is none.
+  def highest_play_version_code
+    play_releases_scope
+      .play_store_targeted
+      .play_approval_approved
+      .where.not(play_publish_status: 'failed')
+      .pluck(:build_version)
+      .map(&:to_i)
+      .max
+  end
+
+  # Task 23: a newer Play-targeted upload replaces the older request that is
+  # still waiting for admin approval, as a newer build replaces an older one
+  # in a Play track. Otherwise the older one could be approved later and
+  # published *after* (or fail against) the newer one. Uses `expired` — the
+  # existing "no longer eligible" state that already drops a release out of the
+  # approval queue — and never touches our own distribution of the build.
+  def supersede_pending_play_releases!(except:)
+    play_releases_scope.play_approval_pending
+                       .where.not(id: except.id)
+                       .update_all(play_approval_status: 'expired', updated_at: Time.current)
+  end
+
   # Approved releases parked by AnthropicPlayPublishJob as
   # `waiting_for_setup`, oldest first.
   def waiting_play_releases
@@ -200,6 +238,16 @@ class App < ApplicationRecord
 
   def setup_checklist_complete?
     setup_checklist_steps.values.all?
+  end
+
+  # Task 22: the channel the "Upload your first build" step should send the
+  # user to. An .aab (the only thing Play accepts) can only go to an Android
+  # channel, so prefer that; otherwise fall back to any channel; nil when the
+  # app has no channel yet (then the UI has to lead the user to create a
+  # scheme/channel first — there is no upload page without one).
+  def first_upload_channel
+    scoped = Channel.where(scheme_id: schemes.select(:id)).order(:id)
+    scoped.find_by(device_type: :android) || scoped.first
   end
 
   # Whether Google has actually published a release of this app (distinct

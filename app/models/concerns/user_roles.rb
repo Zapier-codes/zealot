@@ -9,8 +9,17 @@ module UserRoles
     scope :members, -> { where(role: :member) }
   end
 
+  # Task 23: with an app given, this is *per app* — an admin, or a collaborator
+  # with a manage role (owner = the person who created/first uploaded the app,
+  # see App#create_owner). The global developer role used to satisfy this for
+  # every app on the instance, so any developer could upload a new build to,
+  # edit or delete somebody else's app. Without an app the meaning is
+  # unchanged: the global admin/developer check, used for things that aren't
+  # about one app (creating an app, admin screens).
   def manage?(app: nil)
-    admin? || developer? || (app && app_roles?(app, :manage))
+    return admin? || developer? if app.nil?
+
+    admin? || app_roles?(app, :manage)
   end
 
   def grant_admin!

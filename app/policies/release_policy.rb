@@ -57,8 +57,12 @@ class ReleasePolicy < ApplicationPolicy
     record.channel.password.present?
   end
 
+  # Task 23: uploading a new build (new?/create?), editing or deleting one is
+  # limited to the app's admin, owner or manage collaborators — the person who
+  # uploaded the app keeps control of its updates. It used to be `manage? ||
+  # manage?(app:)`, which any developer on the instance satisfied.
   def any_manage?
-    manage? || manage?(app: app)
+    manage?(app: app)
   end
 
   def app

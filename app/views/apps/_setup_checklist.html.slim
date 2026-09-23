@@ -23,6 +23,22 @@
           span = t("apps.show.setup_checklist.steps.#{key}")
           - if key == next_key
             span.d-badge.d-badge-sm.d-badge-primary.ml-2 = t('apps.show.setup_checklist.next')
+          / Task 22: the upload page (releases#new) is only reachable from a
+          / channel, and this checklist's own "Upload your first build" step used
+          / to have no way there at all. Lead the user to whichever piece is
+          / missing: upload page -> add a channel -> add a scheme. Links sit in
+          / the #app turbo frame, so the upload link must target _top.
+          - if key == :first_upload && !done && current_user&.manage?(app: app) && !app.archived
+            - upload_channel = app.first_upload_channel
+            - if upload_channel
+              = link_to t('apps.show.setup_checklist.upload_build'), new_channel_release_path(upload_channel), \
+                class: 'd-link d-link-primary text-xs ml-2', data: { turbo_frame: '_top' }
+            - elsif app.schemes.none?
+              = link_to t('apps.show.setup_checklist.add_scheme'), new_app_scheme_path(app), \
+                class: 'd-link d-link-primary text-xs ml-2', data: { turbo_frame: :modal }
+            - else
+              = link_to t('apps.show.setup_checklist.add_channel'), new_app_scheme_channel_path(app, app.schemes.first), \
+                class: 'd-link d-link-primary text-xs ml-2', data: { turbo_frame: :modal }
           - if key == :package_id && !done && current_user&.manage?(app: app)
             = link_to t('apps.show.setup_checklist.edit_package_id'), edit_app_path(app), \
               class: 'd-link d-link-primary text-xs ml-2', data: { turbo_frame: :modal }

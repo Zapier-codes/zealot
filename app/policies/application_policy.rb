@@ -64,6 +64,16 @@ class ApplicationPolicy
     exclude ? model.where.not(role: role).exists? : model.where(role: role).exists?
   end
 
+  # Task 23: the app's owner (Collaborator#owner), i.e. the person who
+  # created / first uploaded it. AppPolicy#app_owner? used to filter on
+  # `role: 'owner', exclude: true`, and 'owner' is not a Collaborator role, so
+  # it matched *any* collaborator (even a plain member).
+  def app_owner_of?(app)
+    return false if user.blank? || app.blank?
+
+    Collaborator.where(user: user, app: app, owner: true).exists?
+  end
+
   def user_signed_in_or_guest_mode?
     guest_mode? || user_signed_in?
   end

@@ -35,10 +35,11 @@ class SchemePolicy < ApplicationPolicy
   private
 
   def app_user?
-    any_manage? || app_collaborator?(user, record.app)
+    manage? || manage?(app: record.app) || app_collaborator?(user, record.app)
   end
 
+  # Writing (Task 23) is per app: admin, owner or a manage collaborator.
   def any_manage?
-    manage? || manage?(app: record.app)
+    manage?(app: record.app)
   end
 end

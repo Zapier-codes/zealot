@@ -106,13 +106,25 @@ class Api::Apps::UploadController < Api::BaseController
     authorize scheme
   end
 
+  # Task 23: this used to be `App.find_or_create_by(name)` followed by
+  # `create_owner(current_user)` — so uploading without a channel_key and
+  # with the name of somebody else's app attached the upload to *their* app
+  # and made the uploader a second owner of it. An existing app is now only
+  # reused if the caller may already update it (admin / owner / manage
+  # collaborator); otherwise 403. Only a genuinely new app gets an owner, and
+  # that owner is the uploader.
   def and_app
     permitted = params.permit :name
     permitted[:name] ||= @app_parser.name
 
-    app = App.find_or_create_by permitted
-    app.create_owner(current_user)
-    authorize app
+    if (app = App.find_by(permitted))
+      authorize app, :update?
+    else
+      app = App.create!(permitted)
+      app.create_owner(current_user)
+      authorize app, :create?
+    end
+    app
   end
 
   def parse_scheme_name
@@ -148,7 +160,9 @@ class Api::Apps::UploadController < Api::BaseController
 
   def set_channel
     @channel = Channel.find_by(key: params[:channel_key])
-    raise_if_app_archived!(@channel.app)
+    # Task 23: a first upload has no channel yet (see #new_record?); this line
+    # used to dereference nil there and the request ended in a 500.
+    raise_if_app_archived!(@channel.app) if @channel
   end
 
   def append_present_value_from_params(data, key)

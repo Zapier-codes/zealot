@@ -188,6 +188,185 @@ manual-only as well, it is the same one-line trigger change.)
 
 ## Task board
 
+### 🆕 Task 23: Updates must come from the app's owner — per-app write access, API hijack/no-auth holes closed, Play update rules (code-complete, compiled + policy-matrix checked, not run in Rails)
+
+**Why (operator ask).** "The update of an app should always be from the person
+who uploaded it — if that person edits and uploads a new .aab, it replaces the
+old one and the stores update automatically, like the industry standard.
+Cross-check the flow."
+
+**What "industry standard" means here (and what it doesn't).** Google Play never
+lets a new bundle *overwrite* an old one. An update is a **new** bundle for the
+**same applicationId**, from the **same publisher**, with a **strictly higher
+versionCode**; Play then *supersedes* the previous release on the track and
+rolls the update out to installed users by itself. So "overwrite" = "the newest
+upload from the owner becomes the current release", not "rewrite the old file".
+
+**Cross-check of the current flow (read from `develop` @ `7b29dbac`):**
+
+| # | Finding | Effect |
+|---|---|---|
+| 1 | `User#manage?(app:)` was `admin? \|\| developer? \|\| collaborator` and **every registrant is a developer** (Task 15). All app/scheme/channel/release policies were `manage? \|\| manage?(app:)`. | **Any developer could upload a new build to, edit or delete anyone's app** — including ticking Play target. |
+| 2 | `Api::Apps::UploadController#and_app` = `App.find_or_create_by(name)` + `create_owner(current_user)`. | Uploading via the API with someone else's **app name** (no `channel_key`) attached the upload to *their* app and made the uploader a **second owner**. |
+| 3 | `Api::Apps::UploadController#set_channel` dereferenced `@channel.app` when there is no channel yet. | The API's "first upload" path (the one that creates the app) **500'd** with `NoMethodError`. |
+| 4 | `Api::ReleasesController` had **no `authorize`** at all. | Any token holder could `PUT`/`DELETE /api/releases/:id` on any release (rewrite build/release version, delete builds). |
+| 5 | `Api::CollaboratorsController#create` had **no `authorize`**. | Any token holder could add themselves to any app **with any role**, bypassing every per-app rule. |
+| 6 | `AppPolicy#app_owner?` filtered `role: 'owner', exclude: true`; `'owner'` is not a `Collaborator` role. | It matched *any* collaborator, so a plain member could transfer an app's ownership. |
+| 7 | No check that a Play-targeted bundle's versionCode is higher than what Google already has. | A same/lower versionCode was accepted, sat in the approval queue, and only **failed at Google after admin approval**. |
+| 8 | Several Play-targeted uploads could sit in the approval queue at once. | An older request could be approved later and published after (or fail against) the newer one. |
+
+**Fix (one behaviour: writes to an app belong to its owner/team, and a newer upload from them supersedes the older one).**
+- `UserRoles#manage?(app:)` is now **per app**: admin, or a collaborator with a
+  manage role (`developer`/`admin`; the creator is owner with role admin via
+  `App#create_owner`). `manage?` with no app is unchanged (global
+  admin/developer: create an app, admin screens). The view guards
+  `current_user&.manage?(app: …)` follow automatically, so buttons match what
+  the policies allow.
+- Policies: `ReleasePolicy`, `ChannelPolicy`, `SchemePolicy`, `AppPolicy`
+  (edit/update/destroy/archive) write-check with `manage?(app:)` only. **Reads
+  are unchanged** (any admin/developer, guests, collaborators). `AppPolicy#create?`
+  keeps the global check for a *new* app and is per-app for a saved one (nested
+  creates / API right after `create_owner`). `CollaboratorPolicy` writes =
+  **admin or the app's owner** only. New `ApplicationPolicy#app_owner_of?`
+  checks `Collaborator#owner` for real (finding 6).
+- API: upload reuses an existing app **only if the caller may update it**, else
+  403; only a genuinely new app gets an owner (the uploader); nil-channel guard
+  (findings 2, 3). `authorize` added to `Api::ReleasesController#set_release` and
+  `Api::CollaboratorsController#create` (findings 4, 5).
+- Play update rules: `Release#play_version_code_newer` (on create, Play target)
+  rejects a bundle whose versionCode is not higher than
+  `App#highest_play_version_code` (approved, non-failed Play-targeted builds of
+  the app; *pending* ones don't count because they get superseded), with a clear
+  message; and `App#supersede_pending_play_releases!` marks older **pending**
+  requests `expired` when a newer one is requested (finding 7, 8). A same-versionCode
+  re-upload **before approval** therefore replaces the pending one — the literal
+  "overwrite" case. Our own distribution of every build is untouched.
+- `en.yml` + `zh-CN.yml`: `releases.messages.errors.play_version_code_not_newer`.
+- New `spec/policies/app_ownership_spec.rb` (unrun).
+
+**Files:** `app/models/concerns/user_roles.rb`, `app/models/app.rb`,
+`app/models/release.rb`, `app/policies/{application,app,channel,scheme,release,collaborator}_policy.rb`,
+`app/controllers/api/{releases,collaborators}_controller.rb`,
+`app/controllers/api/apps/upload_controller.rb`, both locale files,
+`spec/policies/app_ownership_spec.rb`, `handover.md`.
+
+**Verified in the sandbox:** `ruby -c` on every changed Ruby file; both locale
+files parse and contain the new key; a stub-based harness runs the real
+`UserRoles` + the five real policies through a 5-person × 9-check matrix (admin,
+owner, developer collaborator, member collaborator, unrelated developer) — 45/45
+as intended. **Not verified:** no Rails boot, no DB, the new specs and the
+existing suite are unrun, the versionCode query / `update_all` were only
+compiled, nothing exercised in a browser or against Google.
+
+**Operator smoke test:**
+1. Account A creates an app + Android channel, uploads a build. Account B (also
+   a developer, not added to the app) opens A's app: can *see* it (reads
+   unchanged) but has no upload/edit/delete buttons; `GET /channels/:id/releases/upload`
+   → 403.
+2. As B, `POST /api/apps/upload` with A's exact app name and no `channel_key` →
+   403; `PUT /api/releases/<A's id>` → 403; `POST /api/apps/<A's id>/collaborators`
+   → 403.
+3. As A, upload a new `.aab` to the same channel → it becomes the latest release
+   (the pull API `/api/apps/latest` shows it). With **Play target** ticked and an
+   *approved* earlier build of versionCode N, uploading versionCode ≤ N is refused
+   with the new message; N+1 is accepted and any older **pending** request drops
+   out of `/admin/play_approvals`.
+4. As A, add a teammate as collaborator (role developer) → the teammate can upload,
+   but cannot add collaborators or transfer ownership.
+
+**Not done / ❓ for the operator:**
+- ❓ **Read visibility.** Any developer can still *list and open* every app
+  (`manage_user?` scoping in the index/API list is unchanged). Say if apps
+  should be private to their owner and team too — that is a separate slice.
+- ❓ **Legacy apps with no owner** (sample data, hand-made rows) can now only be
+  changed by an admin, and only an admin can add the first collaborator.
+  Production has zero apps per Task 7's note, so nothing is locked out today.
+- **No "uploaded by" column on releases** (would need a migration). The owner /
+  collaborators are the control; a per-build audit trail is a later slice if wanted.
+- **Track A (our own stores) still has no push.** Own-store clients update by
+  polling `/api/apps/latest` / `versions`; nothing is pushed. Play (Track B) is
+  the automatic one: approval → `AnthropicPlayPublishJob` → track replaced.
+- `PlayPublishService#assign_to_track` sends `build_version.to_i` as the
+  versionCode; reading it from Google's upload response would be sturdier.
+- The web-UI `webhook`, `metadatum` and `debug_file` policies are still global
+  `manage?` — untouched here.
+
+**Revert:** restore the listed files from `7b29dbac` (or `git revert` the commit
+— this task and Task 22 ship in one combined commit if Task 22 wasn't applied
+separately); no migration, nothing to roll back in the database.
+
+### 🆕 Task 22: No route from a new app to the upload page (and so no file picker) — app page now links to it (code-complete, compiled, not run in a browser)
+
+**Why (operator report, right after Task 20 landed).** Create-app now works,
+but "the route to the next page to upload the .aab doesn't open and it's not
+opening the device filesystem to select the .aab".
+
+**Cross-check result (read from `develop` @ `7b29dbac`).**
+
+1. **The upload page is only reachable from a *channel*.** `releases#new`
+   (`/channels/:id/releases/upload`) is linked from exactly two partials —
+   `channels/_channel` and `releases/_release` (via `releases/_upload_button`).
+   Nothing on the **app page** (where Task 20a's redirect lands) linked to it:
+   `apps/_channel.html.slim` only had edit/delete buttons, and the setup
+   checklist's "Upload your first build" step had no link at all.
+   **Task 20b's note that "the upload action is already right below the
+   checklist in the schemes/channels partial" was wrong** — it was never there
+   (corrected in place below).
+2. **A new app usually has no channel at all.** `apps/_form` renders the
+   scheme/channel check boxes with `checked: 0` (`schemes ||= 0`, and
+   `AppsController#new` never sets `@schemes`/`@channels`), so a name-only
+   submit creates an app with **zero schemes/channels**. With no channel there
+   is no channel page and no Upload button anywhere, i.e. no route to the
+   upload page. This matches "the route doesn't open" exactly.
+3. **The file picker itself is not the problem.** The upload form is
+   `f.input :file` → a plain `<input type="file">` (SimpleForm `vertical_file`
+   wrapper, `d-file-input`), no `accept` filter, no click-intercepting JS
+   (`grep preventDefault` finds only the clipboard and confirm-dialog code), no
+   CSS touching file inputs, `multipart` set by the file field. Once the upload
+   page is reached the native picker opens. Not verified in a browser.
+
+**Fix (one behaviour: the app page always shows the next step towards the upload page).**
+- `App#first_upload_channel` (new): the Android channel if there is one (only an
+  `.aab` can go to Play), else the oldest channel, else `nil`.
+- `apps/_setup_checklist.html.slim`: the not-yet-done "Upload your first build"
+  step now carries a link, for users who can manage the app and only while the
+  app isn't archived: **Upload build** → `new_channel_release_path` (target
+  `_top`, the checklist sits inside the `#app` frame); if the app has no channel,
+  **Add a channel first** → new-channel modal; if it has no scheme,
+  **Add a scheme first** → new-scheme modal.
+- `apps/_channel.html.slim`: an upload icon button on every channel row of the
+  app page (`turbo_frame: '_top'`, same guards as the neighbouring buttons).
+- `en.yml` + `zh-CN.yml` together: `apps.show.upload_build`,
+  `apps.show.setup_checklist.{upload_build,add_scheme,add_channel}`.
+
+**Files:** `app/models/app.rb`, `app/views/apps/_setup_checklist.html.slim`,
+`app/views/apps/_channel.html.slim`, `config/locales/zealot/{en,zh-CN}.yml`,
+`handover.md`.
+
+**Verified in the sandbox:** Ruby 3.2.3 + `ruby-slim` installed via apt (see the
+session-log note), `ruby -c` on `app.rb` passes, the changed and neighbouring
+Slim templates compile to valid Ruby, both locale files parse and contain the new
+keys. **Not verified:** no Rails boot, nothing rendered in a browser, no spec.
+
+**Operator smoke test (2 min):**
+1. Create an app with a name only → app page → checklist step 2 shows
+   **Add a scheme first**; add one → step shows **Add a channel first**; add an
+   Android channel → step shows **Upload build**.
+2. Click it (or the new upload icon on the channel row) → the upload page opens
+   → tap the file field → the device file picker opens → choose the `.aab`.
+3. Create an app with a scheme + Android channel ticked → **Upload build** is
+   there immediately.
+
+**❓ Decision for the operator (not guessed):** should the New app form
+pre-tick a default scheme and the Android channel so a name-only submit is
+already uploadable? It would remove the two extra modal steps above, but changes
+the form for iOS-only teams (they'd untick Android). Left as-is until decided.
+
+**Revert:** delete `first_upload_channel` from `app.rb`; remove the
+`Task 22` block from `_setup_checklist.html.slim`; remove the upload
+`button_link_to` block from `_channel.html.slim`; remove the four keys from both
+locale files.
+
 ### 🆕 Task 21: Admin "add user" was silently failing to create the account + lock/unlock/update on the edit page were wiping the whole page + invite email now uses the Task 16 Novu pipeline (code-complete, not run)
 
 **Why (operator report).** In the admin UI, adding a new user didn't work —
@@ -609,8 +788,8 @@ then lying. No controller flag, no query param, no new route.
   button) when the current user can manage the app; publish step links to
   `admin_play_approvals_path` when the current user is admin **and** a
   build has been uploaded (no point sending anyone to an empty approval
-  queue). No link on `first_upload` — the upload action is already right
-  below the checklist in the schemes/channels partial.
+  queue). No link on `first_upload` — **(wrong: the upload action was never in
+  the schemes/channels partial on the app page; fixed in Task 22)**.
 - `apps/show.html.slim`: renders the partial only while
   `!@app.setup_checklist_complete?` — once every step is done the card
   disappears entirely rather than sticking around as a dismissible banner
@@ -3106,3 +3285,28 @@ them is already modernized.
   along with everything else. Ruby still not installable this sandbox;
   YAML/structure checked by hand, nothing run in a browser. One combined
   commit, branch `fix/admin-users-turbo-stream`.
+- **Task 22 (app page → upload page route)**: base `7b29dbac` (`origin/develop`
+  tip this checkout cloned). Operator reported that after creating an app the
+  route to the `.aab` upload page doesn't open and the file picker doesn't open.
+  Cross-checked and found the upload page had no link from the app page, and a
+  name-only new app has no scheme/channel at all (see Task 22). Added the links,
+  `App#first_upload_channel`, and locale keys. **Sandbox note:** Ruby *is*
+  installable — plain `apt-get install ruby` 404s on `security.ubuntu.com`, but
+  `apt-get update` first fixes it (Ruby 3.2.3), and `apt-get install ruby-slim`
+  gives a Slim compiler for template syntax checks; rubygems.org is still
+  blocked, so no bundle/Rails/specs. One combined commit, branch
+  `fix/task-22-upload-route`.
+- **Task 23 (owner-only updates, Play update rules)**: base `7b29dbac`
+  (`origin/develop`). Operator asked that updates always come from whoever
+  uploaded the app and that a new .aab supersede the old one like the industry
+  standard. Cross-checked and found eight gaps (table in Task 23) — the big
+  ones: every developer could write to every app, the API let you attach an
+  upload to someone else's app by name, and `/api/releases` and
+  `POST /api/apps/:id/collaborators` had no authorization. Fixed per-app
+  write access, closed those holes, added Play versionCode/supersede rules.
+  Delivered as **one combined patch that also contains Task 22**, because the
+  Task 22 patch (`fix/task-22-upload-route`) was given earlier and may not be
+  applied yet — if the operator already applied it, say so and the next
+  session will rebase this onto it. Ruby 3.2.3 + `ruby-activesupport` via apt
+  (after `apt-get update`); a stub harness ran the policy matrix; no Rails/DB.
+  Branch `fix/task-23-owner-updates`.

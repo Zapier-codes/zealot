@@ -126,6 +126,7 @@ class Release < ApplicationRecord
   validate :bundle_id_matched, on: :create
   validate :determine_file_exist, on: :create
   validate :play_target_bundle_valid, on: :create, if: :play_store_target?
+  validate :play_version_code_newer, on: :create, if: :play_store_target?
 
   before_validation :drop_unsupported_play_target, on: :create
   before_validation :determine_disk_space
@@ -294,6 +295,25 @@ class Release < ApplicationRecord
 
     errors.add(:play_store_target, I18n.t('releases.messages.errors.play_package_name_mismatch',
                                           got: bundle_id, expect: expected))
+  end
+
+  # Task 23: an update on Play is a new bundle with a higher versionCode than
+  # anything Google already has for the package (it replaces the previous
+  # release on the track; it can't overwrite it). Refuse the upload up front
+  # with a clear message instead of letting it fail at Google after admin
+  # approval. build_version is the bundle's versionCode (the publish service
+  # sends `build_version.to_i` as the version code).
+  def play_version_code_newer
+    return if file.blank?
+
+    code = build_version.to_i
+    return if code <= 0
+
+    highest = app.highest_play_version_code
+    return if highest.nil? || code > highest
+
+    errors.add(:play_store_target, I18n.t('releases.messages.errors.play_version_code_not_newer',
+                                          got: code, latest: highest))
   end
 
   def perform_teardown_job(user_id, when_to_run: :later)
@@ -584,6 +604,7 @@ class Release < ApplicationRecord
     return unless play_store_target?
 
     adopted = app.adopt_play_package_name!(bundle_id)
+    app.supersede_pending_play_releases!(except: self)
     request_play_approval!
     # Adopting a package name already schedules the check (App callback).
     AnthropicPlayPreflightJob.perform_later(app.id) if app.play_package_name.present? && !adopted

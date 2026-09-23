@@ -419,6 +419,7 @@ en:
       unarchive_app: Unarchive app
       archived: Archived
       new_channel: New Channel
+      upload_build: Upload build
       edit_scheme: Edit Scheme
       destroy_scheme: Destroy Scheme
       edit_channel: Edit Channel
@@ -460,6 +461,9 @@ en:
           published: Publish to Google Play
         edit_package_id: Set package ID
         review_approvals: Review in Play approvals
+        upload_build: Upload build
+        add_scheme: Add a scheme first
+        add_channel: Add a channel first
     new:
       title: New app
     edit:
@@ -659,6 +663,7 @@ en:
         play_package_name_taken: "applicationId %{got} already belongs to another app in Zealot. Upload this bundle to that app instead."
         upload_to_archived_app: "App %{app} is archived, so new releases can not be uploaded."
         play_package_name_mismatch: "applicationId %{got} in this bundle does not match this app's Play applicationId %{expect}. Upload the matching bundle, or correct the app's Play applicationId if it was entered wrongly."
+        play_version_code_not_newer: "This bundle's versionCode (%{got}) is not higher than %{latest}, which was already approved for Google Play. Google only accepts an update whose versionCode is higher — raise it (android.defaultConfig.versionCode) and upload again."
   debug_files:
     title: Debug files
     index:

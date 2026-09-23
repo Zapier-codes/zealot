@@ -64,12 +64,14 @@ class ChannelPolicy < ApplicationPolicy
     record.password.present?
   end
 
+  # Reading: any admin/developer, guests in guest mode, the app's collaborators.
   def app_user?
-    guest_mode? || any_manage? || app_collaborator?(user, app)
+    guest_mode? || manage? || manage?(app: app) || app_collaborator?(user, app)
   end
 
+  # Writing (Task 23) is per app: admin, owner or a manage collaborator.
   def any_manage?
-    manage? || manage?(app: app)
+    manage?(app: app)
   end
 
   def app

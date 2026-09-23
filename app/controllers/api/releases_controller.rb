@@ -18,8 +18,13 @@ class Api::ReleasesController < Api::BaseController
 
   protected
 
+  # Task 23: this controller never authorized anything, so any token holder
+  # could edit or delete any release of any app (PUT/DELETE /api/releases/:id).
+  # update?/destroy? now go through ReleasePolicy (admin, app owner or a manage
+  # collaborator of the release's app).
   def set_release
     @release = Release.find(params[:id])
+    authorize @release
   end
 
   def release_params

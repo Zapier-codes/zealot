@@ -3,9 +3,12 @@
 class CollaboratorPolicy < ApplicationPolicy
 
   def show?
-    any_manage?
+    manage? || manage?(app: app)
   end
 
+  # Task 23: who is on an app is decided by an admin or the app's owner only.
+  # Previously any developer could add themselves as a collaborator of any
+  # app, which would have bypassed every per-app check.
   def new?
     any_manage?
   end
@@ -35,7 +38,7 @@ class CollaboratorPolicy < ApplicationPolicy
   private
 
   def any_manage?
-    manage? || manage?(app: app)
+    admin? || app_owner_of?(app)
   end
 
   def app
