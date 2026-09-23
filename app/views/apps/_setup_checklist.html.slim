@@ -2,12 +2,14 @@
 - ordered_keys = %i[name package_id first_upload published]
 - next_key = ordered_keys.find { |key| !steps[key] }
 - done_count = steps.values.count(true)
+- percent = steps.empty? ? 0 : (done_count * 100.0 / steps.size).round
 
 .d-card.d-card-border.mb-4.setup-checklist
   .d-card-body.py-4
     .flex.items-center.justify-between.mb-2
       h3.d-card-title.text-base = t('apps.show.setup_checklist.title')
       span.text-xs.opacity-60 = t('apps.show.setup_checklist.progress', done: done_count, total: steps.size)
+    progress.d-progress.d-progress-primary.mb-3 value=percent max="100"
     ul.d-steps.d-steps-vertical
       - ordered_keys.each do |key|
         - done = steps[key]

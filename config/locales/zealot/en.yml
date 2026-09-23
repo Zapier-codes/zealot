@@ -406,8 +406,8 @@ en:
       created_at: Created at %{time}
       searching_app: Search apps
       not_found:
-        title: Not found app.
-        body_html: Click the button <i class="fa-regular fa-plus-square"></i> New app on the top-right.
+        title: No apps yet
+        body: Create your first app to start tracking builds, uploads and releases.
     unarchived:
       success: App was unarchived and can receive new uploads again.
     show:

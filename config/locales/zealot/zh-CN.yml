@@ -400,8 +400,8 @@ zh-CN:
       created_at: 创建于 %{time}
       searching_app: 搜索应用
       not_found:
-        title: 没有发现任何应用或全部已归档
-        body_html: 新建应用请点击右上角的 <i class="fa-regular fa-plus-square"></i> 进行操作，查看已归档应用请点击左侧导航栏的 "已归档应用"
+        title: 还没有应用
+        body: 创建你的第一个应用，开始跟踪构建、上传和发布。
     unarchived:
       success: 应用已取消归档，可以再次上传新版本。
     show:

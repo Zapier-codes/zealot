@@ -1,5 +1,9 @@
-.card.card-outline.card-warning
-  .card-header
-    h3.card-title = t('apps.index.not_found.title')
-  .card-body
-    p = t('apps.index.not_found.body_html')
+.d-card.d-card-border.empty-apps-state
+  .d-card-body.items-center.text-center.py-12
+    i.fa-solid.fa-rocket.text-4xl.text-base-content/30.mb-3
+    h3.text-lg.font-semibold = t('apps.index.not_found.title')
+    p.text-base-content/60.max-w-sm.mt-1 = t('apps.index.not_found.body')
+    - if current_user&.manage?
+      .mt-4
+        = button_link_to t('apps.new.title'), new_app_path, 'plus-square', base_fa: 'fa-regular', \
+          class: 'd-btn d-btn-primary', data: { turbo_frame: 'modal' }

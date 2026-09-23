@@ -188,7 +188,7 @@ manual-only as well, it is the same one-line trigger change.)
 
 ## Task board
 
-### ✅ Task 20: Create-app flow was broken (crash on validation errors, silent no-op on the first-ever app) + modernizing it to a Play-Console-style flow (20a–20c done; 20d planned — see TSF split below)
+### ✅ Task 20: Create-app flow was broken (crash on validation errors, silent no-op on the first-ever app) + modernizing it to a Play-Console-style flow (20a–20d done — see TSF split below)
 
 **Why (operator report).** As admin or developer, filling in the "New app"
 form and clicking Create did not land on any next screen, and no app
@@ -245,7 +245,7 @@ slices, not bolted onto the same session/patch.**
 | 20a ✅ | Fix the crash-on-invalid-submit, the silent no-op on the first app, and the modal-eats-its-own-errors bug — the three things standing between "click Create" and *any* correct outcome | none | `apps_controller.rb`, `apps/_form.html.slim`, `modal_controller.js`; removed dead `apps/create.turbo_stream.slim` | invalid name → modal stays open, shows the error, in place; valid submit → lands on the new app's own show page, not the index; first-app-ever case no longer depends on a list append | low — see Verification |
 | 20b ✅ | Setup-checklist / progress UI on the app show page (name ✓ → package id → first upload → publish), the actual "Play-Console-dashboard" landing experience 20a's redirect now makes possible | 20a | `app/models/app.rb`, `app/views/apps/_setup_checklist.html.slim` (new), `app/views/apps/show.html.slim`, `config/locales/zealot/{en,zh-CN}.yml` | create an app → checklist renders with correct next step highlighted | low — pure Ruby/view addition, no controller/route/migration change |
 | 20c ✅ | Apply the same `turbo:submit-end->modal#close` success-only guard's *visual* half — i.e. actually style/animate the in-frame error state (shake, inline field errors, etc.) now that 20a stops the modal from eating it before it can be seen | 20a | `modal_controller.js`, new `components/modal.css`, `application.tailwind.css` | trigger a validation error on 2–3 of those forms, confirm errors are visible and not just non-crashing | low — CSS/JS only, one shared controller, no template changes |
-| 20d 🆕 | The "gamified, modern" full pass: whatever specific mechanics the operator wants (progress bar, badges/streaks for first upload+publish, empty-state illustration on `/apps`, etc.) | 20a, ideally 20b | ❓ scope not yet defined by the operator | ❓ | ❓ — needs operator decisions first per the TSF ordering formula (❓ resolved before anything is built on a guess) |
+| 20d ✅ | The "gamified, modern" pass. Operator delegated scope ("use industry-standard modern style, your call") — picked the two lowest-risk, highest-standard candidates from the original list; deferred badges/streaks (see note below) | 20a, 20b | `apps/_setup_checklist.html.slim` (20d-i), `apps/_empty_active_app.html.slim` (20d-ii), `config/locales/zealot/{en,zh-CN}.yml` | 20d-i: an app partway through setup shows a `d-progress` bar matching its done/total ratio; 20d-ii: `/apps` with zero apps shows an icon + heading + CTA button instead of the old Bootstrap-era card | low — pure view/locale changes, no controller/route/migration |
 
 **Done in 20a (this session, base `4cfb01e8`):**
 - `AppsController#create`: failure path now explicitly `formats: [:html]`
@@ -413,6 +413,70 @@ templates.
   `this.element.showModal()` and remove `hasErrors()`/`shake()`; delete
   `app/frontend/stylesheets/components/modal.css`; remove the
   `@import "./components/modal";` line from `application.tailwind.css`.
+
+**Done in 20d (this session, base `cfd1b904` — `origin/develop` tip, 20c
+confirmed landed).** Operator delegated the scope call ("industry-standard
+modern style, your recommendations") after declining to pick from the
+candidate list themselves. Picked two slices, both pure polish with no
+controller/route/model surface, and deliberately left badges/streaks out
+(see note below) rather than guess at reward mechanics nobody asked for:
+
+- **20d-i — progress bar on the setup checklist.** `_setup_checklist.html.slim`
+  now computes `percent` from the same `done_count`/`steps.size` already
+  in scope and renders a `progress.d-progress.d-progress-primary` bar
+  above the step list — same `progress.d-progress class=... value=...
+  max="100"` shape already used in
+  `admin/system_info/index.html.slim` (grepped first to match the existing
+  convention instead of introducing a new one). No model or locale change
+  needed; `done`/`total` copy next to it is unchanged.
+- **20d-ii — modern empty state on `/apps`.** `_empty_active_app.html.slim`
+  was still the pre-Task-13 Bootstrap-era markup (`.card.card-outline.card-warning`)
+  — confirmed by grep that several other empty-state partials
+  (`_empty_scheme`, `_empty_channel`, `admin/backups/_empty_backup`) have
+  the same leftover pattern, but scoped this slice to just `/apps` since
+  that's what Task 20 is actually about; the others are a separate,
+  unscoped cleanup if wanted later. Replaced with `d-card`/`d-card-border`,
+  a centered FontAwesome icon, heading + subtext, and a real `d-btn
+  d-btn-primary` "New app" CTA (via the existing `button_link_to` helper,
+  `data: { turbo_frame: 'modal' }`, gated on `current_user&.manage?` —
+  matching the equivalent top-right button in `apps/index.html.slim`
+  exactly, confirmed `manage?(app: nil)`'s signature allows the no-arg
+  call). Locale key `apps.index.not_found.body_html` (HTML instructions
+  pointing at the top-right button) no longer fit now that the CTA lives
+  in the empty state itself, so it's replaced with a plain-text `body` key
+  in both `en.yml` and `zh-CN.yml` together; grepped first to confirm
+  nothing else referenced that key (the visually-similar
+  `apps.archives.index.not_found.body_html` for the *archived* empty
+  state is a different key, untouched).
+- **Deferred: badges/streaks.** Left out of this slice — a meaningful
+  reward mechanic (which milestones trigger it, whether it persists per
+  user or per app, whether it needs a model/migration at all) is itself a
+  ❓ the TSF ordering formula says shouldn't be guessed at, and doesn't fit
+  the "pure polish, no schema change" shape of the other two slices in
+  this session. Flagging as a real 🆕 candidate for a future session if
+  the operator wants it, now that they've indicated an appetite for this
+  kind of polish.
+- **Verification (be honest about it):** same standing constraint as every
+  recent Task 20 session — Ruby is not installable in this sandbox
+  (`security.ubuntu.com` still 404s on `ruby3.2`), so no `ruby -c`, no
+  spec, no Rails boot, nothing rendered in a real browser. What *was*
+  checked: both locale files parse as valid YAML
+  (`python3 -c 'import yaml; ...'`); grepped for every other reference to
+  `apps.index.not_found.*` and to the old `body_html` key before removing
+  it, confirming nothing else breaks; the `d-progress` markup shape and
+  the `manage?` no-arg call were confirmed against existing call sites,
+  not assumed. Genuinely unverified: the Slim indentation/interpolation
+  compiles correctly, and the two views actually render as intended.
+  Next session (or the operator) should smoke-test: (1) an app partway
+  through setup → progress bar fill matches the done/total count shown
+  next to it; (2) an account with zero apps visits `/apps` → icon,
+  heading, subtext and a working "New app" button (opens the modal) all
+  render, no button shown for a viewer without manage rights.
+- Revert: restore `_setup_checklist.html.slim`'s `- percent = ...` removal
+  and the `progress.d-progress...` line; restore
+  `_empty_active_app.html.slim` to the `.card.card-outline.card-warning`
+  markup at `cfd1b904`; restore the `not_found.title`/`body_html` keys in
+  both locale files to their `cfd1b904` text.
 
 ### 🟡 Task 19: Release files on GitHub Releases (private storage repo) + Telegram archive moved to GitHub Actions (19a–19e, 19g done and verified; 19f wiring verified, real round trip still open)
 
@@ -2707,3 +2771,22 @@ them is already modernized.
   previously saying "not yet applied." See the per-task notes above (Task 19,
   Task 6, Task 7, Task 12, Task 16) for full detail. Branch
   `docs/session-verification-19-12-16-7`, `handover.md` only.
+- **Task 20d (gamified/modern pass)**: base `cfd1b904` (Task 20c, the
+  `origin/develop` tip this checkout cloned). Operator declined to pick
+  from the candidate list and delegated scope ("industry-standard modern
+  style, your recommendations"). Built the two lowest-risk, highest-
+  standard candidates: a `d-progress` bar on the setup checklist
+  (20d-i), and a modernized empty state with icon + CTA on `/apps`
+  (20d-ii, replacing leftover pre-Task-13 Bootstrap markup, scoped to just
+  `/apps` — the same leftover pattern exists in a few other empty-state
+  partials but that's unscoped cleanup for later). Deliberately deferred
+  badges/streaks — a real reward mechanic needs its own scope decisions,
+  same TSF ❓ rule as everything else on this board, and doesn't fit this
+  session's "pure polish, no schema change" shape; left as an open 🆕
+  candidate. No Task 7/19 production work touched — this session's next-
+  step note (upload a real app/release) is still the actual next
+  unblocking action and remains open. Ruby still not installable this
+  sandbox (`security.ubuntu.com` 404s on `ruby3.2`); verified by YAML
+  parse of both locale files and grep-confirmed no other references to
+  the removed `body_html` key. One combined patch, branch
+  `feat/task-20d-progress-empty-state`.
