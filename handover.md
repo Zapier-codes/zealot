@@ -188,6 +188,155 @@ manual-only as well, it is the same one-line trigger change.)
 
 ## Task board
 
+### 🧭 Play-parity program — Tasks 28–36 (added this session, docs only; nothing below is built)
+
+*Read Task 28 first. Tasks 29–36 are listed in phase order, not newest-first. Every slice follows the TSF; every ❓ is for the operator, not for a session to guess.*
+
+#### 🆕 Task 28: Play-parity architecture — plane map, principles and phases (umbrella, no code)
+
+**Operator direction.** Mirror the Play Console / Play Store concept, revamp the architecture fully around it, and rival the industry giants. The store is populated through the Aptoide MCP, and **the home page always shows Zealot's apps first** (recorded under Task 9).
+
+**Provenance.** The plane model below is the session's analysis of how Google Play is organized, drawing on Task 27's earlier research (Google Play Console/Developer API, Apple, Huawei, Samsung, F-Droid). It was **not re-read source by source this session**. Verify against Google's own docs before relying on a specific behavior, most of all Android's rules for unattended updates, which Task 32 depends on.
+
+**Play as separate planes** (the console and the store never share a runtime; they exchange only signed, versioned artifacts):
+
+| Plane | Play | Here | State today |
+|---|---|---|---|
+| Control | Play Console + Publishing API: developer identity, app record, listing, content declarations, releases, reviews | Zealot | Partly built (Tasks 24, 25, 27a); index signing/publishing (27b) and the rest planned |
+| Build and signing | Play App Signing + bundles, per-device splits | Zealot (org key vs upload key) | Built |
+| Trust | Automated policy checks, then a human review queue | Zealot | Not built (Task 30) |
+| Serving | Read-only store backend, search, compatibility filtering, CDN | D-store | UI on dummy data; reads the index once 5.g lands |
+| Client | The Play Store app: installer sessions, background updates, on-device verification | D-Store Updater | Not built (Task 32) |
+| Feedback | Ratings, reviews, Android vitals back to the console | D-store to Zealot | Not built (Tasks 31b, 33) |
+
+**Principles to copy:**
+1. The console never serves users; the store never accepts developer input. (Have it.)
+2. Upload key is not the distribution key. (Have it: `PlayUploadKey` vs `AndroidSigningKey`.)
+3. Publishing is a transactional edit: change a copy, validate, commit or discard. (Task 30a.)
+4. Tracks: internal, closed, open, production. The store shows production only. (Task 30b.)
+5. Everything a client trusts is signed and verifiable. (27b, Task 35a.)
+6. The store only shows what will install on the device, so the catalog carries compatibility metadata. (Task 29.)
+7. Automated checks before humans: permission diffs, signing-certificate continuity, scans. (Task 30c/30d.)
+8. A feedback loop back to developers. (Tasks 31b, 33.)
+9. The client is the trust anchor. This is the largest gap in the current plan: a web page can only download an APK, while an installed Updater can verify the index signature, the APK SHA-256 and the signing fingerprint on the device and can update in the background where Android permits it. (Task 32.)
+
+**Phases (recommended order):**
+- **Phase 1, trust core:** 27b-i/ii/iii, Task 29, D-store `5.g.i.zi`/`5.g.i.zo`/`5.g.iv`.
+- **Phase 2, console parity:** 27c–27f, Task 30, Task 31.
+- **Phase 3, client and feedback:** Task 32, Task 33, Task 34.
+- **Phase 4, scale and trust:** Task 35, Task 36.
+
+**Catalog sources (operator rule):** first-party = Zealot's signed index; third-party = Aptoide via MCP. First-party is always first on the home page. Third-party apps are labelled as such, download from Aptoide (not Zealot), and never carry Zealot's verified/fingerprint claims. If the same package is in both, the Zealot entry wins. D-store owns the merge (`5.h`).
+
+**Honest limits:** workflows and the trust model can match Play. Its ML malware detection, device attestation and scale cannot be matched, and its OS-level trust depends on Google's platform. The differentiator is transparency: an open, verifiable index and on-device APK verification.
+
+**❓ Decisions (operator):**
+1. Updater before or after the Phase 2 console features? (Recommendation: Phase 2 first; the Updater's verification code depends on the index being stable.)
+2. Confirm the recommended answers recorded under Task 27 (❓1, ❓4, ❓6 refinement) and in the D-store handover.
+3. Which Aptoide MCP: the official `Aptoide/aptoide-mcp` (Python, MIT, listed on Aptoide's GitHub, last updated Feb 12, 2026) or the third-party "Aptoide Ultimate API" actor on Apify (pay-per-query, hosted by Apify). Neither was inspected beyond its public listing this session.
+4. Aptoide's terms for re-presenting its catalog and linking to its downloads: not checked. Confirm before building `5.h.ii` in D-store.
+
+#### 🆕 Task 29: Catalog index v2 — the fields D-store and the Updater actually need (Phase 1)
+
+D-store's `App` type needs fields index v1 doesn't carry (found by comparing `lib/mock-data.ts` with `docs/catalog_index_v1.md`). Nothing consumes v1 yet (27a is not published anywhere), so revising now costs nothing; after 27b signs and publishes, every change is a migration.
+
+**Fields to add (proposal; D-store signs off through its `5.g.i.zo`):**
+- Per app: immutable `slug` (rule: never changes once live), `summary`, `category` (fixed vocabulary shared by both repos; D-store's current list is system, multimedia, games, internet, navigation, science-education, theming, time, reading, writing, development, finance), `license`, `links` (site, source, tracker, donate), `available_regions`, `created_at`/`updated_at`.
+- Listing declarations: `content_rating`, `data_safety` (collects data, data types, shared with third parties, encrypted in transit, deletion requests), `contains_ads`, `has_in_app_purchases`.
+- Developer block: name, bio, profile URL, joined date.
+- Compatibility: min and target SDK, ABIs, screen densities, required features, permissions. Zealot's `releases` table has no dedicated columns for these today, so extraction from the APK is new work (29c).
+- `versions[]` instead of only `latest_version`: version name and code, download URL, SHA-256, size, signing fingerprint, changelog, release date, and a per-version `status` (`available`, `halted`, `pulled`). D-store's version history and rollback leaves (`5.c.ii`, `5.c.iii`) need this.
+- Editorial, top level: `editorial` per app (`featured`, `editors_pick`), `sponsored_slots[]`, `collections[]` (authored in Task 31a).
+- Index-level: `schema_version`, `generated_at`, a strictly increasing `sequence`, and `expires_at` (freshness, so a stale index can be refused).
+- Not in the index, by design: install and view counts, average rating and rating count (store-owned).
+
+| ID | Goal | Depends on | Files (predicted) | Acceptance check | Risk |
+|---|---|---|---|---|---|
+| 29a | Write index v2: schema doc, JSON Schema, and the slug and category rules | 27a | `docs/catalog_index_v2.md`, `docs/catalog_index_v2.schema.json` | Fixture documents validate; malformed ones are rejected | low |
+| 29b | Serializer v2 over the new fields, defaults where data doesn't exist yet (empty, not invented) | 29a | `app/services/catalog_index/serializer.rb`, spec | Output validates against the 29a schema for a full app and a bare app | low |
+| 29c | Extract compatibility metadata from the APK at upload and store it on `Release` | 29a | migration, service, `Release`, spec | An uploaded APK yields min/target SDK, ABIs, permissions | medium (APK parsing) |
+| 29d | D-store review of v2 as consumer (their `5.g.i.zo`); record sign-off or requested changes | 29a | docs only | D-store confirms every field it renders is present or intentionally store-owned | low |
+
+**❓ Decisions:** the category vocabulary (fixed list vs Zealot-owned free text mapped by D-store); who authors `available_regions` (owner in the listing editor, or org-wide default).
+
+#### 🆕 Task 30: Console publishing parity — edits, tracks, policy checks, review (Phase 2)
+
+Play's publishing model is a transactional edit on top of tracks, with automated checks and then a review queue. Zealot today has `go_live!` (Task 25) and channels.
+
+| ID | Goal | Depends on | Files (predicted) | Acceptance check | Risk |
+|---|---|---|---|---|---|
+| 30a | Staged listing edits: change a copy of the listing, validate, then commit or discard (the layer under the 27e editor) | 29a | model, service, policy, spec | Uncommitted edits never appear in the index; commit is one transaction; discard leaves the live listing untouched | medium |
+| 30b | Map channels to tracks (internal, closed, open, production); only production feeds the index | 30a | `Channel`/`App`, index scope, spec | A release on a non-production track is absent from the index | medium |
+| 30c | Automated checks on commit: permission diff against the previous version, signing-certificate continuity per package, package-name squatting check, malware-scan hook | 29c, 30a | service, spec | A version signed with a different key than earlier versions of the same package is blocked with a reason | medium |
+| 30d | Manual review queue in admin: in review, approved, rejected with reason; only approved versions reach the index | 30c | model, views, locales, policy | A rejected version never appears in the index; the owner sees the reason | medium |
+| 30e | Hold-until-release, halt and rollback | 27c | this is slice 27f; not duplicated here | see 27f | medium |
+
+**❓ Decisions:** how Zealot's existing channels map to tracks (confirm against the `Channel` model before 30b); which scan provider, if any, for 30c; whether review is always manual or only for flagged versions.
+
+#### 🆕 Task 31: Editorial controls and store-owned data (the outcome of ❓6) (Phase 2)
+
+| ID | Goal | Depends on | Files (predicted) | Acceptance check | Risk |
+|---|---|---|---|---|---|
+| 31a | Author featured, Editors' Pick, sponsored slots (with dates) and collections in Zealot's admin; publish them in the index editorial blocks | 29a, 27c | model, views, serializer, locales | Toggling featured changes the next index; D-store shows it with no write access | medium |
+| 31b | Read-only view in Zealot of D-store-owned data (traffic, top searches, report counts, review aggregates), fed by a token-authenticated D-store read API | D-store `5.f.i` and its `5.g.v.zo` | service, admin views | Zealot shows current figures; the token can only read | blocked on D-store database |
+| 31c | Decide and record where moderation actions live (hide a review, dismiss a report) | 31b | docs only | Decision recorded | low |
+
+**❓ Decisions:** 31c. Recommendation: keep moderation actions in a small authenticated D-store admin so Zealot never writes to D-store. The alternative is a D-store write API with a service token.
+
+#### 🆕 Task 32: D-Store Updater — the on-device trust anchor (Phase 3)
+
+Companion Android app (D-store `5.c.i` is the store-side spec leaf). It turns "a website with APKs" into a store: the web store handles discovery, the Updater handles install and trust.
+
+| ID | Goal | Depends on | Files (predicted) | Acceptance check | Risk |
+|---|---|---|---|---|---|
+| 32a | Decide repo and stack; write the spec (scope, permissions, what it verifies) | ❓ | new repo or docs | Spec approved | low |
+| 32b | Fetch the index and verify signature and freshness against a pinned public key (two keys accepted during rotation) | 27b-iii, 32a | client | A tampered or expired index is refused | medium |
+| 32c | Download an APK and verify SHA-256 and the signing-certificate fingerprint before handing it to the installer | 32b, 29a | client | A modified APK is refused before install | medium |
+| 32d | Install through the platform package-installer session API (user confirms) | 32c | client | An APK installs and reports success or failure | medium |
+| 32e | Background updates where the OS allows them | 32d, ❓ | client | An installed app updates without opening the store, on devices that permit it | high (platform rules) |
+| 32f | Delta updates | 35d | client | Bytes transferred for an update drop against a full download | high |
+
+**❓ Decisions:** repo and stack (the operator's other project uses React Native/Expo; a native Android client suits installer sessions better, but that is the operator's call); whether the Updater is required to install first-party apps or optional.
+
+#### 🆕 Task 33: Feedback loop — telemetry and vitals (Phase 3)
+
+| ID | Goal | Depends on | Files (predicted) | Acceptance check | Risk |
+|---|---|---|---|---|---|
+| 33a | Opt-in, account-free install and update event schema (privacy first) | 32a | docs | Schema reviewed; no persistent user identifier | low |
+| 33b | Ingest events and crash/ANR reports per app and version | 33a, 32d | endpoint, model, job | Events appear against the right app and version | medium |
+| 33c | Vitals view for owners in Zealot | 33b | views, locales | An owner sees install, update and crash trends | medium |
+| 33d | Ratings and review aggregates on the app dashboard | 31b | views | Owner sees average, count and histogram | low |
+
+Text reviews and replies (27g) stay parked; see the Task 27 note on ❓4.
+
+#### 🆕 Task 34: Developer publishing API (Phase 3)
+
+| ID | Goal | Depends on | Files (predicted) | Acceptance check | Risk |
+|---|---|---|---|---|---|
+| 34a | Edits-style REST API for CI: open an edit, upload a release, set the track, validate, commit. Builds on Task 23's per-app write access | 30a, 30b | controllers, policies, docs | A CI job publishes to a track through the API using a per-app token | medium |
+| 34b | GitHub Actions example and docs | 34a | docs | The example workflow publishes a build end to end | low |
+| 34c | Rate limits and an audit log of API actions | 34a | middleware, model | Abuse is throttled; every commit is attributable | low |
+
+#### 🆕 Task 35: Scale and delivery (Phase 4)
+
+| ID | Goal | Depends on | Files (predicted) | Acceptance check | Risk |
+|---|---|---|---|---|---|
+| 35a | TUF-style index layout: a small short-lived timestamp file, a snapshot with hashes, one file per app; keep the single `index.json` until the catalog needs it | 27b-iii | serializer, publisher | A reader refuses a stale or rolled-back snapshot | medium |
+| 35b | Search backend for D-store (Postgres full-text search is enough at first); D-store work, listed here for sequencing | D-store `5.f.i` | D-store | Ranked, typo-tolerant search over the catalog | medium |
+| 35c | Serve APK downloads from object storage behind a CDN, with Zealot's stable route redirecting so Render never streams binaries | ReleaseStorage adapters | route, storage config | Downloads bypass the app server | medium |
+| 35d | Delta updates. Note: Task 19 deliberately did not restore the old `delta` action; see that entry before designing | 32d | service | A delta applies and yields a byte-identical APK | high |
+
+#### 🆕 Task 36: Developer verification and Google registration (Phase 4)
+
+| ID | Goal | Depends on | Files (predicted) | Acceptance check | Risk |
+|---|---|---|---|---|---|
+| 36a | Company verification (KYB) feeding `publisher.verified` in the index | 25 | model, views, jobs | A verified company shows verified in the next index | high (process and legal) |
+| 36b | Google Android developer registration (slice 27h) | 27c, 36a | service, job | A newly live app shows as registered | blocked until verified |
+
+Date note (from Task 27): Google's registration enforcement starts September 30, 2026 in Brazil, Indonesia, Singapore and Thailand. Confirm whether D-store distributes in those countries; if it does, 36b becomes urgent.
+
+**Not built (Tasks 28–36):** all of it. No code, schema or config changed by recording this program.
+
 ### 🟡 Task 27: Zealot as the Play Console — signed catalog index, store-listing management, release controls (27a done this session; 27b–27h planned, several blocked on ❓ decisions)
 
 **Operator direction.** D-store is the Play Store app: front-facing only. Zealot does what Play Console does. Mirror how the industry giants split the two systems instead of inventing one. Research done this session (Google Play Console/Developer API, Apple App Store Connect, Huawei AppGallery Connect, Samsung Seller Portal, F-Droid); findings below are what the model is built on. Google's own docs were read for Play; Apple's detail came back thin and Amazon's was not checked.
@@ -215,23 +364,52 @@ manual-only as well, it is the same one-line trigger change.)
 | ID | Goal | Depends on | Files (predicted) | Acceptance check | Risk |
 |---|---|---|---|---|---|
 | 27a ✅ | Define catalog index v1 as a serializer plus a written schema: repo block; per app the listing text, icon/screenshot refs with SHA-256, versions, APK pointer (stable download URL, SHA-256, size, signing fingerprint), publisher name, verified flag, listing status | ❓1 | `app/services/catalog_index/serializer.rb`, `docs/catalog_index_v1.md`, `docs/catalog_index_v1.schema.json`, spec | Serializer output for a fixture app matches the schema; D-store's `5.g.i.zo` signs off the fields | low (additive) |
-| 27b | Generate and publish the index atomically (temp + rename), strictly increasing timestamp, signed with an index-signing key separate from `AndroidSigningKey` | 27a, ❓2, ❓3 | service, job, key handling, spec | A reader sees only complete indexes; timestamp never goes backwards; signature verifies with the public key | medium (new key) |
+| 27b-i | **Recommended split of 27b (1 of 3).** Persist each release's SHA-256 once, at `ReleaseFileMirrorJob` time, so it survives the local-file wipe (closes the "sha256 gap" above) | 27a | migration, `Release`, mirror job, spec | A mirrored release keeps its hash after the local file is deleted; the serializer reads the stored hash | low |
+| 27b-ii | **(2 of 3)** Ed25519 index-signing key as a singleton model (mirrors `AndroidSigningKey`, secrets encrypted), sign service, persisted strictly increasing sequence/timestamp | 27a, ❓3 ✅ | model, service, spec | A signed index verifies with the public key; the timestamp never goes backwards; runs with no GitHub access | medium (new key) |
+| 27b-iii | **(3 of 3)** Publish to the GitHub Pages repo as one commit (Git Data API: blob, tree, commit, ref update), serialized so two publishes never race, then call D-store's deploy hook. Uses its own fine-grained token scoped to the Pages repo only | 27b-ii, ❓2 ✅ | service, job, env vars, spec | A reader sees only complete indexes; a 409 is retried; the deploy hook fires after a successful publish | medium |
 | 27c | Regenerate the index on `go_live!`, suspension, listing edit and new release (replaces Task 26's send-to-D-store step) | 27b | `app.rb`, one job | Going live or suspending changes the next index | low |
 | 27d | Publish icons and screenshots through `ReleaseStorage` with SHA-256 in the index | 27b | storage, uploader | A screenshot appears in the index with a matching hash | low |
 | 27e | Store-listing editor: descriptions, graphics, data safety, content rating (Play's Store presence) | 27a | views, model, locales | Owner edits and the next index reflects it | medium (largest UI) |
 | 27f | Release controls for our own store: hold-until-release (managed publishing), halt, rollback | 27c, ❓5 | model, policy, views | A held release stays out of the index until released | medium |
 | 27g | Read and reply to D-store's reviews | ❓4 | needs a D-store feed | Owner sees and answers a review | blocked on D-store |
-| 27h | Register each package and the org signing key with Google's Android Developer Console on go-live (see below) | ❓6 | service, job | A newly live app shows as registered | blocked until verified |
+| 27h | Register each package and the org signing key with Google's Android Developer Console on go-live (see below) | 27c (was listed as ❓6, which is about admin tooling; looks like a slip, confirm) | service, job | A newly live app shows as registered | blocked until verified |
 
 **Android developer verification (date-critical, read before 27h).** Google enforces app registration from September 30, 2026 for participating stores in Brazil, Indonesia, Singapore and Thailand, and plans to expand globally in 2027. Registration ties a verified developer to package names and signing keys. Google says stores other than the listed ones are not yet required to comply. Its new Developer Console API supports OAuth delegation so stores can register on a developer's behalf, and it is being rolled out over several months. Samsung already blocks submissions of unregistered binaries in its Seller Portal, and where the store does the final signing, the store's key must be added to the package's certificate list. Because Zealot signs every app with the org key, the org will probably have to register each package with that key. That conclusion is an inference, not something Google states. Confirm against Google's docs before building 27h. Company verification (KYB, D-U-N-S) is the natural front door for it.
 
 **❓ Decisions (do not guess):**
 1. Confirm the index-not-Supabase direction (operator approved it in principle; this is the formal record).
-2. Where the index is published: a Zealot endpoint, object storage (R2), or a static host. D-store's cache rule works with any.
-3. How the index-signing key is generated, stored and rotated (F-Droid keeps it offline and separate; rotating it forces readers to re-trust).
+2. Where the index is published: a Zealot endpoint, object storage (R2), or a static host. D-store's cache rule works with any. **→ Decided (operator direction, see "Decisions recorded" below): GitHub Pages.**
+3. How the index-signing key is generated, stored and rotated (F-Droid keeps it offline and separate; rotating it forces readers to re-trust). **→ Decided for generation and storage: Ed25519 key in a singleton model. Rotation procedure still to be written in 27b.**
 4. Reviews: confirm they stay owned by D-store and Zealot only reads and replies. This means D-store must expose them, and D-store is otherwise write-free.
-5. Staged rollout: a no-account web store has no stable device identity to hash a fraction from. Skip it, or approximate it?
-6. Whether D-store's admin and editorial tools (report queue, sponsored slots, traffic dashboards) move to Zealot's admin. Google runs the equivalents on its own side.
+5. Staged rollout: a no-account web store has no stable device identity to hash a fraction from. Skip it, or approximate it? **→ Decided: skip it; rely on 27f's halt and rollback.**
+6. Whether D-store's admin and editorial tools (report queue, sponsored slots, traffic dashboards) move to Zealot's admin. Google runs the equivalents on its own side. **→ Decided: they move to Zealot's admin.**
+
+**Still open:** ❓1 (formal confirmation of index-not-Supabase; the direction is already approved in principle) and ❓4 (reviews stay owned by D-store, Zealot reads and replies). Neither was addressed in this session's direction.
+
+**Decisions recorded (operator direction, docs only, no code changed).** Recorded from the operator's revised recommendation on ❓2, with ❓3, ❓5 and ❓6 standing as decided.
+
+*❓2 — the index is published to GitHub Pages.*
+- Operator correction that drove the change: Render does not sleep, so the earlier argument for keeping the index out of Rails (a sleeping web service can't serve it) no longer applies. (Task 19g's "free web services sleep" premise is therefore out of date on that point; 19g itself was not edited.)
+- 27b's publish step: Rails generates and signs the index JSON in-process (`CatalogIndex::Serializer` is plain Ruby/AR), then writes `index.json` plus `signing_key.pub` to a small **public** repo (or a `gh-pages` branch) through the GitHub Contents API. Pages redeploys on push (roughly a minute) and GitHub's CDN serves it. No new infrastructure, bill or workflow file.
+- Closer to F-Droid's model than the earlier options: the index sits on dumb static hosting, clients pull it on a schedule, and the signature carries the trust, not the transport.
+- "Atomic" (27b's requirement) is met by a git commit landing or not landing, in place of temp + rename. Trade-off accepted: GitHub's CDN caches Pages content briefly, so a publish takes a short time to propagate. Play has propagation delay too and F-Droid clients only poll periodically.
+
+*❓3 — signing key.* Ed25519 key held in a singleton model that mirrors `AndroidSigningKey` (one row, secrets encrypted with Active Record Encryption, `.current` accessor), kept separate from `AndroidSigningKey`. Rotation is not designed yet.
+
+*❓5 — staged rollout.* Skipped. Rollback risk is handled by 27f's halt and rollback.
+
+*❓6 — D-store admin and editorial tooling.* Moves into Zealot's admin.
+
+**Recommended answers from the cross-repo review with D-store (session recommendations; the operator has not confirmed these individually, so ❓1 and ❓4 stay marked open until they do):**
+- ❓1: confirm index-not-Supabase. D-store's own handover already records it as resolved ("Resolved — catalog contract"), so both repos agree.
+- ❓4: D-store owns reviews; Zealot reads and replies. Today D-store's `Review` holds only `id`, `app_slug`, `stars` and `created_at` (anonymous, no text, in-memory dummy data), so there is nothing to reply to. Recommendation: park 27g; give owners read-only aggregates (average, count, histogram) once D-store has a database; add text reviews and replies only after moderation and abuse throttling exist. If added later, developer replies can ride in the signed index keyed by review id, keeping D-store write-free.
+- ❓6 refinement: editorial controls (featured, Editors' Pick, sponsored slots, collections) move to Zealot and reach D-store through the index (Task 31a). Data D-store owns (traffic, searches, reports, review moderation) needs a token-authenticated read API on D-store (Task 31b). Moderation actions are writes; recommendation is to keep them in a small authenticated D-store admin (Task 31c) rather than opening a write path from Zealot.
+
+**Checked against the code while recording this (corrections to the recommendation as first written — read before starting 27b):**
+- **The GitHub token is not reusable as-is.** The recommendation said to reuse `ReleaseStorage::GithubAdapter`'s token. That token (`GITHUB_STORAGE_TOKEN`) is a fine-grained token scoped to the one *private* storage repo, and the adapter deliberately refuses a public repo (`GITHUB_STORAGE_ALLOW_PUBLIC`). The Pages repo is public and separate, so 27b needs either a second fine-grained token scoped to only that repo (preferred: keeps a write path to the private build storage out of the publish code) or the existing token widened to cover both. The GitHub *patterns* (retry statuses, request helper, error handling) are still reusable; the credential is not. This adds one env var, so "no new credential" was overstated.
+- **The adapter does not use the Contents API.** It uses the Releases and `git/refs` endpoints only, so 27b's Contents API write is new code, not a reuse.
+- **Two files, one publish.** The Contents API commits one file per call, so `index.json` and `signing_key.pub` would land as separate commits and a reader could briefly see a new index next to an old key. Options for 27b to settle: publish the public key only when it changes (not on every publish), or use the Git Data API (blob, tree, commit, ref update) for a single commit. Updating an existing file also needs the current blob SHA, and a concurrent publish returns 409, so publishes should be serialized (one job at a time) with a retry.
+- **Timestamp rule still applies.** "Strictly increasing timestamp" from 27b's acceptance check does not come from git; the service has to persist and enforce it itself.
 
 **Done in 27a (this session, code-complete, verified — see below):**
 `app/services/catalog_index/serializer.rb` + `docs/catalog_index_v1.md` (written
@@ -3193,11 +3371,16 @@ Supabase DB, no guessing):**
   UI, then upload one real app/release (see Task 19's note — needed for 19f
   too) to actually exercise steps 4/5.
 
-### ❓ Task 9: Storefront / Discovery Layer (Needs Decision)
+### ✅ Task 9: Storefront / Discovery Layer (decided: the public store is D-store; Aptoide MCP fills it; Zealot apps always come first)
 This was deferred until the console was successfully hosted. Now that Zealot is live on Render, the operator needs to decide:
 - Do you want a public-facing Aptoide-style storefront?
 - Or will you keep it strictly internal for your employees?
 If you want it, a session needs to be started to build the public discovery layer UI.
+
+**Decided (operator direction, docs only).** Yes to a public storefront, and it is the separate `D-store` repo (Task 26), not a UI inside Zealot. Two rules from the operator:
+1. **The store is populated through the Aptoide MCP** (third-party catalog breadth), alongside Zealot's own apps.
+2. **The home page always shows Zealot's apps first.** The signed catalog index (Tasks 27, 29) is the first-party catalog by definition; anything that arrives from Aptoide is third-party and ranks after it on the home page.
+Consequences and open questions (which Aptoide MCP, how D-store calls it, Aptoide's terms, ranking outside the home page) are recorded in Task 28 and in D-store's `HANDOVER.md` (`5.h`). Nothing in Zealot's code changes for this: Zealot publishes only its own apps.
 
 ### 🟡 Task 12: Automated Email Infrastructure (emails #1, #2, #4 built and delivery-verified via Novu this session; #3 receipts still blocked, no payment model)
 
@@ -3681,3 +3864,5 @@ them is already modernized.
   (field contract) and 3 (how Zealot writes to Supabase) remain open. No code changed.
   Branch `docs/task-26-resolve-build-sign-owner` from `origin/develop` @ `0d0cab54`.
 - **Task 27 planning (docs only)**: operator asked for a deep search of how Google, Apple, Huawei, Samsung and F-Droid split console from store, then approved a signed-catalog-index direction. Recorded the model, mapping, slice table 27a–27h and six open decisions in Task 27, and updated Task 26's decisions 1 and 3 to point at it. Also flagged Google's Android developer verification (enforcement September 30, 2026 in four countries) as a date-critical input to 27h. The D-store handover was updated in the same pass (its `5.f`/`5.g`). No code changed. This patch also carries the earlier Task 26 decision-2 edit (Zealot builds, signs and stores), because that patch had not landed on `origin/develop` @ `0d0cab54` when this one was built, so apply only this one. Branch `docs/task-26-resolve-build-sign-owner`.
+- **Task 27 decisions recorded (docs only)**: operator revised ❓2 (index published to GitHub Pages, because Render does not sleep) and confirmed ❓3 (Ed25519 singleton key model), ❓5 (skip staged rollout; use 27f halt/rollback) and ❓6 (D-store admin/editorial tools move to Zealot's admin). Recorded in Task 27 with the 27b row updated. While checking the code, corrected the recommendation: the `GithubAdapter` token is scoped to the private storage repo, so 27b needs its own token for the public Pages repo, and the adapter doesn't use the Contents API, so that write is new code. ❓1 and ❓4 remain open. 27b not started. No code changed. Branch `docs/task-27-record-decisions-2-3-5-6` from `origin/develop` @ `b8518b6c`.
+- **Play-parity program + catalog sources (docs only)**: operator asked to mirror Play Console / Play Store and revamp the architecture, and stated two rules: the store is populated through the Aptoide MCP, and the home page always shows Zealot's apps first. Recorded as Tasks 28–36 (umbrella and phases, index v2, publishing parity, editorial and store-owned data, the Updater, feedback loop, developer API, scale, verification), split 27b into 27b-i/ii/iii, parked 27g, fixed 27h's dependency, decided Task 9 (D-store is the public store), and logged the D-store cross-review answers as recommendations pending confirmation. Left ❓1 and ❓4 open. Aptoide MCP choice and terms unverified. This patch also carries the earlier Task 27 decisions patch (`docs/task-27-record-decisions-2-3-5-6`), which had not landed on `origin/develop` @ `b8518b6c`, so apply only this one. No code changed. Branch `docs/task-28-play-parity-program`.
