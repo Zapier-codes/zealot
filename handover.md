@@ -188,6 +188,103 @@ manual-only as well, it is the same one-line trigger change.)
 
 ## Task board
 
+### 🆕 Task 24: Publisher alias — the front-facing "Published by" name on our own store pages (first slice of the store/publisher flow; code-complete, compiled, not run in Rails)
+
+**Status of earlier work.** Tasks 22 + 23 (one combined commit) **landed on
+`develop` @ `4e804f73`** — origin was fetched at the start of this task. Still
+not run in Rails/browser by anyone; the operator's smoke tests in those entries
+still apply.
+
+**Product direction from the operator (this session — the design this and the
+next slices implement).**
+- **Two sides.** Google Play = the *archive*: every app is published under the
+  organisation's own Play account, so Play always shows the organisation as
+  owner and needs no "uploaded by". That flow (admin approval → publish job) is
+  unchanged. **Our own stores = the public front**, built to look and feel like
+  Play; here the developer's identity matters.
+- **Publisher type.** At publish time the developer chooses **Individual** or
+  **Company**. *Individual:* fill the form → payment page → app goes live on the
+  store immediately on payment. *Company:* same flow and live immediately, but
+  the account is **suspended after 2 months unless KYB/KYC is completed**
+  (emails via the existing email infra); collect what Play collects for
+  organisations **including the D-U-N-S number**, store it in the DB for
+  verification; once approved they get the full Play-style company-owner
+  features on our stores.
+- **Publishing for others + alias.** An *approved* company can publish apps for
+  others and give each a front-facing **alias**. Whoever uploaded stays in charge
+  of updates (Task 23's owner-only rules), like Play.
+- **Rights.** Everything distributed through the stores belongs to the
+  organisation, all rights reserved; the org signs every app, so the submitted
+  `.aab` is bundled into an org-signed mirrored copy. (Already the architecture:
+  singleton `AndroidSigningKey`, `ProxySdk::Injector` output, `PlayUploadKey`.)
+  Needs Terms-of-Service wording and an acceptance record — copy/legal, not code.
+- **Assumptions I stated and the operator did not object to** (revisit if wrong):
+  publisher type stored once per developer and reused; the 2 months run from the
+  first go-live with reminder emails and "suspended" = apps hidden + publishing
+  blocked, reversible on approval; unverified company names show an
+  "Unverified" label until approved; KYB/KYC data encrypted, admin-only;
+  payment gates *going live on the store*, not uploading/testing builds; Play
+  push stays a separate admin-approved step.
+- ❓ **Still open:** the **payment provider** for the payment page (blocks
+  the payment slice); whether consent from the third party must be recorded
+  when a company publishes for them; one payment or separate charges for store
+  listing vs Play push.
+
+**Slice built now: the alias only.**
+- Migration `20260924100000_add_publisher_alias_to_apps` (nullable string
+  `apps.publisher_alias`) + `db/schema.rb` (version 2026_09_24_100000 —
+  hand-edited, run `db:migrate` to confirm it produces the same file).
+- `App`: `publisher_alias` is tidied before save (control characters →
+  space, whitespace collapsed, blank → NULL), max 60 chars
+  (`PUBLISHER_ALIAS_MAX_LENGTH`); `App#publisher_display_name` = the alias or
+  nil (nil shows nothing, so an alias-less app renders exactly as before; the
+  later individual/company slices add the fallbacks).
+- **Who may set it: `AppPolicy#set_publisher_alias?` = admin only, on purpose.**
+  The intended rule is "an approved company", but company verification doesn't
+  exist yet, and an alias on public pages with no verification behind it lets
+  anyone present an app under someone else's name. Replace that one predicate
+  when the KYB slice lands. `AppsController#app_params` only permits
+  `publisher_alias` when the policy allows it (so it can't be mass-assigned by
+  anyone else), and the edit form only shows the field to those people.
+- **Display:** the public release page header (`releases/body/_metadata`) shows
+  "Published by <alias>" under the bundle id when the app has one. No fallback
+  to the owner's username on purpose (that would newly expose usernames
+  publicly). The alias is HTML-escaped by Slim.
+- `en` + `zh-CN`: `simple_form` label/hint for `app.publisher_alias`,
+  `releases.show.published_by`.
+- Specs (unrun): `spec/models/app_publisher_alias_spec.rb`; the alias policy
+  case added to `spec/policies/app_ownership_spec.rb`.
+
+**Files:** `db/migrate/20260924100000_add_publisher_alias_to_apps.rb`,
+`db/schema.rb`, `app/models/app.rb`, `app/policies/app_policy.rb`,
+`app/controllers/apps_controller.rb`, `app/views/apps/_form.html.slim`,
+`app/views/releases/body/_metadata.html.slim`,
+`config/locales/simple_form/simple_form.{en,zh-CN}.yml`,
+`config/locales/zealot/{en,zh-CN}.yml`, the two spec files, `handover.md`.
+
+**Verified in the sandbox:** `ruby -c` on the changed Ruby/migration/schema/spec
+files; both Slim views compile; locale YAML parses with the new keys; the stub
+policy matrix is 50/50 (admin-only alias rule included); the normalization
+expression was run on sample input. **Not verified:** no Rails boot, migration
+not run, nothing rendered, specs unrun.
+
+**Operator smoke test:** run `db:migrate`. As an **admin**, edit an app → a
+*Publisher name* field appears; set "Acme Studio" → open that app's public
+release page → "Published by Acme Studio" under the bundle id. As the **app's
+owner (non-admin developer)**, edit the same app → no such field, and a crafted
+`app[publisher_alias]=x` PATCH does not change it. Clear the field as admin →
+the line disappears.
+
+**Not in this slice (next, in this order):** publisher profile
+(individual/company) + draft → awaiting payment → live states; payment
+(needs the provider decision); the public store pages; company KYB form, admin
+review queue, reminder emails + 2-month suspension job; then swap
+`set_publisher_alias?` to "approved company" and add the
+individual/company-name fallback to `publisher_display_name`.
+
+**Revert:** `db:rollback` the migration, then revert the listed files (or
+`git revert` the commit).
+
 ### 🆕 Task 23: Updates must come from the app's owner — per-app write access, API hijack/no-auth holes closed, Play update rules (code-complete, compiled + policy-matrix checked, not run in Rails)
 
 **Why (operator ask).** "The update of an app should always be from the person
@@ -3310,3 +3407,9 @@ them is already modernized.
   session will rebase this onto it. Ruby 3.2.3 + `ruby-activesupport` via apt
   (after `apt-get update`); a stub harness ran the policy matrix; no Rails/DB.
   Branch `fix/task-23-owner-updates`.
+- **Task 24 (publisher alias)**: fetched origin first — Tasks 22+23 had landed
+  on `develop` @ `4e804f73`. Recorded the operator's store/publisher product
+  direction in the Task 24 entry (Individual vs Company, payment, 2-month KYB
+  suspension, alias, org-owned/org-signed apps). Built only the alias slice
+  (admin-only until company verification exists). Open: payment provider.
+  Branch `feat/task-24-publisher-alias` from `origin/develop`.

@@ -590,6 +590,7 @@ en:
       released_new_version: "%{version_link} released %{time} ago!"
       name: App
       version: Auto Version
+      published_by: Published by %{name}
       device_type: Device
       release_version: Release version (build version)
       release_type: Release type

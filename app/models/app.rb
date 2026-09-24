@@ -24,6 +24,13 @@ class App < ApplicationRecord
 
   validates :name, presence: true
 
+  # Task 24: front-facing publisher name. Stored tidy (no control characters,
+  # collapsed whitespace, blank -> NULL) because it is printed on public pages.
+  PUBLISHER_ALIAS_MAX_LENGTH = 60
+
+  before_validation :normalize_publisher_alias
+  validates :publisher_alias, length: { maximum: PUBLISHER_ALIAS_MAX_LENGTH }, allow_nil: true
+
   # Task 18 — Google Play only learns an app's applicationId from the first
   # bundle uploaded to Play Console (it is not a "create app" field there),
   # so the intended one is recorded here, verified against every
@@ -157,6 +164,14 @@ class App < ApplicationRecord
     )
   end
 
+  # Task 24: the name shown to store visitors as "Published by …". Just the
+  # alias for now; later slices fall back to the publisher's verified company
+  # name / individual name. nil = show nothing (an alias-less app displays
+  # exactly what it did before).
+  def publisher_display_name
+    publisher_alias.presence
+  end
+
   # All releases of this app, across its schemes and channels.
   def play_releases_scope
     Release.where(channel_id: Channel.where(scheme_id: schemes.select(:id)).select(:id))
@@ -266,6 +281,12 @@ class App < ApplicationRecord
   end
 
   private
+
+  def normalize_publisher_alias
+    return if publisher_alias.nil?
+
+    self.publisher_alias = publisher_alias.to_s.gsub(/[[:cntrl:]]/, ' ').squish.presence
+  end
 
   def normalize_play_package_name
     self.play_package_name = play_package_name.to_s.strip.presence

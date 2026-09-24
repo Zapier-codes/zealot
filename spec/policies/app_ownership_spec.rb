@@ -86,6 +86,15 @@ RSpec.describe 'App ownership policies' do
     end
   end
 
+  describe 'publisher alias (Task 24)' do
+    it 'is admin-only until company verification exists' do
+      expect(allowed?(admin, app, :set_publisher_alias?)).to be true
+      expect(allowed?(owner, app, :set_publisher_alias?)).to be false
+      expect(allowed?(teammate, app, :set_publisher_alias?)).to be false
+      expect(allowed?(stranger_dev, app, :set_publisher_alias?)).to be false
+    end
+  end
+
   describe 'Play update line' do
     it 'has no highest versionCode until a build is approved for Play' do
       expect(app.highest_play_version_code).to be_nil

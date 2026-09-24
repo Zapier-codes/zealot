@@ -8,6 +8,10 @@
           = release.name || release.app_name
         div.text-break class="font-base text-sm opacity-60"
           = release.bundle_id || release.file.identifier
+        / Task 24: front-facing publisher name, only when the app has one.
+        - if (publisher = release.app.publisher_display_name).present?
+          div.text-break class="font-base text-sm opacity-60"
+            = t('releases.show.published_by', name: publisher)
   .card-body
     div class="flex flex-wrap item-center gap-4"
       / - if release.name.present?

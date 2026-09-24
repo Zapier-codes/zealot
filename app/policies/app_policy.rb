@@ -41,6 +41,16 @@ class AppPolicy < ApplicationPolicy
     admin? || app_owner?
   end
 
+  # Task 24: who may put a different front-facing publisher name on an app
+  # ("publish for a friend"). The intended rule is "an approved company"; the
+  # company verification (KYB) flow doesn't exist yet, so until it does this is
+  # admin-only rather than open to every uploader — an alias on public pages
+  # with no verification behind it is an impersonation risk. Replace this one
+  # predicate when verification lands.
+  def set_publisher_alias?
+    admin?
+  end
+
   def archive?
     any_manage?
   end

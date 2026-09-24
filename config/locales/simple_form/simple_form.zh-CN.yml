@@ -31,6 +31,7 @@ zh-CN:
         name: 应用名称
         play_package_name: Play applicationId
         play_publish_track: Play Store 发布轨道
+        publisher_alias: 发布者名称
       teardown:
         file: 应用文件
       collaborator:
@@ -125,6 +126,7 @@ zh-CN:
           name: :'simple_form.hints.scheme.name'
         play_package_name: 该应用在 Google Play 上的 applicationId，例如 com.example.app。它由你上传的第一个安装包确定，在 Play Console 创建应用时并没有这个字段。留空则取第一个以 Play Store 为目标的 .aab，之后每个安装包都会与它比对。
         play_publish_track: 该应用通过审批的版本会发布到的 Google Play 轨道
+        publisher_alias: "商店访客看到的“发布者”名称。留空则不额外显示。"
       teardown:
         file: 支持 iPhone 的 IPA、Android 的 APK/AAB、macOS 的 mobileprovision 以及 macOS.app.zip、Window 的 EXE 文件
       scheme:

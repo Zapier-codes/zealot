@@ -22,6 +22,11 @@ ruby:
   / against every Play-targeted AAB and adopted from the first one
   / when left blank. Shown on create and edit.
   = f.input :play_package_name, required: false, input_html: { placeholder: 'com.example.app' }
+  / Task 24: the name store visitors see as "Published by". Only shown to
+  / people AppPolicy#set_publisher_alias? allows (admin-only until company
+  / verification exists); the controller enforces it too.
+  - if policy(app).set_publisher_alias?
+    = f.input :publisher_alias, required: false, input_html: { maxlength: App::PUBLISHER_ALIAS_MAX_LENGTH }
   - if new_or_create_route?
     = f.simple_fields_for :scheme_attributes do |n|
       = n.input :name, as: :check_boxes, collection: preset_schemes, checked: schemes, required: false

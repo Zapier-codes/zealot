@@ -585,6 +585,7 @@ zh-CN:
       name: 应用
       version: 上传版本
       device_type: 平台
+      published_by: "发布者：%{name}"
       release_version: 构建版本
       release_type: 打包类型
       native_codes: 原生架构

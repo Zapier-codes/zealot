@@ -31,6 +31,7 @@ en:
         name: App name
         play_package_name: Play applicationId
         play_publish_track: Play Store track
+        publisher_alias: Publisher name
       teardown:
         file: File
       collaborator:
@@ -125,6 +126,7 @@ en:
           name: :simple_form.hints.scheme.name
         play_package_name: The applicationId this app has on Google Play, e.g. com.example.app. Google Play fixes it from the first bundle you upload; it is not a field when creating the app in Play Console. Leave empty to take it from the first Play-targeted .aab, after which every later one is checked against it.
         play_publish_track: The Google Play track that approved releases of this app are published to
+        publisher_alias: 'The name store visitors see as "Published by". Leave blank to show nothing extra.'
       teardown:
         file: Support iOS, Android, HarmonyOS, macOS, Windows and Linux binary file
       scheme:
