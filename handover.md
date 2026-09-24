@@ -188,7 +188,7 @@ manual-only as well, it is the same one-line trigger change.)
 
 ## Task board
 
-### 🆕 Task 27: Zealot as the Play Console — signed catalog index, store-listing management, release controls (planning only, nothing built)
+### 🟡 Task 27: Zealot as the Play Console — signed catalog index, store-listing management, release controls (27a done this session; 27b–27h planned, several blocked on ❓ decisions)
 
 **Operator direction.** D-store is the Play Store app: front-facing only. Zealot does what Play Console does. Mirror how the industry giants split the two systems instead of inventing one. Research done this session (Google Play Console/Developer API, Apple App Store Connect, Huawei AppGallery Connect, Samsung Seller Portal, F-Droid); findings below are what the model is built on. Google's own docs were read for Play; Apple's detail came back thin and Amazon's was not checked.
 
@@ -214,7 +214,7 @@ manual-only as well, it is the same one-line trigger change.)
 
 | ID | Goal | Depends on | Files (predicted) | Acceptance check | Risk |
 |---|---|---|---|---|---|
-| 27a | Define catalog index v1 as a serializer plus a written schema: repo block; per app the listing text, icon/screenshot refs with SHA-256, versions, APK pointer (stable download URL, SHA-256, size, signing fingerprint), publisher name, verified flag, listing status | ❓1 | `app/services/catalog_index/*`, `docs/`, spec | Serializer output for a fixture app matches the schema; D-store's `5.g.i.zo` signs off the fields | low (additive) |
+| 27a ✅ | Define catalog index v1 as a serializer plus a written schema: repo block; per app the listing text, icon/screenshot refs with SHA-256, versions, APK pointer (stable download URL, SHA-256, size, signing fingerprint), publisher name, verified flag, listing status | ❓1 | `app/services/catalog_index/serializer.rb`, `docs/catalog_index_v1.md`, `docs/catalog_index_v1.schema.json`, spec | Serializer output for a fixture app matches the schema; D-store's `5.g.i.zo` signs off the fields | low (additive) |
 | 27b | Generate and publish the index atomically (temp + rename), strictly increasing timestamp, signed with an index-signing key separate from `AndroidSigningKey` | 27a, ❓2, ❓3 | service, job, key handling, spec | A reader sees only complete indexes; timestamp never goes backwards; signature verifies with the public key | medium (new key) |
 | 27c | Regenerate the index on `go_live!`, suspension, listing edit and new release (replaces Task 26's send-to-D-store step) | 27b | `app.rb`, one job | Going live or suspending changes the next index | low |
 | 27d | Publish icons and screenshots through `ReleaseStorage` with SHA-256 in the index | 27b | storage, uploader | A screenshot appears in the index with a matching hash | low |
@@ -233,7 +233,60 @@ manual-only as well, it is the same one-line trigger change.)
 5. Staged rollout: a no-account web store has no stable device identity to hash a fraction from. Skip it, or approximate it?
 6. Whether D-store's admin and editorial tools (report queue, sponsored slots, traffic dashboards) move to Zealot's admin. Google runs the equivalents on its own side.
 
-**Not built:** nothing. This entry is a plan; no code, no migrations.
+**Done in 27a (this session, code-complete, verified — see below):**
+`app/services/catalog_index/serializer.rb` + `docs/catalog_index_v1.md` (written
+schema, kept in sync by hand with the code and the JSON Schema) +
+`docs/catalog_index_v1.schema.json` (machine-checkable). Deliberately
+duck-typed (works on a plain Struct fixture, not just real `App`/`Release`),
+scoped in production via `.for_live_apps` (`App.listing_live`) — the
+serializer itself doesn't filter, so a caller *can* hand it a draft app
+(useful for fixtures/tests), but nothing does that in the intended call path.
+
+**The sha256 gap (read before treating 27a as "the index has real hashes"):**
+there is no SHA-256 of any release binary anywhere in this codebase today —
+`Release#signing_key_checksum` hashes the *signing keystore*, not the APK.
+27a's serializer computes it lazily from the release's local file
+(`Release#file`) and returns `null` once that file is gone — which, per Task
+19's mirror-then-wipe behavior, is the common case for anything old enough to
+matter. **This means `sha256` will be `null` for most releases in production
+as of this session.** Closing that gap (almost certainly: persist the hash
+once, likely at `ReleaseFileMirrorJob` time so it survives the wipe, rather
+than re-hashing on every index regeneration) is real design work that belongs
+to **27b** (index generation), not something 27a should have guessed at. Full
+writeup in `docs/catalog_index_v1.md`'s "The sha256 gap" section.
+
+**Also deliberately deferred to later slices, already reflected as
+always-null/empty in v1's shape so there's no v2 schema bump needed:**
+`listing.description` (27e), `listing.icon`/`listing.screenshots` (27d),
+`publisher.verified` (always `false` — no KYB yet, part of the ❓1 area).
+`latest_version` is `App#recently_release` (the same "latest build" method
+used elsewhere) — there's no concept yet of "the release that's actually the
+public store version"; 27c/27e are the natural place to make that deliberate,
+noted as a known v1 simplification in the docs.
+
+**Verified how:** no Rails boot available in this sandbox (no rubygems
+access — only `ruby`/`rspec` via `apt`, same limitation as every other
+"code-complete, not run" item on this board). What *was* actually run: (1) a
+throwaway plain-Ruby harness (not committed) that required the serializer
+file directly against Struct-based fixtures and ran under the real `rspec`
+gem — caught and fixed two real bugs this way (`Time#iso8601` needs
+`require 'time'`, which Rails happens to preload but plain Ruby doesn't; and
+`Array(apps)` silently exploded a single Struct into its member values
+instead of wrapping it, because Struct is `Enumerable` in current Ruby — fixed
+by checking for the app duck-type directly instead of guessing from
+`Enumerable`-ness); (2) the harness's sample output was validated against
+`catalog_index_v1.schema.json` with `ajv`/`ajv-formats` (Node, already in this
+sandbox) for a fully-populated app, a no-local-file app, and a
+no-releases-at-all app — all three passed, and three deliberately malformed
+documents (missing field, bad sha256 pattern, extra property) were all
+correctly rejected, confirming the schema actually discriminates rather than
+rubber-stamping anything. The real, committed
+`spec/services/catalog_index/serializer_spec.rb` (`require 'rails_helper'`,
+real `App`/`Release` records — no `Release` factory exists in this repo, built
+directly against `db/schema.rb` like `spec/requests/api/mtproto_archives_spec.rb`
+did for Task 19f) exercises the same code path but wasn't itself runnable here.
+
+**Not built:** 27b onward — each depends on a real ❓ decision above.
 
 ### 🧭 Task 26 (RETRACTED): the public storefront is the separate `D-store` repo — Zealot is its Developer Console
 

@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zealot.example.com/schemas/catalog_index_v1.schema.json",
+  "title": "Zealot catalog index v1",
+  "description": "Task 27a. Read app/services/catalog_index/serializer.rb and docs/catalog_index_v1.md alongside this file -- all three are kept in sync by hand.",
+  "type": "object",
+  "required": [ "schema_version", "generated_at", "apps" ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": 1 },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC ISO-8601. 27b makes this strictly increasing run over run; v1's serializer just emits whatever it's given."
+    },
+    "apps": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/app" }
+    }
+  },
+  "$defs": {
+    "app": {
+      "type": "object",
+      "required": [ "id", "package_name", "listing_status", "publisher", "listing", "latest_version" ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "integer", "description": "Zealot's App#id. Stable -- D-Store should key off this, not name/package_name." },
+        "package_name": {
+          "type": [ "string", "null" ],
+          "description": "Android application id (App#play_package_name). Null for an app with no Play package set yet -- v1 has no iOS bundle-id field, see docs."
+        },
+        "listing_status": {
+          "type": "string",
+          "enum": [ "draft", "awaiting_payment", "live", "suspended" ],
+          "description": "Included for completeness/debugging. Production generation (27c) is expected to only include listing_status == \"live\" apps at all -- this field is not how a consumer should filter."
+        },
+        "publisher": {
+          "type": "object",
+          "required": [ "name", "verified" ],
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": [ "string", "null" ] },
+            "verified": {
+              "type": "boolean",
+              "description": "Always false in v1 -- no company verification (KYB) exists yet. Not a signal to trust until Task 27's ❓1 area lands."
+            }
+          }
+        },
+        "listing": {
+          "type": "object",
+          "required": [ "title", "description", "icon", "screenshots" ],
+          "additionalProperties": false,
+          "properties": {
+            "title": { "type": "string" },
+            "description": {
+              "type": [ "string", "null" ],
+              "description": "Reserved for 27e (store-listing editor). Always null in v1."
+            },
+            "icon": {
+              "type": "object",
+              "required": [ "url", "sha256" ],
+              "additionalProperties": false,
+              "description": "Reserved for 27d. Always {url: null, sha256: null} in v1.",
+              "properties": {
+                "url": { "type": [ "string", "null" ], "format": "uri" },
+                "sha256": { "type": [ "string", "null" ], "pattern": "^[0-9a-f]{64}$" }
+              }
+            },
+            "screenshots": {
+              "type": "array",
+              "description": "Reserved for 27d. Always [] in v1.",
+              "items": {
+                "type": "object",
+                "required": [ "url", "sha256" ],
+                "additionalProperties": false,
+                "properties": {
+                  "url": { "type": "string", "format": "uri" },
+                  "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+                }
+              }
+            }
+          }
+        },
+        "latest_version": {
+          "description": "null only when the app has no releases at all.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": [ "release_id", "version_name", "version_code", "download_url", "sha256", "size_bytes", "signing_fingerprint" ],
+              "additionalProperties": false,
+              "properties": {
+                "release_id": { "type": "integer" },
+                "version_name": { "type": [ "string", "null" ], "description": "Release#release_version, e.g. \"1.2.3\"." },
+                "version_code": { "type": [ "string", "null" ], "description": "Release#build_version; Play calls this versionCode." },
+                "download_url": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "Zealot's own stable /download/releases/:id endpoint. NEVER a signed storage URL directly -- those expire; D-Store must link to this, not cache a signed one."
+                },
+                "sha256": {
+                  "type": [ "string", "null" ],
+                  "pattern": "^[0-9a-f]{64}$",
+                  "description": "Of the file download_url actually serves. Null when not yet computable (e.g. the local copy has already been mirrored-and-wiped, see Task 19) -- 27b is expected to persist this so it stops being null in steady state."
+                },
+                "size_bytes": { "type": [ "integer", "null" ] },
+                "signing_fingerprint": {
+                  "type": [ "string", "null" ],
+                  "description": "AndroidSigningKey's checksum (Release#signing_key_checksum). Null for a release that never went through the org-signed delivery path."
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
