@@ -12,8 +12,7 @@ This document, `catalog_index_v1.schema.json` (machine-checkable), and
 by hand. If you change one, change the other two.
 
 **What this slice (27a) is:** the shape of the index and the serializer that
-produces it from an app's current state. **What it is not:** signing,
-atomic/strictly-increasing publishing (27b), regeneration on
+produces it from an app's current state. **What it is not:** publishing (27b-iii; signing is 27b-ii, below), regeneration on
 `go_live!`/suspend/listing-edit/new-release (27c), or the icon/screenshot
 pipeline and store-listing editor (27d/27e). Fields those slices own are
 present in v1's shape already (so the schema doesn't need a v2 bump later)
@@ -139,3 +138,99 @@ harness was:
 `spec/services/catalog_index/serializer_spec.rb` is the real spec that lives
 in the repo (`require 'rails_helper'`, real `App`/`Release` records) -- it
 exercises the same code path but wasn't itself runnable here.
+
+## Signing (Task 27b-ii)
+
+Zealot publishes **two files** and, once, a public key:
+
+| File | What it is |
+|---|---|
+| `index.json` | The index, byte for byte what `CatalogIndex::Signer` produced (`JSON.pretty_generate` + a trailing newline). Never re-serialised. |
+| `index.json.sig` | Base64 of the **Ed25519 signature over those exact bytes** (detached, standard Ed25519 / RFC 8032, no pre-hash). |
+| public key | Base64 of the **raw 32-byte** Ed25519 public key. Published once, and **pinned** by D-store. Non-secret. |
+
+`key_id` = first 16 hex characters of the SHA-256 of the raw public key: a label
+to tell keys apart, not a security feature.
+
+The signing key is **separate from `AndroidSigningKey`** (which signs APKs): a leaked
+index key must not be able to sign an app, and the other way round.
+
+### What a reader (D-store) must do
+
+1. Fetch `index.json` and `index.json.sig`; verify the signature over the **raw bytes
+   as fetched** with the pinned public key. Any failure → **discard, keep showing the
+   last good index**. Do not parse first and re-serialise.
+2. Only then parse. Reject the index unless `schema_version` is one it understands.
+3. **Rollback protection:** remember the newest `generated_at` accepted so far; reject
+   any index whose `generated_at` is **not strictly greater**. Zealot guarantees it
+   never issues a `generated_at` that is earlier than or equal to a previous one (it
+   persists the last value under a row lock and, if the clock went backwards, issues
+   the previous value + 1 second). A replayed old index is therefore detectable.
+4. Node example (raw key → SPKI → verify), verified against Zealot's output:
+
+```js
+const spki = Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), rawPublicKey]);
+const key = crypto.createPublicKey({ key: spki, format: 'der', type: 'spki' });
+const ok = crypto.verify(null, indexBytes, key, Buffer.from(sigB64, 'base64'));
+// or WebCrypto: subtle.importKey('raw', rawPublicKey, { name: 'Ed25519' }, false, ['verify'])
+//               then subtle.verify('Ed25519', key, sigBytes, indexBytes)
+```
+
+### Which apps are signed into the index
+
+`CatalogIndex::Signer.default_apps` = `App.listing_live` **and not archived**. (The
+serializer itself filters nothing; `Serializer.for_live_apps` uses `App.listing_live`
+without the archived check, so the signer does not use it — an archived app must not
+stay in a public catalog.)
+
+### Operating it
+
+`rake catalog_index:generate_key` creates the one key (refuses if one exists) and prints
+the key id and the public key; the private key is never printed and is stored encrypted
+(Active Record Encryption). `rake catalog_index:public_key` prints them again.
+**Key rotation is not designed yet** (Task 27 ❓3): replacing the key means every reader
+must re-trust a new public key, so it needs its own procedure before it is ever done.
+
+## Publishing (Task 27b-iii)
+
+`CatalogIndex::Publish` signs the current catalog and writes it to a small **public
+Pages repository** as **one git commit** (GitHub Git Data API: blob → tree → commit →
+fast-forward ref update), then pings D-store's deploy hook. The commit contains:
+
+| Path | Content |
+|---|---|
+| `index.json` | the signed index bytes |
+| `index.json.sig` | base64 Ed25519 signature + newline |
+| `signing_key.pub` | base64 raw public key + newline (unchanged most of the time; a reader can always find the key that goes with the signature — pin it, don't trust it blindly) |
+| `.nojekyll` | empty, so Pages serves the files untouched |
+
+Because it is one commit, a reader never sees a new index next to an old signature or
+key. The branch update is fast-forward only and never forced; if the branch moved in
+between, the publish starts over from the new tip (3 tries) and then fails loudly.
+
+**Serialized.** Signing and committing run under one Postgres advisory lock, so two
+publishes can never interleave and the order they are signed in is the order they land
+in. (The lock is per DB session, so it also covers separate processes and is released
+if a process dies.)
+
+**Deploy hook.** `DSTORE_DEPLOY_HOOK_URL` (optional; a secret, never logged) is POSTed
+after a commit actually landed. A failing hook never fails the publish — the index is
+already public — and D-store's own cache rule refreshes it anyway.
+
+### Configuration (environment)
+
+| Variable | Meaning |
+|---|---|
+| `CATALOG_PAGES_REPO` | `owner/name` of the **public** Pages repo (not the code repo, not the private build-storage repo) |
+| `CATALOG_PAGES_TOKEN` | fine-grained token scoped to **only that repo**, "Contents: read and write". **Not** `GITHUB_STORAGE_TOKEN`: that one can write to private build storage and must not be reachable from code that publishes to a public repo |
+| `CATALOG_PAGES_BRANCH` | branch Pages serves from; default `gh-pages`. Must already exist with Pages enabled for it |
+| `DSTORE_DEPLOY_HOOK_URL` | optional Vercel deploy hook |
+| `GITHUB_API_URL` | optional, defaults to `https://api.github.com` |
+
+### Running it
+
+`rake catalog_index:publish` (once now, by hand) or `CatalogIndexPublishJob`. The job
+does nothing, and says so in the log, until the repo, token and signing key exist.
+Nothing enqueues it automatically yet: that is 27c (on `go_live!`, suspension, listing
+edits, new releases).
+

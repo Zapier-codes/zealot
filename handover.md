@@ -365,8 +365,8 @@ Date note (from Task 27): Google's registration enforcement starts September 30,
 |---|---|---|---|---|---|
 | 27a ✅ | Define catalog index v1 as a serializer plus a written schema: repo block; per app the listing text, icon/screenshot refs with SHA-256, versions, APK pointer (stable download URL, SHA-256, size, signing fingerprint), publisher name, verified flag, listing status | ❓1 | `app/services/catalog_index/serializer.rb`, `docs/catalog_index_v1.md`, `docs/catalog_index_v1.schema.json`, spec | Serializer output for a fixture app matches the schema; D-store's `5.g.i.zo` signs off the fields | low (additive) |
 | 27b-i ✅ | **Recommended split of 27b (1 of 3).** Persist each release's SHA-256 once, at `ReleaseFileMirrorJob` time, so it survives the local-file wipe (closes the "sha256 gap" above) | 27a | migration, `Release`, mirror job, spec | A mirrored release keeps its hash after the local file is deleted; the serializer reads the stored hash | low |
-| 27b-ii | **(2 of 3)** Ed25519 index-signing key as a singleton model (mirrors `AndroidSigningKey`, secrets encrypted), sign service, persisted strictly increasing sequence/timestamp | 27a, ❓3 ✅ | model, service, spec | A signed index verifies with the public key; the timestamp never goes backwards; runs with no GitHub access | medium (new key) |
-| 27b-iii | **(3 of 3)** Publish to the GitHub Pages repo as one commit (Git Data API: blob, tree, commit, ref update), serialized so two publishes never race, then call D-store's deploy hook. Uses its own fine-grained token scoped to the Pages repo only | 27b-ii, ❓2 ✅ | service, job, env vars, spec | A reader sees only complete indexes; a 409 is retried; the deploy hook fires after a successful publish | medium |
+| 27b-ii ✅ | **(2 of 3)** Ed25519 index-signing key as a singleton model (mirrors `AndroidSigningKey`, secrets encrypted), sign service, persisted strictly increasing sequence/timestamp | 27a, ❓3 ✅ | model, service, spec | A signed index verifies with the public key; the timestamp never goes backwards; runs with no GitHub access | medium (new key) |
+| 27b-iii ✅ | **(3 of 3)** Publish to the GitHub Pages repo as one commit (Git Data API: blob, tree, commit, ref update), serialized so two publishes never race, then call D-store's deploy hook. Uses its own fine-grained token scoped to the Pages repo only | 27b-ii, ❓2 ✅ | service, job, env vars, spec | A reader sees only complete indexes; a 409 is retried; the deploy hook fires after a successful publish | medium |
 | 27c | Regenerate the index on `go_live!`, suspension, listing edit and new release (replaces Task 26's send-to-D-store step) | 27b | `app.rb`, one job | Going live or suspending changes the next index | low |
 | 27d | Publish icons and screenshots through `ReleaseStorage` with SHA-256 in the index | 27b | storage, uploader | A screenshot appears in the index with a matching hash | low |
 | 27e | Store-listing editor: descriptions, graphics, data safety, content rating (Play's Store presence) | 27a | views, model, locales | Owner edits and the next index reflects it | medium (largest UI) |
@@ -504,7 +504,89 @@ falls back to live-hashing when the column is blank, returns `nil` (not
 an error) once both are unavailable, and the `respond_to?` guard confirmed
 against a fixture Struct that doesn't define `file_sha256` at all.
 
-**Not built:** 27b-ii onward — each depends on a real ❓ decision above.
+**Done in 27b-ii (this session, code-complete, verified — see below):**
+`CatalogIndexSigningKey` (singleton, mirrors `AndroidSigningKey`: private key
+encrypted with Active Record Encryption, public key / `key_id` /
+`last_signed_at` not secret) + migration `20260927100000_create_catalog_index_signing_keys`
+(hand-applied to `db/schema.rb` — no DB here to run it) + `CatalogIndex::Ed25519`
+(pure primitives) + `CatalogIndex::Signer` (builds the index with `Serializer`,
+serialises it **once**, signs those exact bytes, returns
+`index_json` / `signature` / `key_id` / `generated_at`) + `rake catalog_index:generate_key`
+and `catalog_index:public_key`. Written contract for readers: the new "Signing"
+section of `docs/catalog_index_v1.md`.
+- **Format:** detached signature `index.json.sig` (base64 Ed25519, RFC 8032, no
+  pre-hash) over the exact bytes of `index.json`; public key = base64 of the raw 32
+  bytes, pinned by D-store. Private key stored as PEM, public key derived from the
+  SPKI DER (no dependency on newer openssl-gem `raw_*` calls).
+- **Strictly increasing:** the index's own `generated_at` is the counter — never
+  ≤ the previous one (previous + 1 s if the clock went backwards), read and advanced
+  under `with_lock`. No schema change was needed (v1 already carries `generated_at`).
+- **One thing I changed relative to the 27a helpers:** the signer's default scope is
+  `App.listing_live` **and not archived**. `Serializer.for_live_apps` uses
+  `App.listing_live` only, so an archived live app would have stayed in the public
+  catalog. Left `for_live_apps` itself untouched (not mine to change silently) — 27c
+  should decide whether to fix it there too.
+- **Not done:** key rotation (still ❓3, procedure unwritten); publishing (27b-iii).
+  Nothing calls the signer yet — it needs a key created first
+  (`rake catalog_index:generate_key` on the deployed service) and 27b-iii to publish.
+
+**Verified how (27b-ii):** `apt-get install ruby` (after `apt-get update`) gives real
+Ruby 3.2 + `ruby-activesupport`, no rubygems, so no Rails/DB/rspec. What *was* run:
+a throwaway harness (not committed) that `require`d the **actual**
+`ed25519.rb`, `serializer.rb` and `signer.rb` with a stand-in key row using the real
+Ed25519 code — 15 assertions, all passing (signature verifies over the exact bytes; one
+flipped byte, a different key, garbage signature or key are all rejected without
+raising; same-instant and clock-went-back signings both come out +1 s; persisted time
+advances; `NoKeyError` names the fix). And an **independent** check that D-store's
+runtime can verify it: a Ruby-produced index/signature/public key verified in Node
+`crypto.verify` (via SPKI) **and** in WebCrypto with the raw key, and a tampered byte
+was rejected. The committed specs (`ed25519_spec`, `signer_spec`,
+`catalog_index_signing_key_spec`) are written but **not run**.
+
+**Done in 27b-iii (this session, code-complete, partly verified — see below):**
+`CatalogIndex::GithubPagesCommit` (Git Data API client: blob → tree → **one** commit →
+fast-forward-only ref update, retry on network errors/5xx, start over if the branch
+moved, never forces), `CatalogIndex::Publish` (sign + commit under a **Postgres
+advisory lock** + optional D-store deploy hook), `CatalogIndexPublishJob` (no-ops with a
+log line until configured; retries `GithubPagesCommit::Error`), and
+`rake catalog_index:publish`. Contract and setup: the new "Publishing" section of
+`docs/catalog_index_v1.md`.
+- **Own credentials, as the "checked against the code" note required:** env vars
+  `CATALOG_PAGES_REPO`, `CATALOG_PAGES_TOKEN` (fine-grained, that repo only),
+  `CATALOG_PAGES_BRANCH` (default `gh-pages`), optional `DSTORE_DEPLOY_HOOK_URL`.
+  `GITHUB_STORAGE_TOKEN` is **not** used. The GitHub *request/retry patterns* are
+  reused; the credential and the API (Git Data, not Contents/Releases) are new.
+- **Both "two files, one publish" options from the note are covered:** it is a single
+  Git Data commit, so index, signature and key land together; the key file is simply
+  re-sent (same blob → no tree change) every time.
+- **Serialization:** the whole sign → commit runs under `pg_advisory_lock`, so sign order
+  = land order (otherwise an older index could overwrite a newer one). I did **not** add a
+  GoodJob concurrency limit (untested against this repo's GoodJob setup); 27c should
+  debounce enqueues (`set(wait:)`) so a burst of edits makes one publish.
+- **Needs before it can run for real (operator):** create the public Pages repo and the
+  Pages branch with Pages enabled; create the scoped token; set the env vars on the Render
+  web service (and the worker if jobs run there); `db:migrate`; `rake
+  catalog_index:generate_key`; then `rake catalog_index:publish`. Hand D-store the public
+  key it prints.
+
+**Verified how (27b-iii):** real Ruby 3.2 (apt), no rubygems/Rails/DB/rspec. A throwaway
+harness (not committed) loaded the **actual** `github_pages_commit.rb`, `publish.rb`,
+`signer.rb`, `serializer.rb` and `ed25519.rb` against an in-memory fake of exactly the
+Git Data endpoints used — 26 assertions, all passing: one new commit on top of the old
+tip holding all four files and keeping existing ones; the signature verifies over the
+published bytes; ref update sends `force: false`; identical content → `:unchanged` and
+the branch doesn't move; a branch that moves mid-publish is retried from the new tip and
+keeps the other commit's file; endless conflicts fail after 3 tries without forcing;
+missing branch, bad token (token never in the message), network errors and 502/503 handled;
+config validation; the advisory lock is taken and released, also when the publish raises;
+the hook fires only after a landed commit, a failing/raising hook never fails the publish,
+and its URL never reaches the log. **Not verified:** the real GitHub API (the fake encodes
+my reading of the docs, not GitHub's behaviour — e.g. the exact status GitHub returns for a
+non-fast-forward, which the client treats as 409 or 422), Postgres advisory locks against a
+real database, the job under GoodJob, and the committed specs (`github_pages_commit_spec`,
+`publish_spec`, `catalog_index_publish_job_spec`) are written, not run.
+
+**Not built:** 27c onward. 27c (regenerate/publish on `go_live!`, suspension, listing edit, new release) is unblocked by code, but nothing has ever been published yet — do the setup above first.
 
 ### 🧭 Task 26 (RETRACTED): the public storefront is the separate `D-store` repo — Zealot is its Developer Console
 
@@ -3906,3 +3988,15 @@ them is already modernized.
 - **Task 27 planning (docs only)**: operator asked for a deep search of how Google, Apple, Huawei, Samsung and F-Droid split console from store, then approved a signed-catalog-index direction. Recorded the model, mapping, slice table 27a–27h and six open decisions in Task 27, and updated Task 26's decisions 1 and 3 to point at it. Also flagged Google's Android developer verification (enforcement September 30, 2026 in four countries) as a date-critical input to 27h. The D-store handover was updated in the same pass (its `5.f`/`5.g`). No code changed. This patch also carries the earlier Task 26 decision-2 edit (Zealot builds, signs and stores), because that patch had not landed on `origin/develop` @ `0d0cab54` when this one was built, so apply only this one. Branch `docs/task-26-resolve-build-sign-owner`.
 - **Task 27 decisions recorded (docs only)**: operator revised ❓2 (index published to GitHub Pages, because Render does not sleep) and confirmed ❓3 (Ed25519 singleton key model), ❓5 (skip staged rollout; use 27f halt/rollback) and ❓6 (D-store admin/editorial tools move to Zealot's admin). Recorded in Task 27 with the 27b row updated. While checking the code, corrected the recommendation: the `GithubAdapter` token is scoped to the private storage repo, so 27b needs its own token for the public Pages repo, and the adapter doesn't use the Contents API, so that write is new code. ❓1 and ❓4 remain open. 27b not started. No code changed. Branch `docs/task-27-record-decisions-2-3-5-6` from `origin/develop` @ `b8518b6c`.
 - **Play-parity program + catalog sources (docs only)**: operator asked to mirror Play Console / Play Store and revamp the architecture, and stated two rules: the store is populated through the Aptoide MCP, and the home page always shows Zealot's apps first. Recorded as Tasks 28–36 (umbrella and phases, index v2, publishing parity, editorial and store-owned data, the Updater, feedback loop, developer API, scale, verification), split 27b into 27b-i/ii/iii, parked 27g, fixed 27h's dependency, decided Task 9 (D-store is the public store), and logged the D-store cross-review answers as recommendations pending confirmation. Left ❓1 and ❓4 open. Aptoide MCP choice and terms unverified. This patch also carries the earlier Task 27 decisions patch (`docs/task-27-record-decisions-2-3-5-6`), which had not landed on `origin/develop` @ `b8518b6c`, so apply only this one. No code changed. Branch `docs/task-28-play-parity-program`.
+- **Task 27b-ii (index signing key + signer)**: synced to `origin/develop` @ `0d6a7db3`
+  (Tasks 27a, 27b-i and the Task 28 plan had landed from another session). I had
+  started a live pull-API for the storefront from a stale base; discarded it — it
+  contradicts the decided signed-static-index-on-GitHub-Pages design. Built the next
+  unblocked slice instead: Ed25519 signing key singleton + `CatalogIndex::Signer` +
+  rake tasks + docs. Branch `feat/task-27b-ii-index-signing`.
+- **Task 27b-iii (publish to GitHub Pages)**: origin/develop was still at 27b-i
+  (`0d6a7db3`), so this is stacked on 27b-ii and delivered as ONE combined patch
+  (27b-ii + 27b-iii) — apply that one, not a separate 27b-ii patch. Built the Git Data
+  commit client, the locked sign+publish orchestrator, the job and a rake task; verified
+  against an in-memory fake only (see the entry). Branch `feat/task-27b-iii-pages-publish`.
+

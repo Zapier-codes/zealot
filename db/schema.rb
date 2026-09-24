@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_26_100000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_27_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -97,6 +97,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_26_100000) do
     t.string "schedule", null: false
     t.datetime "updated_at", null: false
     t.index ["key"], name: "index_backups_on_key"
+  end
+
+  create_table "catalog_index_signing_keys", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "key_id", null: false
+    t.datetime "last_signed_at"
+    t.text "private_key_pem", null: false
+    t.string "public_key", null: false
+    t.datetime "updated_at", null: false
+    t.index ["public_key"], name: "index_catalog_index_signing_keys_on_public_key", unique: true
   end
 
   create_table "channels", force: :cascade do |t|
