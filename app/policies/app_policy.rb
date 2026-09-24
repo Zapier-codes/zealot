@@ -51,6 +51,21 @@ class AppPolicy < ApplicationPolicy
     admin?
   end
 
+  # Task 25: putting an app on our own store is the owner's call (the person
+  # who uploaded it); admins can see the listing and record the payment.
+  def list_on_store?
+    app_owner?
+  end
+
+  def view_store_listing?
+    admin? || app_owner?
+  end
+
+  # Temporary manual stand-in for the payment provider (not chosen yet).
+  def mark_paid?
+    admin?
+  end
+
   def archive?
     any_manage?
   end

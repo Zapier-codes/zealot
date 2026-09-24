@@ -1,0 +1,69 @@
+en:
+  activerecord:
+    errors:
+      models:
+        publisher_profile:
+          attributes:
+            kind:
+              locked_once_live: cannot be changed while one of your apps is live on the store
+  simple_form:
+    labels:
+      publisher_profile:
+        kind: I am publishing as
+        display_name: Public name
+        legal_name: Full legal name
+        country: Country
+        contact_email: Contact email
+    hints:
+      publisher_profile:
+        kind: Choose Company if you publish on behalf of a business.
+        display_name: The name store visitors see as the publisher, unless the app has its own publisher name.
+        legal_name: Your full legal name, or the registered name of your company. Not shown publicly.
+        country: Where you or your company are based. Not shown publicly.
+        contact_email: Where we reach you about your apps. Not shown publicly.
+  publisher_profiles:
+    kinds:
+      individual: Individual
+      company: Company
+    new:
+      title: How do you publish?
+      intro: Tell us whether you publish as an individual or as a company. You only do this once; it is reused for all your apps.
+    create:
+      notice: Publisher details saved.
+    edit:
+      title: Publisher details
+    update:
+      notice: Publisher details updated.
+  apps:
+    show:
+      store_listing: Store listing
+    store_listings:
+      status:
+        draft: Not on the store
+        awaiting_payment: Awaiting payment
+        live: Live on the store
+        suspended: Suspended
+      show:
+        title: Store listing
+        status_title: Status
+        publisher: "Publishing as %{name} (%{kind})."
+        edit_publisher: Edit publisher details
+        publish: Publish to the store
+        mark_paid: Mark as paid
+        mark_paid_hint: Payments are not connected yet. Until they are, an admin can record the payment by hand, which puts the app live.
+        draft:
+          body: This app is not on the store yet. Publishing puts it in front of store visitors under your publisher details.
+        awaiting_payment:
+          body: Your request is saved. The app goes live as soon as payment is received.
+        live:
+          body: This app is live on the store.
+          shown_as: "Visitors see it published by %{name}."
+        suspended:
+          body: This app is suspended and hidden from the store.
+      create:
+        need_profile: First tell us how you publish, as an individual or as a company.
+        requested: Publishing requested. The app goes live once payment is received.
+        not_available: This app can't be sent for payment right now.
+      mark_paid:
+        notice: Marked as paid. The app is now live on the store.
+        not_available: This app isn't waiting for payment.

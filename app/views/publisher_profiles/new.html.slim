@@ -1,0 +1,14 @@
+- content_for :section_title do
+  = @title
+
+- content_for :title do
+  = @title
+
+.row
+  .col-md-12
+    .card
+      .card-header
+        h3.card-title = t('.title')
+      .card-body
+        p.opacity-70 = t('.intro')
+      == render 'form'

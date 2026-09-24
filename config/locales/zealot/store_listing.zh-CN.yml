@@ -1,0 +1,69 @@
+zh-CN:
+  activerecord:
+    errors:
+      models:
+        publisher_profile:
+          attributes:
+            kind:
+              locked_once_live: 在你有应用已上架商店期间不能修改
+  simple_form:
+    labels:
+      publisher_profile:
+        kind: 发布身份
+        display_name: 公开名称
+        legal_name: 法定全名
+        country: 国家/地区
+        contact_email: 联系邮箱
+    hints:
+      publisher_profile:
+        kind: 如果你代表企业发布应用，请选择“企业”。
+        display_name: 商店访客看到的发布者名称（应用另设发布者名称时以该名称为准）。
+        legal_name: 你的法定全名，或公司的注册名称。不会公开显示。
+        country: 你或公司所在的国家/地区。不会公开显示。
+        contact_email: 我们就你的应用联系你的邮箱。不会公开显示。
+  publisher_profiles:
+    kinds:
+      individual: 个人
+      company: 企业
+    new:
+      title: 你以什么身份发布？
+      intro: 请告诉我们你以个人还是企业身份发布应用。只需填写一次，之后所有应用都会沿用。
+    create:
+      notice: 发布者信息已保存。
+    edit:
+      title: 发布者信息
+    update:
+      notice: 发布者信息已更新。
+  apps:
+    show:
+      store_listing: 商店上架
+    store_listings:
+      status:
+        draft: 未上架
+        awaiting_payment: 等待付款
+        live: 已上架
+        suspended: 已暂停
+      show:
+        title: 商店上架
+        status_title: 状态
+        publisher: "发布身份：%{name}（%{kind}）。"
+        edit_publisher: 编辑发布者信息
+        publish: 发布到商店
+        mark_paid: 标记为已付款
+        mark_paid_hint: 支付功能尚未接入。在接入之前，管理员可以手动记录付款，应用随即上架。
+        draft:
+          body: 此应用尚未上架。发布后，商店访客将看到以你的发布者信息展示的应用。
+        awaiting_payment:
+          body: 你的发布请求已保存。收到付款后应用立即上架。
+        live:
+          body: 此应用已在商店上架。
+          shown_as: "访客看到的发布者为 %{name}。"
+        suspended:
+          body: 此应用已被暂停，不再在商店展示。
+      create:
+        need_profile: 请先告诉我们你以个人还是企业身份发布。
+        requested: 已提交发布请求。收到付款后应用立即上架。
+        not_available: 此应用目前无法进入付款。
+      mark_paid:
+        notice: 已标记为已付款，应用现已上架。
+        not_available: 此应用当前不在等待付款状态。

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_24_100000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_25_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -61,6 +61,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_24_100000) do
     t.boolean "archived", default: false, null: false
     t.datetime "created_at", null: false
     t.string "description"
+    t.datetime "listed_at"
+    t.string "listing_status", default: "draft", null: false
     t.string "name", null: false
     t.string "play_package_name"
     t.string "play_publish_track", default: "internal", null: false
@@ -68,9 +70,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_24_100000) do
     t.text "play_setup_message"
     t.string "play_setup_status", default: "unchecked", null: false
     t.string "publisher_alias"
+    t.bigint "publisher_profile_id"
     t.datetime "updated_at", null: false
     t.index ["name"], name: "index_apps_on_name"
     t.index ["play_package_name"], name: "index_apps_on_play_package_name", unique: true, where: "(play_package_name IS NOT NULL)"
+    t.index ["publisher_profile_id"], name: "index_apps_on_publisher_profile_id"
   end
 
   create_table "apps_users", id: false, force: :cascade do |t|
@@ -308,6 +312,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_24_100000) do
     t.index ["checksum"], name: "index_play_upload_keys_on_checksum", unique: true
   end
 
+  create_table "publisher_profiles", force: :cascade do |t|
+    t.string "contact_email", null: false
+    t.string "country", null: false
+    t.datetime "created_at", null: false
+    t.string "display_name", null: false
+    t.string "kind", default: "individual", null: false
+    t.string "legal_name", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["user_id"], name: "index_publisher_profiles_on_user_id", unique: true
+  end
+
   create_table "releases", force: :cascade do |t|
     t.string "branch"
     t.string "build_version"
@@ -466,11 +482,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_24_100000) do
   end
 
   add_foreign_key "apple_teams", "apple_keys", on_delete: :cascade
+  add_foreign_key "apps", "publisher_profiles", on_delete: :nullify
   add_foreign_key "channels", "schemes", on_delete: :cascade
   add_foreign_key "debug_file_metadata", "debug_files"
   add_foreign_key "debug_files", "apps", on_delete: :cascade
   add_foreign_key "metadata", "releases", on_delete: :cascade
   add_foreign_key "metadata", "users", on_delete: :cascade
+  add_foreign_key "publisher_profiles", "users", on_delete: :cascade
   add_foreign_key "releases", "channels", on_delete: :cascade
   add_foreign_key "releases", "users", column: "play_approved_by_id"
   add_foreign_key "releases", "users", column: "play_rejected_by_id"

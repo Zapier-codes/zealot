@@ -31,6 +31,18 @@ class App < ApplicationRecord
   before_validation :normalize_publisher_alias
   validates :publisher_alias, length: { maximum: PUBLISHER_ALIAS_MAX_LENGTH }, allow_nil: true
 
+  # Task 25: is the app on our own stores? draft -> awaiting_payment (owner
+  # asked to publish, under their PublisherProfile) -> live (paid) ->
+  # suspended (later slice: unverified company past its deadline).
+  belongs_to :publisher_profile, optional: true
+
+  enum :listing_status, {
+    draft: 'draft',
+    awaiting_payment: 'awaiting_payment',
+    live: 'live',
+    suspended: 'suspended'
+  }, prefix: :listing
+
   # Task 18 — Google Play only learns an app's applicationId from the first
   # bundle uploaded to Play Console (it is not a "create app" field there),
   # so the intended one is recorded here, verified against every
@@ -169,7 +181,24 @@ class App < ApplicationRecord
   # name / individual name. nil = show nothing (an alias-less app displays
   # exactly what it did before).
   def publisher_display_name
-    publisher_alias.presence
+    publisher_alias.presence || profile_publisher_name
+  end
+
+  # Task 25: the owner asks to put the app on the store. Only from draft, and
+  # only with a publisher profile to publish under. Returns false otherwise.
+  def request_store_listing!(profile)
+    return false unless listing_draft? && profile.present?
+
+    update!(publisher_profile: profile, listing_status: :awaiting_payment)
+  end
+
+  # Task 25: payment received (the payment slice calls this; until then an
+  # admin can do it by hand). Sets listed_at only the first time — a later
+  # slice measures the company-verification deadline from it.
+  def go_live!
+    return false unless listing_awaiting_payment? || listing_suspended?
+
+    update!(listing_status: :live, listed_at: listed_at || Time.current)
   end
 
   # All releases of this app, across its schemes and channels.
@@ -281,6 +310,15 @@ class App < ApplicationRecord
   end
 
   private
+
+  # Falls back to the publisher's own public name, but only for a live app
+  # published by an Individual. A Company's name will be shown once company
+  # verification exists (it must not appear unlabelled before then).
+  def profile_publisher_name
+    return unless listing_live? && publisher_profile&.individual?
+
+    publisher_profile.display_name
+  end
 
   def normalize_publisher_alias
     return if publisher_alias.nil?

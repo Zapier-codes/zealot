@@ -7,6 +7,11 @@
     - if @app.archived
       small class="d-badge d-badge-sm d-badge-warning py-1 ms-2"
         = t('apps.show.archived')
+    / Task 25: store listing state, shown only to those who can open the
+    / listing page (the owner and admins) and only once it has started.
+    - if !@app.listing_draft? && policy(@app).view_store_listing?
+      small class="d-badge d-badge-sm d-badge-info py-1 ms-2"
+        = t("apps.store_listings.status.#{@app.listing_status}")
 
 - content_for :section_rightpanel do
   - if current_user&.manage?(app: @app)
@@ -18,6 +23,11 @@
         = button_link_to '', edit_app_path(@app), 'edit', \
           class: 'd-join-item d-btn d-tooltip', \
           data: { tip: t('apps.show.edit_app'), turbo_frame: :modal }
+      - if !@app.archived && policy(@app).view_store_listing?
+        / Task 25: the owner's route to publishing on our own store.
+        = button_link_to '', app_store_listing_path(@app), 'store', \
+          class: 'd-join-item d-btn d-tooltip', \
+          data: { tip: t('apps.show.store_listing'), turbo_frame: '_top' }
       = button_link_to '', app_path(@app), 'trash-alt', \
         class: 'd-join-item d-btn d-tooltip text-error', \
         data: { tip: t('apps.show.destroy_app'), turbo_method: :delete, turbo_confirm: "#{t('apps.messages.confirm.delete_app', name: @app.name)}" }

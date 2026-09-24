@@ -95,6 +95,24 @@ RSpec.describe 'App ownership policies' do
     end
   end
 
+  describe 'store listing (Task 25)' do
+    it 'lets only the owner ask to publish, and the owner or an admin view the listing' do
+      expect(allowed?(owner, app, :list_on_store?)).to be true
+      expect(allowed?(admin, app, :list_on_store?)).to be false
+      expect(allowed?(teammate, app, :list_on_store?)).to be false
+      expect(allowed?(stranger_dev, app, :list_on_store?)).to be false
+
+      expect(allowed?(owner, app, :view_store_listing?)).to be true
+      expect(allowed?(admin, app, :view_store_listing?)).to be true
+      expect(allowed?(teammate, app, :view_store_listing?)).to be false
+    end
+
+    it 'lets only an admin record a payment by hand' do
+      expect(allowed?(admin, app, :mark_paid?)).to be true
+      expect(allowed?(owner, app, :mark_paid?)).to be false
+    end
+  end
+
   describe 'Play update line' do
     it 'has no highest versionCode until a build is approved for Play' do
       expect(app.highest_play_version_code).to be_nil

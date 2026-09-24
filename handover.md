@@ -188,6 +188,91 @@ manual-only as well, it is the same one-line trigger change.)
 
 ## Task board
 
+### 🆕 Task 25: Publisher profile (Individual / Company) + the app's store-listing states (code-complete, compiled, not run in Rails)
+
+**Status of earlier work.** Task 24 (publisher alias) was applied by the operator
+and is on `develop` @ `4091ad94`. Nothing from Tasks 22–25 has been run in
+Rails/a browser by anyone yet.
+
+**Slice built (step 1 of the store flow in Task 24's product direction):** the
+publisher chooses **Individual or Company** once, and an app moves
+**draft → awaiting payment → live** (→ suspended, reserved for the KYB slice).
+
+- **DB (one migration, `20260925100000_…`; `db/schema.rb` hand-edited — run
+  `db:migrate` and confirm it yields the same file):** new `publisher_profiles`
+  (`user_id` unique + FK cascade, `kind` individual|company, `display_name`,
+  `legal_name`, `country`, `contact_email`); `apps.listing_status`
+  (default `draft`), `apps.listed_at`, `apps.publisher_profile_id` (FK, nullify).
+- **`PublisherProfile`** (one per user, `User has_one`): all fields required, name
+  ≤ 60, email format; text tidied on save; **kind can't be switched while one of
+  the user's apps is live** (Individual↔Company changes what they owe us).
+- **`App`:** `listing_status` enum (`listing_draft?` …), `request_store_listing!(profile)`
+  (only draft → awaiting_payment, only with a profile), `go_live!` (awaiting_payment
+  or suspended → live; sets `listed_at` only the first time — the KYB slice measures
+  its 2-month deadline from it). `publisher_display_name` = alias, else the
+  profile's public name **only when live and Individual**. A **Company's name is
+  deliberately not shown yet** — it must not appear unlabelled before company
+  verification exists.
+- **Screens:** `/publisher_profile/new|edit` (singular resource, own profile only;
+  `return_to` is same-site only via `url_from`); `/apps/:id/store_listing`
+  (status badge, the right message per state, **Publish to the store** button for the
+  owner, publisher summary + edit link); a *Store listing* button and a status badge on
+  the app page, shown only to the owner/admins. Publishing without a profile sends the
+  user to the profile form first, then back.
+- **Permissions (`AppPolicy`):** `list_on_store?` = the app's **owner** only (the
+  uploader is in charge, like updates); `view_store_listing?` = owner or admin;
+  `mark_paid?` = admin.
+- **Payment is NOT connected (provider still undecided).** So `awaiting_payment`
+  cannot complete on its own. **Temporary stand-in:** an admin sees a *Mark as paid*
+  button on an awaiting-payment listing (`PATCH /apps/:id/store_listing/mark_paid`),
+  labelled in the UI as payments-not-connected. The payment slice replaces this by
+  calling `App#go_live!` from its success callback and deletes the action + button.
+- **Nothing is gated by the state yet.** There are no public store pages, so a
+  draft app's release page is still reachable exactly as before; `live` only affects
+  the "Published by" fallback. Gating visibility comes with the store-pages slice.
+- Locales: new files `config/locales/zealot/store_listing.{en,zh-CN}.yml`
+  (loaded through the recursive default `config/locales` glob, like the other
+  files in that folder — please confirm on first boot that the strings resolve).
+- Specs (unrun): `spec/models/app_store_listing_spec.rb`; store-listing cases
+  added to `spec/policies/app_ownership_spec.rb`.
+
+**Files:** `db/migrate/20260925100000_create_publisher_profiles_and_app_listing.rb`,
+`db/schema.rb`, `app/models/{publisher_profile,app,user}.rb`,
+`app/policies/app_policy.rb`, `config/routes.rb`,
+`app/controllers/{publisher_profiles_controller,apps/store_listings_controller}.rb`,
+`app/views/publisher_profiles/{new,edit,_form}.html.slim`,
+`app/views/apps/store_listings/show.html.slim`, `app/views/apps/show.html.slim`,
+the two new locale files, the two spec files, `handover.md`.
+
+**Verified in the sandbox:** `ruby -c` on every changed Ruby/migration/schema/
+routes/spec file; all five new/changed Slim views compile; both locale files
+parse; the stub policy matrix is 65/65 (owner-only publish, owner/admin view,
+admin-only mark-paid). **Not verified:** no Rails boot, migration not run, routes
+not loaded (`patch :mark_paid` inside the singular `resource` is standard but
+unchecked), nothing rendered, specs unrun.
+
+**Operator smoke test (after `db:migrate`):**
+1. As an app **owner**: app page → *Store listing* button → "Not on the store" →
+   **Publish to the store** → sent to *How do you publish?* → pick Individual, fill
+   the form → back on the listing page → click Publish again → "Awaiting payment".
+2. As an **admin**, open the same listing → *Mark as paid* → "Live on the store";
+   the app page shows the "Live on the store" badge. Open a public release page
+   of that app → "Published by <the individual's public name>" (unless the app
+   has an alias, which wins).
+3. As another developer (not owner, not admin): the button is absent and
+   `/apps/<id>/store_listing` → 403; `POST` to it → 403.
+4. Edit publisher details → switching Individual→Company is refused while an
+   app is live.
+
+**Not in this slice / ❓:** the **payment provider is still open** — the payment
+slice can't start without it. Next in order: payment; public store pages (and
+gating by `listing_status`); company KYB (form, D-U-N-S, admin review, reminder
+emails, 2-month suspension job, "Unverified" label, verified-company name display,
+then open the alias to approved companies).
+
+**Revert:** `db:rollback` the migration, then revert the listed files (or
+`git revert` the commit).
+
 ### 🆕 Task 24: Publisher alias — the front-facing "Published by" name on our own store pages (first slice of the store/publisher flow; code-complete, compiled, not run in Rails)
 
 **Status of earlier work.** Tasks 22 + 23 (one combined commit) **landed on
@@ -3413,3 +3498,8 @@ them is already modernized.
   suspension, alias, org-owned/org-signed apps). Built only the alias slice
   (admin-only until company verification exists). Open: payment provider.
   Branch `feat/task-24-publisher-alias` from `origin/develop`.
+- **Task 25 (publisher profile + store-listing states)**: synced to `origin/develop`
+  @ `4091ad94` (Task 24 applied). Built Individual/Company profile, the
+  draft → awaiting_payment → live states, owner-only publish, and a temporary
+  admin *Mark as paid* until the payment provider is chosen (still open).
+  Branch `feat/task-25-publisher-profile`.

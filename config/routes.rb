@@ -43,6 +43,11 @@ Rails.application.routes.draw do
 
     resources :collaborators, except: %i[index show]
 
+    # Task 25: the app's store listing (draft -> awaiting payment -> live).
+    resource :store_listing, only: %i[show create], module: :apps do
+      patch :mark_paid
+    end
+
     resources :schemes, except: %i[show] do
       resources :channels, except: %i[index show]
     end
@@ -53,6 +58,10 @@ Rails.application.routes.draw do
       end
     end
   end
+
+  # Task 25: how the signed-in user publishes on our own stores
+  # (Individual / Company).
+  resource :publisher_profile, only: %i[new create edit update]
 
   resources :channels, only: %i[index show] do
     member do

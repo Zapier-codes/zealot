@@ -21,6 +21,8 @@ class User < ApplicationRecord
   has_many :collaborators, dependent: :destroy
   has_many :metadatum, dependent: :destroy
   has_many :providers, class_name: 'UserProvider', dependent: :destroy
+  # Task 25: how this user publishes on our own stores (Individual / Company).
+  has_one :publisher_profile, dependent: :destroy
 
   scope :avaiables, -> (id) { where.not(id: id) }
 

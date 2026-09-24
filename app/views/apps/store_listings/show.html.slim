@@ -1,0 +1,41 @@
+ruby:
+  status = @app.listing_status
+  badge = { 'draft' => 'ghost', 'awaiting_payment' => 'warning',
+            'live' => 'success', 'suspended' => 'error' }[status]
+
+- content_for :title do
+  = @title
+
+- content_for :section_title do
+  = @title
+  small class="pl-2 text-sm"
+    = @app.name
+
+.row
+  .col-md-12
+    .card
+      .card-header
+        h3.card-title class="flex items-center gap-2"
+          = t('.status_title')
+          span class="d-badge d-badge-#{badge}"
+            = t("apps.store_listings.status.#{status}")
+      .card-body class="space-y-4"
+        p = t(".#{status}.body")
+
+        - if @profile.present?
+          p.opacity-70
+            = t('.publisher', name: @profile.display_name, kind: t("publisher_profiles.kinds.#{@profile.kind}"))
+            - if @app.owner&.user == current_user
+              = ' '
+              = link_to t('.edit_publisher'), edit_publisher_profile_path(return_to: app_store_listing_path(@app)), class: 'd-link'
+
+        - if status == 'live' && @app.publisher_display_name.present?
+          p.opacity-70 = t('.live.shown_as', name: @app.publisher_display_name)
+
+        - if status == 'draft' && policy(@app).list_on_store?
+          = button_to t('.publish'), app_store_listing_path(@app), method: :post, class: 'd-btn d-btn-primary'
+
+        - if status == 'awaiting_payment' && policy(@app).mark_paid?
+          div class="space-y-2"
+            p.text-sm.opacity-70 = t('.mark_paid_hint')
+            = button_to t('.mark_paid'), mark_paid_app_store_listing_path(@app), method: :patch, class: 'd-btn d-btn-warning'

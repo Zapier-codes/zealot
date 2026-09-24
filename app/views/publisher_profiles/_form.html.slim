@@ -1,0 +1,16 @@
+= simple_form_for @profile, url: publisher_profile_path, method: (@profile.persisted? ? :patch : :post) do |f|
+  .card-body
+    = f.error_notification
+
+    - if params[:return_to].present?
+      = hidden_field_tag :return_to, params[:return_to]
+
+    = f.input :kind, as: :radio_buttons, required: true, checked: @profile.kind, \
+      collection: PublisherProfile.kinds.keys.map { |k| [t("publisher_profiles.kinds.#{k}"), k] }
+    = f.input :display_name, required: true, input_html: { maxlength: PublisherProfile::DISPLAY_NAME_MAX_LENGTH }
+    = f.input :legal_name, required: true
+    = f.input :country, required: true
+    = f.input :contact_email, required: true, input_html: { type: :email }
+
+  .card-footer
+    = f.button :submit
