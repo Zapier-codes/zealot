@@ -188,6 +188,62 @@ manual-only as well, it is the same one-line trigger change.)
 
 ## Task board
 
+### 🧭 Task 26 (RETRACTED): the public storefront is the separate `D-store` repo — Zealot is its Developer Console
+
+**Operator correction.** The public storefront lives in its own repo,
+**`github.com/Zapier-codes/D-store`**. Zealot must **not** host public store
+pages. A session built `/store` and `/store/:id` inside Zealot (branch
+`feat/task-26-store-pages`); that patch was **never applied and must not be** —
+it was discarded, nothing of it is on `develop` (checked: `origin/develop` tip
+was Task 25 when this was written). Do not rebuild it.
+
+**What D-store is (read this session from its `HANDOVER.md` @ `ba88b14`).**
+Next.js on Vercel (Play-Store-parity UI, currently on dummy data behind the
+`lib/catalog.ts` seam). **Supabase (Postgres) = metadata only** (app info,
+ratings, counters, developer/agreement status; not yet provisioned — its
+`5.f.i` is gated behind its Phases 1–4; its current leaf is `3.c.iii.zi`).
+**Binaries live on the Telegram S3-compatible drive**, fronted by a Cloudflare
+Worker — GitHub Releases is *not* used for binaries. Its rule: one leaf per
+session; it has an **unresolved SQL-vs-Doctrine data-model decision** — read its
+handover before touching it.
+
+**Zealot's role = the "separate Console" its section 5.g describes.** D-store
+"never submits, uploads, or authenticates developers — it only reads what the
+separate Console writes to Supabase":
+- `5.g.i.zo` (open, D-store side): the **shared schema contract** — the field
+  names/types D-store expects from Console-written rows.
+- `5.g.ii` (open): **AAB → signed-APK/split compile with `bundletool` in GitHub
+  Actions, triggered by a Console submission event**, published to the Telegram
+  drive; "the raw AAB never leaves the Console/build environment".
+- `5.g.iii` (open): a **Verified developer badge** sourced from the Console's
+  **agreement-signing status**, and a footer link to the Console as the submission
+  entry point.
+
+**What this changes for Zealot's plan.** "Store listing / live on the store"
+(Tasks 24–25) means *listed on D-Store*. Zealot's remaining store-side slices
+are: payment; **company KYB** (its approved/unapproved status is what feeds
+D-store's verified-developer / agreement status); and a **publish-to-D-store
+sync** (on `go_live!`, write the app's metadata, publisher name/alias and
+verified status to Supabase per the contract, and trigger the compile). Zealot's
+own per-channel public release pages (`/:channel`) stay — they are the internal
+test-build distribution, not the store.
+
+**❓ Decisions needed before the sync slice (do not guess):**
+1. **The contract** (D-store `5.g.i.zo`): field names/types for a published app,
+   publisher/alias, verified status. It is a D-store-side leaf and D-store has not
+   reached it.
+2. **Who compiles/signs AAB → APK.** Zealot already has its own pipeline
+   (`Anthropic::BundletoolService`, the org `AndroidSigningKey`, the
+   `ProxySdk::Injector` output) *and* a `ReleaseStorage` that mirrors to GitHub
+   Releases / R2 (Task 19c) — but D-store's plan compiles in GitHub Actions and
+   stores on the Telegram drive, and says GitHub Releases is not for binaries. The
+   two designs overlap; pick one owner for the org-signed copy and for where the
+   binary lives.
+3. **How Zealot writes to Supabase** (direct client vs a small API) — and whether
+   it may before D-store provisions Supabase.
+
+**Removed from the deliverables:** the Task 26 patch file.
+
 ### 🆕 Task 25: Publisher profile (Individual / Company) + the app's store-listing states (code-complete, compiled, not run in Rails)
 
 **Status of earlier work.** Task 24 (publisher alias) was applied by the operator
@@ -285,8 +341,9 @@ next slices implement).**
 - **Two sides.** Google Play = the *archive*: every app is published under the
   organisation's own Play account, so Play always shows the organisation as
   owner and needs no "uploaded by". That flow (admin approval → publish job) is
-  unchanged. **Our own stores = the public front**, built to look and feel like
-  Play; here the developer's identity matters.
+  unchanged. **Our own stores = the public front** (**the separate `D-store` repo — Zealot
+  hosts no public store pages; see the Task 26 correction**), built to look and
+  feel like Play; here the developer's identity matters.
 - **Publisher type.** At publish time the developer chooses **Individual** or
   **Company**. *Individual:* fill the form → payment page → app goes live on the
   store immediately on payment. *Company:* same flow and live immediately, but
@@ -362,7 +419,8 @@ the line disappears.
 
 **Not in this slice (next, in this order):** publisher profile
 (individual/company) + draft → awaiting payment → live states; payment
-(needs the provider decision); the public store pages; company KYB form, admin
+(needs the provider decision); ~~the public store pages~~ (**D-store repo, not
+Zealot — see the Task 26 correction**); company KYB form, admin
 review queue, reminder emails + 2-month suspension job; then swap
 `set_publisher_alias?` to "approved company" and add the
 individual/company-name fallback to `publisher_display_name`.
@@ -3503,3 +3561,9 @@ them is already modernized.
   draft → awaiting_payment → live states, owner-only publish, and a temporary
   admin *Mark as paid* until the payment provider is chosen (still open).
   Branch `feat/task-25-publisher-profile`.
+- **Task 26 correction (docs only)**: operator said the public storefront is the
+  separate `Zapier-codes/D-store` repo. Retracted the unapplied `/store` pages
+  patch; read D-store's handover and recorded Zealot's role as its Developer
+  Console (its `5.g`), plus three open decisions (contract, who compiles AAB→APK,
+  how Zealot writes to Supabase). No code changed. Branch
+  `docs/task-26-storefront-is-d-store` from `origin/develop` @ `27785478`.
