@@ -188,6 +188,53 @@ manual-only as well, it is the same one-line trigger change.)
 
 ## Task board
 
+### 🆕 Task 27: Zealot as the Play Console — signed catalog index, store-listing management, release controls (planning only, nothing built)
+
+**Operator direction.** D-store is the Play Store app: front-facing only. Zealot does what Play Console does. Mirror how the industry giants split the two systems instead of inventing one. Research done this session (Google Play Console/Developer API, Apple App Store Connect, Huawei AppGallery Connect, Samsung Seller Portal, F-Droid); findings below are what the model is built on. Google's own docs were read for Play; Apple's detail came back thin and Amazon's was not checked.
+
+**What the giants agree on**
+- The developer works only in the console. The store never accepts developer input, except that users write reviews and ratings on the store, and the console reads and replies to them (Play's Reply to Reviews API; new reviews are held about 24 h before counting publicly).
+- Upload key ≠ distribution signing key (Play App Signing; Galaxy Store signing). The platform builds and signs what users install. Zealot already has this: `PlayUploadKey` vs the org `AndroidSigningKey`.
+- Publishing is a staged change you commit (Play's edits: copy of live state → modify → commit or abandon). Releases move draft → in progress → halted/completed; a staged rollout sets a user fraction; managed publishing holds approved changes until you release; review can take up to seven days.
+- Some steps stay manual in every console (Huawei's API can't create an app or set its content rating; Play's first upload is manual — already recorded in Task 18).
+- F-Droid's store is read-only against a **signed index**: every referenced file (icons and screenshots too) is checked by SHA-256, the index is signed with a key separate from the APK key, and diff files carry changes.
+
+**Mapping**
+
+| Play | Zealot / D-store |
+|---|---|
+| Play Console | Zealot |
+| Play Store app | D-store (Zapier-codes/D-store) |
+| Edit → commit | `App#go_live!` extended into a real publish step (Task 25 has draft → awaiting payment → live → suspended) |
+| Signed catalog | New: Zealot publishes it, D-store reads it |
+| Verified developer | Company verification (KYB) |
+| Reviews | Owned by D-store; Zealot reads and replies |
+
+**Slices (TSF).** Order = table order; 27a–27c is the smallest set that replaces the old send-to-D-store step.
+
+| ID | Goal | Depends on | Files (predicted) | Acceptance check | Risk |
+|---|---|---|---|---|---|
+| 27a | Define catalog index v1 as a serializer plus a written schema: repo block; per app the listing text, icon/screenshot refs with SHA-256, versions, APK pointer (stable download URL, SHA-256, size, signing fingerprint), publisher name, verified flag, listing status | ❓1 | `app/services/catalog_index/*`, `docs/`, spec | Serializer output for a fixture app matches the schema; D-store's `5.g.i.zo` signs off the fields | low (additive) |
+| 27b | Generate and publish the index atomically (temp + rename), strictly increasing timestamp, signed with an index-signing key separate from `AndroidSigningKey` | 27a, ❓2, ❓3 | service, job, key handling, spec | A reader sees only complete indexes; timestamp never goes backwards; signature verifies with the public key | medium (new key) |
+| 27c | Regenerate the index on `go_live!`, suspension, listing edit and new release (replaces Task 26's send-to-D-store step) | 27b | `app.rb`, one job | Going live or suspending changes the next index | low |
+| 27d | Publish icons and screenshots through `ReleaseStorage` with SHA-256 in the index | 27b | storage, uploader | A screenshot appears in the index with a matching hash | low |
+| 27e | Store-listing editor: descriptions, graphics, data safety, content rating (Play's Store presence) | 27a | views, model, locales | Owner edits and the next index reflects it | medium (largest UI) |
+| 27f | Release controls for our own store: hold-until-release (managed publishing), halt, rollback | 27c, ❓5 | model, policy, views | A held release stays out of the index until released | medium |
+| 27g | Read and reply to D-store's reviews | ❓4 | needs a D-store feed | Owner sees and answers a review | blocked on D-store |
+| 27h | Register each package and the org signing key with Google's Android Developer Console on go-live (see below) | ❓6 | service, job | A newly live app shows as registered | blocked until verified |
+
+**Android developer verification (date-critical, read before 27h).** Google enforces app registration from September 30, 2026 for participating stores in Brazil, Indonesia, Singapore and Thailand, and plans to expand globally in 2027. Registration ties a verified developer to package names and signing keys. Google says stores other than the listed ones are not yet required to comply. Its new Developer Console API supports OAuth delegation so stores can register on a developer's behalf, and it is being rolled out over several months. Samsung already blocks submissions of unregistered binaries in its Seller Portal, and where the store does the final signing, the store's key must be added to the package's certificate list. Because Zealot signs every app with the org key, the org will probably have to register each package with that key. That conclusion is an inference, not something Google states. Confirm against Google's docs before building 27h. Company verification (KYB, D-U-N-S) is the natural front door for it.
+
+**❓ Decisions (do not guess):**
+1. Confirm the index-not-Supabase direction (operator approved it in principle; this is the formal record).
+2. Where the index is published: a Zealot endpoint, object storage (R2), or a static host. D-store's cache rule works with any.
+3. How the index-signing key is generated, stored and rotated (F-Droid keeps it offline and separate; rotating it forces readers to re-trust).
+4. Reviews: confirm they stay owned by D-store and Zealot only reads and replies. This means D-store must expose them, and D-store is otherwise write-free.
+5. Staged rollout: a no-account web store has no stable device identity to hash a fraction from. Skip it, or approximate it?
+6. Whether D-store's admin and editorial tools (report queue, sponsored slots, traffic dashboards) move to Zealot's admin. Google runs the equivalents on its own side.
+
+**Not built:** nothing. This entry is a plan; no code, no migrations.
+
 ### 🧭 Task 26 (RETRACTED): the public storefront is the separate `D-store` repo — Zealot is its Developer Console
 
 **Operator correction.** The public storefront lives in its own repo,
@@ -228,10 +275,8 @@ verified status to Supabase per the contract, and trigger the compile). Zealot's
 own per-channel public release pages (`/:channel`) stay — they are the internal
 test-build distribution, not the store.
 
-**Decisions before the sync slice (2 is resolved; 1 and 3 still open, do not guess):**
-1. **The contract** (D-store `5.g.i.zo`): field names/types for a published app,
-   publisher/alias, verified status. It is a D-store-side leaf and D-store has not
-   reached it.
+**Decisions before the sync slice (2 is resolved; 1 and 3 have a direction, see Task 27):**
+1. ✅ **Direction set (operator): the contract is a signed catalog index that Zealot publishes and D-store reads** — see Task 27. It replaces the field-contract-in-Supabase idea. The schema is owned by Zealot (Task 27a); D-store's `5.g.i.zo` reviews it as consumer.
 2. ✅ **RESOLVED (operator): Zealot compiles, signs and stores the org-signed APK.**
    D-store is only the front-facing store (Play-Store-parity, web-based: download
    button, icon, screenshots, reviews and the rest of the Play Store's listing
@@ -249,8 +294,7 @@ test-build distribution, not the store.
      file — a link to Zealot's existing `/download/releases/:id` (which redirects to
      a short-lived signed storage URL) is the obvious fit, but it was not confirmed.
      Signed URLs expire, so D-store must link to Zealot's URL, never store the signed one.
-3. **How Zealot writes to Supabase** (direct client vs a small API) — and whether
-   it may before D-store provisions Supabase.
+3. ✅ **Direction set (operator): Zealot does not write to Supabase.** It publishes the signed index; D-store keeps Supabase only for data the store itself owns (ratings, reviews, counters, abuse reports). Where the index is published is open (Task 27).
 
 **Removed from the deliverables:** the Task 26 patch file.
 
@@ -3583,3 +3627,4 @@ them is already modernized.
   compile step no longer applies; download-button link still to confirm). Decisions 1
   (field contract) and 3 (how Zealot writes to Supabase) remain open. No code changed.
   Branch `docs/task-26-resolve-build-sign-owner` from `origin/develop` @ `0d0cab54`.
+- **Task 27 planning (docs only)**: operator asked for a deep search of how Google, Apple, Huawei, Samsung and F-Droid split console from store, then approved a signed-catalog-index direction. Recorded the model, mapping, slice table 27a–27h and six open decisions in Task 27, and updated Task 26's decisions 1 and 3 to point at it. Also flagged Google's Android developer verification (enforcement September 30, 2026 in four countries) as a date-critical input to 27h. The D-store handover was updated in the same pass (its `5.f`/`5.g`). No code changed. This patch also carries the earlier Task 26 decision-2 edit (Zealot builds, signs and stores), because that patch had not landed on `origin/develop` @ `0d0cab54` when this one was built, so apply only this one. Branch `docs/task-26-resolve-build-sign-owner`.
