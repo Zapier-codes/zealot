@@ -228,17 +228,27 @@ verified status to Supabase per the contract, and trigger the compile). Zealot's
 own per-channel public release pages (`/:channel`) stay — they are the internal
 test-build distribution, not the store.
 
-**❓ Decisions needed before the sync slice (do not guess):**
+**Decisions before the sync slice (2 is resolved; 1 and 3 still open, do not guess):**
 1. **The contract** (D-store `5.g.i.zo`): field names/types for a published app,
    publisher/alias, verified status. It is a D-store-side leaf and D-store has not
    reached it.
-2. **Who compiles/signs AAB → APK.** Zealot already has its own pipeline
-   (`Anthropic::BundletoolService`, the org `AndroidSigningKey`, the
-   `ProxySdk::Injector` output) *and* a `ReleaseStorage` that mirrors to GitHub
-   Releases / R2 (Task 19c) — but D-store's plan compiles in GitHub Actions and
-   stores on the Telegram drive, and says GitHub Releases is not for binaries. The
-   two designs overlap; pick one owner for the org-signed copy and for where the
-   binary lives.
+2. ✅ **RESOLVED (operator): Zealot compiles, signs and stores the org-signed APK.**
+   D-store is only the front-facing store (Play-Store-parity, web-based: download
+   button, icon, screenshots, reviews and the rest of the Play Store's listing
+   features). Zealot keeps its own AAB → APK pipeline (`Anthropic::BundletoolService`,
+   the org `AndroidSigningKey`, `ProxySdk::Injector` output) and its `ReleaseStorage`
+   (private GitHub Releases repo, R2 available). D-store does **not** run a
+   `bundletool` compile in its own GitHub Actions and does **not** own the binary.
+   Consequences to carry into the sync slice:
+   - D-store's `5.g.ii` (AAB → APK compile in Actions, publish to the Telegram drive)
+     no longer applies to the Console's submissions. **D-store's handover needs the
+     matching edit on its side** — this repo can't make it.
+   - The sync slice sends D-store listing metadata plus a pointer to the Zealot-held
+     APK; it does not upload a binary to D-store's Telegram drive.
+   - ❓ Still open inside this decision: how D-store's *Download* button reaches the
+     file — a link to Zealot's existing `/download/releases/:id` (which redirects to
+     a short-lived signed storage URL) is the obvious fit, but it was not confirmed.
+     Signed URLs expire, so D-store must link to Zealot's URL, never store the signed one.
 3. **How Zealot writes to Supabase** (direct client vs a small API) — and whether
    it may before D-store provisions Supabase.
 
@@ -3567,3 +3577,9 @@ them is already modernized.
   Console (its `5.g`), plus three open decisions (contract, who compiles AAB→APK,
   how Zealot writes to Supabase). No code changed. Branch
   `docs/task-26-storefront-is-d-store` from `origin/develop` @ `27785478`.
+- **Task 26 decision (docs only)**: operator answered decision 2 — Zealot builds,
+  signs and stores the org-signed APK; D-store is only the front-facing Play-style
+  web store. Recorded in the Task 26 entry with its consequences (D-store's `5.g.ii`
+  compile step no longer applies; download-button link still to confirm). Decisions 1
+  (field contract) and 3 (how Zealot writes to Supabase) remain open. No code changed.
+  Branch `docs/task-26-resolve-build-sign-owner` from `origin/develop` @ `0d0cab54`.
