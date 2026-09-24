@@ -62,7 +62,10 @@ these works, real `App`/`Release` or a fixture:
 `id`, `play_package_name`, `listing_status`, `publisher_display_name`, `name`,
 `recently_release` -> an object responding to `id`, `release_version`,
 `build_version`, `download_url`, `original_size`, `signing_key_checksum`,
-`file` (nil or an object responding to `path`).
+`file` (nil or an object responding to `path`), and optionally `file_sha256`
+(a persisted hash, preferred over hashing `file` live when present -- see
+"The `sha256` gap" below). A fixture without `file_sha256` still works; the
+serializer falls back to the old live-hash path.
 
 ## Which apps go in
 
@@ -73,26 +76,32 @@ to only ever call that** -- a public catalog for D-Store has no reason to
 mention a draft or suspended app. `listing_status` still rides along in the
 output for debugging/completeness, not as a filter contract.
 
-## The `sha256` gap (read before assuming this is done)
+## The `sha256` gap (Task 27b-i closed it going forward)
 
 There is currently **no SHA-256 of any release binary anywhere in this
 codebase** -- `Release#signing_key_checksum` is a SHA-1 of the *signing
-keystore*, not a hash of the APK/AAB itself. v1's serializer computes it
-lazily from the release's local file (`Release#file`) when that file still
-exists on disk, and returns `null` when it doesn't -- which, per Task 19's
-mirror-then-wipe behavior, is the common case for anything old enough to have
-been mirrored to `ReleaseStorage` and cleaned up locally.
+keystore*, not a hash of the APK/AAB itself. v1's serializer originally
+computed it lazily from the release's local file (`Release#file`) when
+that file still existed on disk, and returned `null` when it didn't --
+which, per Task 19's mirror-then-wipe behavior, was the common case for
+anything old enough to have been mirrored to `ReleaseStorage` and cleaned
+up locally.
 
-**This means v1's `sha256` will be `null` for most releases in production
-today.** That's an honest gap, not a bug: computing it requires either (a)
-re-downloading the mirrored file to hash it (expensive, and wrong to do on
-every index regeneration) or (b) persisting the hash once, likely at mirror
-time (`ReleaseFileMirrorJob`, Task 19c) so it survives the wipe. Either is a
-real design decision for **27b** (which owns index *generation*, including
-deciding when/how expensive per-release work like this happens), not
-something to guess at here. F-Droid's index leans on exactly this hash for
-every referenced file, so 27b should treat closing this gap as part of "the
-index is trustworthy," not an optional nice-to-have.
+**Task 27b-i (this session) closes the gap going forward:**
+`ReleaseFileMirrorJob` now hashes the primary file and persists it to
+`Release#file_sha256` at mirror time -- while the local file is
+guaranteed to still be there, before anything else in the pipeline gets a
+chance to wipe it. `CatalogIndex::Serializer#sha256_for` prefers this
+persisted value and only falls back to hashing the local file live (the
+original, gap-prone path) when it's blank.
+
+**Releases created before this migration still show `sha256: null`** until
+`ReleaseFileMirrorJob.backfill` (or a natural re-run) catches them up --
+that rake-style task walks every release without a stored mirror key, which
+in practice is nearly every release old enough to matter, so running it
+once after deploying 27b-i is expected, not automatic. F-Droid's index
+leans on exactly this hash for every referenced file, so treat a `null`
+here as "not backfilled yet," not as "broken."
 
 ## What's deliberately out of scope for v1
 

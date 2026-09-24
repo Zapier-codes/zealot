@@ -2,10 +2,11 @@
 
 require 'rails_helper'
 require 'tmpdir'
+require 'digest'
 
 RSpec.describe ReleaseFileMirrorJob do
   let(:release_class) do
-    Struct.new(:id, :file, :patched_file_path, :file_storage_key, :patched_file_storage_key,
+    Struct.new(:id, :file, :patched_file_path, :file_storage_key, :patched_file_storage_key, :file_sha256,
                keyword_init: true) do
       def [](column)
         public_send(column)
@@ -39,6 +40,29 @@ RSpec.describe ReleaseFileMirrorJob do
     expect(release.patched_file_storage_key).to be_nil
   end
 
+  it "records the primary file's sha256" do
+    described_class.new.perform(7)
+
+    expect(release.file_sha256).to eq(Digest::SHA256.hexdigest('clean-aab'))
+  end
+
+  it 'does not re-hash a release that already has a stored sha256' do
+    release.file_sha256 = 'already-there'
+
+    described_class.new.perform(7)
+
+    expect(release.file_sha256).to eq('already-there')
+  end
+
+  it 'still hashes the primary file even when nothing needs mirroring (local adapter)' do
+    allow(ReleaseStorage).to receive(:remote?).and_return(false)
+
+    described_class.new.perform(7)
+
+    expect(release.file_sha256).to eq(Digest::SHA256.hexdigest('clean-aab'))
+    expect(storage).not_to have_received(:store_binary)
+  end
+
   it 'also mirrors the patched internal APK of a Play-targeted release' do
     release.patched_file_path = patched
 
@@ -63,6 +87,7 @@ RSpec.describe ReleaseFileMirrorJob do
 
     expect(storage).not_to have_received(:store_binary)
     expect(release.file_storage_key).to be_nil
+    expect(release.file_sha256).to be_nil
   end
 
   it 'does nothing on the local adapter' do

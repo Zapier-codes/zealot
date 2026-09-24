@@ -12,7 +12,7 @@ require 'rails_helper'
 # spec/requests/api/mtproto_archives_spec.rb (Task 19f) used.
 RSpec.describe CatalogIndex::Serializer do
   def build_app_with_release(package_name: 'com.example.app', file_contents: 'apk bytes',
-                              original_size: nil, signing_key_checksum: nil)
+                              original_size: nil, signing_key_checksum: nil, file_sha256: nil)
     app = create(:app, play_package_name: package_name)
     scheme = Scheme.create!(app: app, name: 'production')
     channel = Channel.create!(scheme: scheme, name: 'stable', slug: SecureRandom.hex(4), device_type: 'android')
@@ -23,7 +23,8 @@ RSpec.describe CatalogIndex::Serializer do
       release_version: '1.2.3',
       build_version: '42',
       original_size: original_size,
-      signing_key_checksum: signing_key_checksum
+      signing_key_checksum: signing_key_checksum,
+      file_sha256: file_sha256
     )
 
     if file_contents
@@ -76,6 +77,24 @@ RSpec.describe CatalogIndex::Serializer do
       lv = result[:apps].first[:latest_version]
       expect(lv[:sha256]).to be_nil
       expect(lv[:size_bytes]).to eq(999)
+    end
+
+    it 'prefers the persisted file_sha256 (Task 27b-i) over hashing the local file live' do
+      _app, release = build_app_with_release(file_contents: 'apk bytes', file_sha256: 'persisted-hash')
+
+      result = described_class.call(release.channel.scheme.app)
+
+      expect(result[:apps].first[:latest_version][:sha256]).to eq('persisted-hash')
+    end
+
+    it 'still returns sha256 once the local file is gone if it was persisted at mirror time' do
+      _app, release = build_app_with_release(file_contents: 'apk bytes', file_sha256: 'persisted-hash')
+      release.file = nil
+      release.save!(validate: false)
+
+      result = described_class.call(release.channel.scheme.app)
+
+      expect(result[:apps].first[:latest_version][:sha256]).to eq('persisted-hash')
     end
 
     it 'returns a nil latest_version for an app with no releases' do

@@ -364,7 +364,7 @@ Date note (from Task 27): Google's registration enforcement starts September 30,
 | ID | Goal | Depends on | Files (predicted) | Acceptance check | Risk |
 |---|---|---|---|---|---|
 | 27a ✅ | Define catalog index v1 as a serializer plus a written schema: repo block; per app the listing text, icon/screenshot refs with SHA-256, versions, APK pointer (stable download URL, SHA-256, size, signing fingerprint), publisher name, verified flag, listing status | ❓1 | `app/services/catalog_index/serializer.rb`, `docs/catalog_index_v1.md`, `docs/catalog_index_v1.schema.json`, spec | Serializer output for a fixture app matches the schema; D-store's `5.g.i.zo` signs off the fields | low (additive) |
-| 27b-i | **Recommended split of 27b (1 of 3).** Persist each release's SHA-256 once, at `ReleaseFileMirrorJob` time, so it survives the local-file wipe (closes the "sha256 gap" above) | 27a | migration, `Release`, mirror job, spec | A mirrored release keeps its hash after the local file is deleted; the serializer reads the stored hash | low |
+| 27b-i ✅ | **Recommended split of 27b (1 of 3).** Persist each release's SHA-256 once, at `ReleaseFileMirrorJob` time, so it survives the local-file wipe (closes the "sha256 gap" above) | 27a | migration, `Release`, mirror job, spec | A mirrored release keeps its hash after the local file is deleted; the serializer reads the stored hash | low |
 | 27b-ii | **(2 of 3)** Ed25519 index-signing key as a singleton model (mirrors `AndroidSigningKey`, secrets encrypted), sign service, persisted strictly increasing sequence/timestamp | 27a, ❓3 ✅ | model, service, spec | A signed index verifies with the public key; the timestamp never goes backwards; runs with no GitHub access | medium (new key) |
 | 27b-iii | **(3 of 3)** Publish to the GitHub Pages repo as one commit (Git Data API: blob, tree, commit, ref update), serialized so two publishes never race, then call D-store's deploy hook. Uses its own fine-grained token scoped to the Pages repo only | 27b-ii, ❓2 ✅ | service, job, env vars, spec | A reader sees only complete indexes; a 409 is retried; the deploy hook fires after a successful publish | medium |
 | 27c | Regenerate the index on `go_live!`, suspension, listing edit and new release (replaces Task 26's send-to-D-store step) | 27b | `app.rb`, one job | Going live or suspending changes the next index | low |
@@ -464,7 +464,47 @@ real `App`/`Release` records — no `Release` factory exists in this repo, built
 directly against `db/schema.rb` like `spec/requests/api/mtproto_archives_spec.rb`
 did for Task 19f) exercises the same code path but wasn't itself runnable here.
 
-**Not built:** 27b onward — each depends on a real ❓ decision above.
+**Done in 27b-i (this session, code-complete, verified — see below):**
+migration `db/migrate/20260926100000_add_file_sha256_to_releases.rb`
+(`releases.file_sha256`, hand-applied to `db/schema.rb` too, same as every
+other migration on this board — no DB access in this sandbox to actually
+run one); `ReleaseFileMirrorJob` now hashes the primary file and persists
+it via `update_columns` *before* the `ReleaseStorage.remote?` early
+return (deliberately — the gap exists on any ephemeral-disk host
+regardless of which storage adapter is configured, not only remote-mirror
+ones), guarded so an already-hashed release is never re-hashed;
+`CatalogIndex::Serializer#sha256_for` now prefers the persisted value and
+only falls back to live-hashing the local file (the original 27a path)
+when it's blank, `respond_to?`-guarded so a duck-typed fixture with no
+`file_sha256` at all still works. `docs/catalog_index_v1.md`'s "sha256
+gap" section rewritten to describe the fix and the backfill expectation
+for pre-existing releases, rather than describing an open gap.
+
+**Verified how:** this sandbox has no rubygems access (`gem install rspec`
+fails — `rubygems.org` isn't on the allowed-domains list, unlike apt's
+Ubuntu mirrors, which *are* allowed and did work this session — see
+below), so the real spec suites (`spec/jobs/release_file_mirror_job_spec.rb`,
+`spec/services/catalog_index/serializer_spec.rb`, both updated with new
+examples) are written but not run — "code-complete, not run," same
+caveat as every other item on this board. What *was* actually run,
+stronger than 27a's verification: `apt-get install ruby3.2` succeeded
+(archive.ubuntu.com is allowlisted), giving a real Ruby 3.2 interpreter
+(no rspec gem, but plain Ruby + hand-rolled `assert`). Two throwaway
+harnesses (not committed) `load`d the *actual* `app/jobs/release_file_mirror_job.rb`
+and `app/services/catalog_index/serializer.rb` files directly — not
+reimplementations — against minimal stand-ins for `ApplicationJob`,
+`ReleaseStorage` and ActiveSupport's `present?`/`blank?`. 12 assertions
+total, all passing: the job hashes on both the remote and local adapter
+paths, never re-hashes an already-stored value, leaves it `nil` without
+raising when the file's already gone, and still records the hash even
+when `ReleaseStorage.remote?` itself raises `ConfigurationError`; the
+serializer prefers a persisted hash over live-hashing (including when
+the two would disagree, and when the local file is subsequently deleted),
+falls back to live-hashing when the column is blank, returns `nil` (not
+an error) once both are unavailable, and the `respond_to?` guard confirmed
+against a fixture Struct that doesn't define `file_sha256` at all.
+
+**Not built:** 27b-ii onward — each depends on a real ❓ decision above.
 
 ### 🧭 Task 26 (RETRACTED): the public storefront is the separate `D-store` repo — Zealot is its Developer Console
 

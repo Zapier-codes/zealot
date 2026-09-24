@@ -110,12 +110,20 @@ module CatalogIndex
       }
     end
 
-    # Only computable while the release's original file is still on local
-    # disk (Task 19's mirror-then-wipe). Persisting this so it survives
-    # that wipe is 27b's job (generate on a schedule/webhook, compute and
-    # cache once, rather than re-hashing a potentially large file on every
-    # serialize) -- nil here is an honest "not known yet", not a bug.
+    # Task 27b-i closed the gap this method used to carry alone: as of that
+    # slice, ReleaseFileMirrorJob persists file_sha256 once, while the
+    # local file is guaranteed to still be there, so most releases now
+    # have a real hash regardless of whether the local file has since been
+    # wiped. `respond_to?` keeps this duck-typed like the rest of the
+    # class -- a fixture/Struct without the column still works, it just
+    # exercises the fallback path below. The fallback itself stays: a
+    # release created before this migration (or one ReleaseFileMirrorJob
+    # hasn't reached yet -- see .backfill) has no persisted hash and, per
+    # Task 19's mirror-then-wipe, may or may not still have a local file;
+    # `null` is still the honest answer once both are unavailable.
     def sha256_for(release)
+      return release.file_sha256 if release.respond_to?(:file_sha256) && release.file_sha256.present?
+
       path = local_file_path(release)
       return nil unless path && File.exist?(path)
 
