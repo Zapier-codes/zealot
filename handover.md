@@ -236,7 +236,7 @@ manual-only as well, it is the same one-line trigger change.)
 3. Which Aptoide MCP: the official `Aptoide/aptoide-mcp` (Python, MIT, listed on Aptoide's GitHub, last updated Feb 12, 2026) or the third-party "Aptoide Ultimate API" actor on Apify (pay-per-query, hosted by Apify). Neither was inspected beyond its public listing this session.
 4. Aptoide's terms for re-presenting its catalog and linking to its downloads: not checked. Confirm before building `5.h.ii` in D-store.
 
-#### 🆕 Task 29: Catalog index v2 — the fields D-store and the Updater actually need (Phase 1)
+#### 🟡 Task 29: Catalog index v2 — the fields D-store and the Updater actually need (Phase 1) (29a done this session; 29b–29d planned)
 
 D-store's `App` type needs fields index v1 doesn't carry (found by comparing `lib/mock-data.ts` with `docs/catalog_index_v1.md`). Nothing consumes v1 yet (27a is not published anywhere), so revising now costs nothing; after 27b signs and publishes, every change is a migration.
 
@@ -252,12 +252,39 @@ D-store's `App` type needs fields index v1 doesn't carry (found by comparing `li
 
 | ID | Goal | Depends on | Files (predicted) | Acceptance check | Risk |
 |---|---|---|---|---|---|
-| 29a | Write index v2: schema doc, JSON Schema, and the slug and category rules | 27a | `docs/catalog_index_v2.md`, `docs/catalog_index_v2.schema.json` | Fixture documents validate; malformed ones are rejected | low |
+| 29a ✅ | Write index v2: schema doc, JSON Schema, and the slug and category rules | 27a | `docs/catalog_index_v2.md`, `docs/catalog_index_v2.schema.json` | Fixture documents validate; malformed ones are rejected | low |
 | 29b | Serializer v2 over the new fields, defaults where data doesn't exist yet (empty, not invented) | 29a | `app/services/catalog_index/serializer.rb`, spec | Output validates against the 29a schema for a full app and a bare app | low |
 | 29c | Extract compatibility metadata from the APK at upload and store it on `Release` | 29a | migration, service, `Release`, spec | An uploaded APK yields min/target SDK, ABIs, permissions | medium (APK parsing) |
 | 29d | D-store review of v2 as consumer (their `5.g.i.zo`); record sign-off or requested changes | 29a | docs only | D-store confirms every field it renders is present or intentionally store-owned | low |
 
 **❓ Decisions:** the category vocabulary (fixed list vs Zealot-owned free text mapped by D-store); who authors `available_regions` (owner in the listing editor, or org-wide default).
+
+**Done in 29a (this session, code-complete, verified — see below):**
+`docs/catalog_index_v2.md` + `docs/catalog_index_v2.schema.json`. Defines the
+full v2 shape: `sequence`/`expires_at` at the index level; `slug` (immutable
+once live), `summary`, `category` (fixed vocabulary, matching D-store's
+current list exactly), `license`, `links`, `available_regions`,
+`created_at`/`updated_at` per app; `content_rating`/`data_safety`/
+`contains_ads`/`has_in_app_purchases` under `listing`; `bio`/`profile_url`/
+`joined_at` under `publisher`; `editorial`/`sponsored_slots`/`collections`
+(reserved for 31a); and `latest_version` replaced by `versions[]`, each
+carrying `changelog`/`released_at`/`status` (27f) and a `compatibility` block
+(reserved for 29c). Every genuinely new field is reserved as
+null/empty/false in the schema rather than invented data — this slice
+defines the contract, it doesn't populate it. Left both open ❓s from the
+table above unresolved (this slice's job was the schema, not the answers);
+this doc's own "❓ Open decisions" section states v2's `category` enum
+currently assumes the fixed-list answer, so if the operator picks free text
+instead, the schema and this note both need to change together.
+
+**Verified how:** same constraint as 27a — no Rails boot in this sandbox.
+`catalog_index_v2.schema.json` was checked with `ajv`/`ajv-formats` (Node)
+against a fully-populated fixture app and a bare-minimum one (every reserved
+field at its default, zero versions) — both valid — and against four
+deliberately malformed documents (a `category` outside the fixed vocabulary,
+`sequence` as a string, an extra unrecognized top-level field, a
+`versions[].status` outside its three allowed values) — all four correctly
+rejected. Neither `ajv` nor `ajv-formats` are dependencies of this repo.
 
 #### 🆕 Task 30: Console publishing parity — edits, tracks, policy checks, review (Phase 2)
 

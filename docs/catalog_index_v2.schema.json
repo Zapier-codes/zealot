@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zealot.example.com/schemas/catalog_index_v2.schema.json",
+  "title": "Zealot catalog index v2",
+  "description": "Task 29a. Supersedes catalog_index_v1.schema.json. Read docs/catalog_index_v2.md and app/services/catalog_index/serializer.rb (once 29b lands) alongside this file -- all three are kept in sync by hand.",
+  "type": "object",
+  "required": [ "schema_version", "generated_at", "sequence", "expires_at", "apps" ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": 2 },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Strictly increasing per publish. A reader refusing a sequence <= the last one it saw is what stops a rollback/replay attack -- this field exists so that check is possible, not enforced by the schema itself."
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "A reader should refuse an index at or past this timestamp rather than trusting stale data indefinitely."
+    },
+    "apps": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/app" }
+    }
+  },
+  "$defs": {
+    "category": {
+      "enum": [
+        null,
+        "system", "multimedia", "games", "internet", "navigation",
+        "science-education", "theming", "time", "reading", "writing",
+        "development", "finance"
+      ]
+    },
+    "sha256_or_null": {
+      "type": [ "string", "null" ],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "iso_date_time_or_null": {
+      "type": [ "string", "null" ],
+      "format": "date-time"
+    },
+    "app": {
+      "type": "object",
+      "required": [
+        "id", "package_name", "listing_status", "publisher", "listing",
+        "slug", "summary", "category", "license", "links",
+        "available_regions", "created_at", "updated_at",
+        "editorial", "sponsored_slots", "collections", "versions"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "integer" },
+        "package_name": { "type": [ "string", "null" ] },
+        "listing_status": {
+          "type": "string",
+          "enum": [ "draft", "awaiting_payment", "live", "suspended" ]
+        },
+        "publisher": {
+          "type": "object",
+          "required": [ "name", "verified", "bio", "profile_url", "joined_at" ],
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": [ "string", "null" ] },
+            "verified": { "type": "boolean" },
+            "bio": { "type": [ "string", "null" ] },
+            "profile_url": { "type": [ "string", "null" ], "format": "uri" },
+            "joined_at": { "$ref": "#/$defs/iso_date_time_or_null" }
+          }
+        },
+        "listing": {
+          "type": "object",
+          "required": [
+            "title", "description", "icon", "screenshots",
+            "content_rating", "data_safety", "contains_ads", "has_in_app_purchases"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "title": { "type": "string" },
+            "description": { "type": [ "string", "null" ] },
+            "icon": {
+              "type": "object",
+              "required": [ "url", "sha256" ],
+              "additionalProperties": false,
+              "properties": {
+                "url": { "type": [ "string", "null" ], "format": "uri" },
+                "sha256": { "$ref": "#/$defs/sha256_or_null" }
+              }
+            },
+            "screenshots": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [ "url", "sha256" ],
+                "additionalProperties": false,
+                "properties": {
+                  "url": { "type": "string", "format": "uri" },
+                  "sha256": { "$ref": "#/$defs/sha256_or_null" }
+                }
+              }
+            },
+            "content_rating": { "type": [ "string", "null" ] },
+            "data_safety": {
+              "type": "object",
+              "required": [ "collects_data", "data_types", "shared_with_third_parties", "encrypted_in_transit", "deletion_request_url" ],
+              "additionalProperties": false,
+              "properties": {
+                "collects_data": { "type": [ "boolean", "null" ] },
+                "data_types": { "type": "array", "items": { "type": "string" } },
+                "shared_with_third_parties": { "type": [ "boolean", "null" ] },
+                "encrypted_in_transit": { "type": [ "boolean", "null" ] },
+                "deletion_request_url": { "type": [ "string", "null" ], "format": "uri" }
+              }
+            },
+            "contains_ads": { "type": [ "boolean", "null" ] },
+            "has_in_app_purchases": { "type": [ "boolean", "null" ] }
+          }
+        },
+        "slug": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "description": "Immutable once the app first goes live. See docs/catalog_index_v2.md's 'The slug rule'."
+        },
+        "summary": { "type": [ "string", "null" ] },
+        "category": { "$ref": "#/$defs/category" },
+        "license": { "type": [ "string", "null" ] },
+        "links": {
+          "type": "object",
+          "required": [ "site", "source", "tracker", "donate" ],
+          "additionalProperties": false,
+          "properties": {
+            "site": { "type": [ "string", "null" ], "format": "uri" },
+            "source": { "type": [ "string", "null" ], "format": "uri" },
+            "tracker": { "type": [ "string", "null" ], "format": "uri" },
+            "donate": { "type": [ "string", "null" ], "format": "uri" }
+          }
+        },
+        "available_regions": {
+          "type": [ "array", "null" ],
+          "description": "null = all regions.",
+          "items": { "type": "string", "pattern": "^[A-Z]{2}$" }
+        },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "editorial": {
+          "type": "object",
+          "required": [ "featured", "editors_pick" ],
+          "additionalProperties": false,
+          "properties": {
+            "featured": { "type": "boolean" },
+            "editors_pick": { "type": "boolean" }
+          }
+        },
+        "sponsored_slots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [ "starts_at", "ends_at" ],
+            "additionalProperties": false,
+            "properties": {
+              "starts_at": { "type": "string", "format": "date-time" },
+              "ends_at": { "type": "string", "format": "date-time" }
+            }
+          }
+        },
+        "collections": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "versions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/version" }
+        }
+      }
+    },
+    "version": {
+      "type": "object",
+      "required": [
+        "release_id", "version_name", "version_code", "download_url",
+        "sha256", "size_bytes", "signing_fingerprint", "changelog",
+        "released_at", "status", "compatibility"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "release_id": { "type": "integer" },
+        "version_name": { "type": [ "string", "null" ] },
+        "version_code": { "type": [ "string", "null" ] },
+        "download_url": { "type": "string", "format": "uri" },
+        "sha256": { "$ref": "#/$defs/sha256_or_null" },
+        "size_bytes": { "type": [ "integer", "null" ] },
+        "signing_fingerprint": { "type": [ "string", "null" ] },
+        "changelog": { "description": "Release#changelog is jsonb -- shape not constrained further here." },
+        "released_at": { "type": "string", "format": "date-time" },
+        "status": { "enum": [ "available", "halted", "pulled" ] },
+        "compatibility": {
+          "type": "object",
+          "required": [ "min_sdk", "target_sdk", "abis", "screen_densities", "required_features", "permissions" ],
+          "additionalProperties": false,
+          "properties": {
+            "min_sdk": { "type": [ "integer", "null" ] },
+            "target_sdk": { "type": [ "integer", "null" ] },
+            "abis": { "type": "array", "items": { "type": "string" } },
+            "screen_densities": { "type": "array", "items": { "type": "string" } },
+            "required_features": { "type": "array", "items": { "type": "string" } },
+            "permissions": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    }
+  }
+}
