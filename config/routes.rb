@@ -16,11 +16,6 @@ Rails.application.routes.draw do
   # being outside any auth-required scope.
   post 'hooks/hyperswitch', to: 'hyperswitch_webhooks#create'
 
-  # TEMPORARY — Task 27b-iv. See ops_setup_controller.rb's header. Remove
-  # this line, the controller, and OPS_SETUP_TOKEN together, in one commit,
-  # once the key is generated and the first publish has landed.
-  post 'ops/catalog_index_bootstrap', to: 'ops_setup#catalog_index_bootstrap'
-
   #############################################
   # User
   #############################################
