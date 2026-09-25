@@ -36,14 +36,21 @@ class OpsSetupController < ApplicationController
 
     lines = []
 
+    # `ActiveRecord::Base.connection.migration_context` does not exist on
+    # this Rails version (8.1.3) -- confirmed in production: the first
+    # deploy of this route raised NoMethodError on exactly that call.
+    # `db:migrate` is itself a safe no-op when nothing is pending, so the
+    # pre-check was unnecessary; just invoke it directly instead of
+    # re-deriving Rails' own pending-migration logic.
     Rails.application.load_tasks unless Rake::Task.task_defined?('db:migrate')
-    pending = ActiveRecord::Base.connection.migration_context.needs_migration?
-    if pending
-      Rake::Task['db:migrate'].invoke
-      lines << 'migrate: ran'
-    else
-      lines << 'migrate: already up to date, skipped'
-    end
+    migrate_task = Rake::Task['db:migrate']
+    migrate_task.reenable # Task#invoke only runs once per process by
+                           # default; this route can be hit more than once
+                           # in the same long-lived Puma worker, so without
+                           # reenable a later migration could silently
+                           # no-op on a second call.
+    migrate_task.invoke
+    lines << 'migrate: ran (rails db:migrate is a no-op if nothing pending)'
 
     if CatalogIndexSigningKey.exists?
       lines << 'key: already exists, skipped generate_key'

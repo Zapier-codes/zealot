@@ -683,7 +683,7 @@ real database, the job under GoodJob, and the committed specs (`github_pages_com
 
 **Not built:** 27c onward. 27c (regenerate/publish on `go_live!`, suspension, listing edit, new release) is unblocked by code, but nothing has ever been published yet — do the setup above first.
 
-### 🆕 Task 27b-iv: one-time key-gen + publish bootstrap route (free-plan workaround, code-complete, verified — see below)
+### 🆕 Task 27b-iv: one-time key-gen + publish bootstrap route (free-plan workaround; hit and fixed a production bug this session, not yet re-run)
 
 **Why this exists.** 27b-iii's own "Needs before it can run for real" note above
 assumes shell access to run `rake catalog_index:generate_key` /
@@ -712,18 +712,32 @@ call the existing rake tasks make — no new logic, just reachable over HTTP onc
 own file header says so. Leaving an authenticated "run infra setup" endpoint
 live permanently is a standing risk even behind a secret.
 
-**Verified how:** real Ruby 3.2 (apt), no Rails/DB. A throwaway harness (not
-committed) loaded the **actual** `ops_setup_controller.rb` against stand-ins
-for `ApplicationController`, `Rails`, `Rake::Task`,
-`ActiveRecord::Base.connection`, `CatalogIndexSigningKey` and
-`CatalogIndex::{GithubPagesCommit,Publish}` — 4 assertions, all passing:
-refuses when `OPS_SETUP_TOKEN` is unset; refuses a wrong token; with no key and
-Pages not configured, generates the key, prints the public key, and skips
-publish with a clear message; with a key already present and Pages configured,
-skips generation, calls publish, and reports its commit SHA. **Not verified:**
-the real Rails migration/Rake integration, the real
-`ActiveRecord::Base.connection.migration_context`, and real HTTP routing — the
-harness calls the controller instance method directly, not through a request.
+**Verified how (original pass):** real Ruby 3.2 (apt), no Rails/DB. A
+throwaway harness (not committed) loaded the **actual**
+`ops_setup_controller.rb` against stand-ins for `ApplicationController`,
+`Rails`, `Rake::Task`, `ActiveRecord::Base.connection`,
+`CatalogIndexSigningKey` and `CatalogIndex::{GithubPagesCommit,Publish}` — 4
+assertions passing. Flagged as **not verified** at the time: the real Rails
+migration/Rake integration and the real `ActiveRecord::Base.connection.migration_context` —
+correctly, as it turned out.
+
+**Production bug (this session):** first real deploy of this route raised
+`NoMethodError: undefined method 'migration_context' for an instance of
+ActiveRecord::ConnectionAdapters::PostgreSQLAdapter` — that method does not
+exist on Rails 8.1.3, this repo's actual pinned version, which the harness's
+hand-written stand-in didn't catch because the stand-in just invented a
+plausible-looking API rather than being checked against real Rails. **Fix:**
+dropped the manual pending-check entirely. `db:migrate` is itself a safe
+no-op when nothing is pending, so the route now just calls
+`Rake::Task['db:migrate'].reenable; .invoke` unconditionally — `reenable` is
+needed because `Task#invoke` only runs once per process by default, and this
+route can be hit more than once in the same long-lived Puma worker. Harness
+extended with a 5th assertion covering exactly that: invoking the route twice
+in one process must still actually run `db:migrate` both times. All 5 pass.
+**Still not independently confirmed:** this exact fix against a real Rails
+8.1.3 boot — the harness's Rake stand-in is now hand-verified to match
+Rake's real once-per-process semantics, but is still a stand-in, not real
+Rails. The next deploy of this route is the real test.
 
 **Operator steps (replaces 27b-iii's shell-based ones above):**
 1. Set `OPS_SETUP_TOKEN` (any long random string) on the Render service
@@ -731,7 +745,9 @@ harness calls the controller instance method directly, not through a request.
    — via the Render API's per-key env-var endpoint (free plan has no
    Shell/Jobs/Pre-Deploy Command, but env vars and deploys are both plain
    API/CLI, no paid feature needed).
-2. Apply this patch and push per the Handoff process above — the existing
+2. Apply this patch (or, if 27b-iv already deployed and hit the
+   `migration_context` bug above, apply the follow-up fix patch instead) and
+   push per the Handoff process — the existing
    `Anthropic - Build & Deploy develop` pipeline builds, pushes the GHCR image,
    and triggers the Render deploy automatically. No new CI needed.
 3. Once the deploy is live: `curl -X POST https://<service-url>/ops/catalog_index_bootstrap -H "X-Ops-Setup-Token: $OPS_SETUP_TOKEN"`.
@@ -4276,3 +4292,19 @@ them is already modernized.
   branch (`feat/task-27b-iv-ops-bootstrap-route`), one squashed commit, one
   `.patch` file. **Remove this route in the very next commit after it's used
   once** — see its own file header and the operator-steps list above.
+- **Task 27b-iv fix (this session)**: the operator ran the deployed 27b-iv
+  route and hit `NoMethodError: undefined method 'migration_context'` — Rails
+  8.1.3 (this repo's real pinned version) has no such method on the
+  connection adapter; the harness's stand-in for it was never checked against
+  real Rails and just invented a plausible API. Fixed by dropping the
+  pending-check and always invoking `db:migrate` (itself a safe no-op),
+  guarded with `.reenable` so a second call in the same long-lived Puma
+  worker still actually runs it. Extended the harness with a 5th assertion
+  for exactly that double-invoke case; 5/5 pass. Branch
+  `fix/task-27b-iv-migration-context` from `origin/develop` @ `40551f6b`
+  (current tip — Tasks 27a/27b-i/ii/iii, 28, 29a/29b, 32 have all landed
+  since 27b-iv first went out; none of them touch the classes this route
+  calls, confirmed by reading `catalog_index/publish.rb` and
+  `catalog_index_signing_key.rb` at this tip before writing the fix).
+  **This fix has not yet been run in production** — that's the next step,
+  same operator sequence as before, just this patch instead.
