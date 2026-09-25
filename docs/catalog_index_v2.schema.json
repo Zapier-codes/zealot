@@ -190,7 +190,7 @@
         "sha256": { "$ref": "#/$defs/sha256_or_null" },
         "size_bytes": { "type": [ "integer", "null" ] },
         "signing_fingerprint": { "type": [ "string", "null" ] },
-        "changelog": { "description": "Release#changelog is jsonb -- shape not constrained further here." },
+        "changelog": { "type": [ "string", "null" ], "description": "Release#changelog is jsonb internally (an array of {message} entries), rendered here as newline-joined '- message' lines via Release#text_changelog(default_template: false) -- never the raw jsonb. Empty string, not the default-template placeholder, when the release has no changelog entries; D-store's reader (5.g.i.zi, already built against this) supplies its own 'No changelog provided.' text for that case. Fixed to a plain string this session (29b/29d) after cross-repo review found D-store's reader already committed to reading it as one and calling .trim() on it directly." },
         "released_at": { "type": "string", "format": "date-time" },
         "status": { "enum": [ "available", "halted", "pulled" ] },
         "compatibility": {

@@ -101,13 +101,23 @@ RSpec.describe CatalogIndex::Serializer do
       expect(version[:download_url]).to eq(release.download_url)
       expect(version[:sha256]).to eq(Digest::SHA256.hexdigest('apk bytes'))
       expect(version[:signing_fingerprint]).to eq('abc123')
-      expect(version[:changelog]).to eq([])
+      expect(version[:changelog]).to be_nil
       expect(version[:released_at]).to eq(release.created_at.utc.iso8601)
       expect(version[:status]).to eq('available')
       expect(version[:compatibility]).to eq(
         min_sdk: nil, target_sdk: nil, abis: [], screen_densities: [],
         required_features: [], permissions: []
       )
+    end
+
+    it 'renders a real changelog as the joined text_changelog string, not the raw jsonb (Task 29d finding)' do
+      app, release = build_app_with_release
+      release.update_column(:changelog, [ { 'message' => 'Fixed login crash' }, { 'message' => 'Improved battery usage' } ])
+
+      result = described_class.call(app)
+
+      expect(result[:apps].first[:versions].first[:changelog])
+        .to eq("- Fixed login crash\n- Improved battery usage")
     end
 
     it 'derives a schema-valid slug from the app name' do

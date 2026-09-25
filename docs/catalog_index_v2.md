@@ -89,7 +89,7 @@ full rationale and the phase this sits in (Phase 1, trust core).
           "sha256": null,
           "size_bytes": 15728640,
           "signing_fingerprint": "d41d8cd9...",
-          "changelog": null,               // NEW -- Release already has a changelog column; 29b just needs to serialize it
+          "changelog": "- Fixed login crash\n- Improved battery usage",  // NEW -- a plain string via Release#text_changelog(default_template: false), not the raw jsonb column; "" (not null) for a release with no entries
           "released_at": "2026-09-01T00:00:00Z",  // NEW -- the release's created_at
           "status": "available",           // NEW -- "available" | "halted" | "pulled" (27f owns transitions; 29b just reads whatever the column says once 27f adds it)
           "compatibility": {                // NEW, reserved for 29c -- APK extraction is separate work
@@ -158,8 +158,11 @@ lands): `App#slug`, `App#summary`, `App#category`, `App#license`,
 serialized in v1), publisher bio/profile_url/joined_at, the `data_safety`/
 `content_rating`/`contains_ads`/`has_in_app_purchases` listing declarations,
 `editorial`/`sponsored_slots`/`collections` (31a), and per-release
-`changelog` (already exists as a column), `released_at` (`Release#created_at`
-— already exists), `status` (27f), and `compatibility` (29c).
+`changelog` (rendered as a plain string via `Release#text_changelog`, not
+the raw jsonb column — fixed by 29b/29d after cross-repo review found
+D-store's reader already committed to a plain string), `released_at`
+(`Release#created_at` — already exists), `status` (27f), and
+`compatibility` (29c).
 
 ## ❓ Open decisions (not resolved by this slice)
 

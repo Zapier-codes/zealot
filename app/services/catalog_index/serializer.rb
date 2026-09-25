@@ -190,7 +190,7 @@ module CatalogIndex
         # Set only for org-signed builds delivered through
         # AnthropicAssetDeliveryJob (see AndroidSigningKey); nil otherwise.
         signing_fingerprint: release.signing_key_checksum,
-        changelog: release.respond_to?(:changelog) ? release.changelog : nil,
+        changelog: text_changelog_for(release),
         released_at: iso(release.created_at),
         # No `status` column exists yet (27f owns halt/pull transitions) --
         # "available" is the honest current state of every release that
@@ -240,6 +240,29 @@ module CatalogIndex
 
     def iso(timestamp)
       timestamp&.utc&.iso8601
+    end
+
+    # `Release#changelog` is jsonb internally -- an array of `{'message' =>
+    # ...}` hashes, never a plain string (see `Release#convert_changelog`).
+    # `#text_changelog(default_template: false)` is this codebase's own
+    # existing helper for rendering that as a joined `"- message"` string
+    # (already used by the release-deployed email and the release detail
+    # page) -- reused here rather than duplicating that formatting, and
+    # `default_template: false` specifically so an empty changelog comes
+    # back as `""`/`nil`, not Zealot's own "no changelog was given"
+    # placeholder text stacked underneath D-store's separate "No changelog
+    # provided." fallback for the exact same case.
+    #
+    # This was originally `release.changelog` (the raw jsonb) with a v2
+    # schema comment saying its "shape not constrained further"; fixed
+    # here after cross-repo review (Task 29d) found D-store's reader
+    # already committed to reading this field as a plain string and
+    # calling `.trim()` on it directly -- the raw jsonb would have thrown
+    # at runtime the first time a real release had a changelog entry.
+    def text_changelog_for(release)
+      return nil unless release.respond_to?(:text_changelog)
+
+      release.text_changelog(default_template: false).presence
     end
   end
 end

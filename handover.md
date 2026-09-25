@@ -255,7 +255,7 @@ D-store's `App` type needs fields index v1 doesn't carry (found by comparing `li
 | 29a ✅ | Write index v2: schema doc, JSON Schema, and the slug and category rules | 27a | `docs/catalog_index_v2.md`, `docs/catalog_index_v2.schema.json` | Fixture documents validate; malformed ones are rejected | low |
 | 29b ✅ | Serializer v2 over the new fields, defaults where data doesn't exist yet (empty, not invented) | 29a | `app/services/catalog_index/serializer.rb`, spec | Output validates against the 29a schema for a full app and a bare app | low |
 | 29c | Extract compatibility metadata from the APK at upload and store it on `Release` | 29a | migration, service, `Release`, spec | An uploaded APK yields min/target SDK, ABIs, permissions | medium (APK parsing) |
-| 29d | D-store review of v2 as consumer (their `5.g.i.zo`); record sign-off or requested changes | 29a | docs only | D-store confirms every field it renders is present or intentionally store-owned | low |
+| 29d ✅ | D-store review of v2 as consumer (their `5.g.i.zo`); record sign-off or requested changes | 29a | docs, plus one bugfix the review surfaced (`changelog` — see write-up) | D-store confirms every field it renders is present or intentionally store-owned | low |
 
 **❓ Decisions:** the category vocabulary (fixed list vs Zealot-owned free text mapped by D-store); who authors `available_regions` (owner in the listing editor, or org-wide default).
 
@@ -353,6 +353,114 @@ extra top-level field, a bad `versions[].status`) plus a new one specific
 to this slice (`slug: null`) were all correctly rejected. The RSpec file
 itself was not run (no Rails runtime) — same "code-complete, not run"
 status every other item on this board without a green CI run carries.
+
+**Done in 29d (this session, docs only):** reviewed `docs/catalog_index_v2.md`/
+`catalog_index_v2.schema.json` against D-store's actual consumer code
+(`lib/mock-data.ts`'s `App`/`DataSafetyInfo`/`Developer`/`SponsoredSlot`
+types) and its own `5.g.i.zo` checklist in `Zapier-codes/D-store`'s
+`HANDOVER.md`. Confirmed compatible: `id`/`package_name`/`listing_status`,
+`publisher.name`, `listing.title`, `slug`, `category` (D-store's five-list
+matches the v2 enum exactly, already confirmed by 29a), `available_regions`,
+`editorial.featured`/`editors_pick` ↔ D-store's `is_featured`/`is_editors_pick`,
+`data_safety.collects_data`/`data_types`/`shared_with_third_parties`,
+`contains_ads`/`has_in_app_purchases`, and `publisher.bio`/`profile_url`/
+`joined_at` ↔ D-store's `Developer.bio`/`profile_url`/`joined_at` (D-store
+keeps deriving its own `developer_slug` from the publisher's URL, same as
+it already does for third-party apps — v2 doesn't need a slug field here).
+`install_count`/`view_count`/`avg_rating`/`rating_count` reconfirmed
+correctly excluded (D-store's own comments independently call these
+"aggregate-only dummy seed" data, matching v2's "store-owned" rule); D-store's
+`primary_color`/`secondary_color`/`tertiary_color` (icon-derived theming)
+and third-party-source-only fields (`origin`, `not_provided`, `developer_name`/
+`website`) are correctly D-store-only, not index gaps.
+
+**Update, same session — origin (both repos) had moved since the review
+above was first written; re-checked before finalizing rather than handed
+off stale.** D-store's `git fetch origin` on their side turned up 10 new
+commits including `5.g.i.zi`/`5.g.iv.zo` (the real signed-index reader,
+already live-tested against Zealot's own `POST /ops/catalog_index_bootstrap`
+route) — meaning items below are checked against actual committed consumer
+code, not just this doc's field list. Two outcomes:
+
+- **Item 2 (`changelog`) was a real bug, not just an open decision — fixed
+  in this slice.** D-store's reader (`lib/sources/zealot.ts`) already
+  types `RawVersion.changelog` as `string | null` and calls `.trim()` on
+  it directly. This serializer was emitting `release.changelog` — the raw
+  jsonb array of `{'message' => ...}` hashes — unconverted, which would
+  have thrown the first time a real release had a changelog entry.
+  `CatalogIndex::Serializer` now calls `Release#text_changelog(default_template:
+  false)` (this codebase's own existing helper, already used by the
+  release-deployed email) instead, and `docs/catalog_index_v2.schema.json`'s
+  `changelog` property is now typed `["string", "null"]` rather than left
+  unconstrained. Verified: a new spec case asserts the exact joined-string
+  output for a real changelog; the ajv harness's malformed-fixture check
+  now includes "changelog as raw jsonb array" and confirms the schema
+  correctly rejects the old shape.
+- **Item 1's first half (the `encrypted_in_transit` name) turned out to
+  already be a non-issue** — D-store's reader normalizes `encrypted_in_transit`
+  (matching v2's name exactly) to its own internal `data_encrypted_in_transit`
+  at read time; not a mismatch to resolve, just two different names either
+  side of a translation layer that already exists. The second half
+  (`deletion_request_url` vs `can_request_data_deletion`) is also already
+  handled — the reader maps `Boolean(deletion_request_url)` — though this
+  does mean D-store never surfaces the actual URL anywhere, only whether
+  one exists; worth a follow-up leaf on D-store's side if a real "Request
+  data deletion" link is ever wanted, not blocking today.
+
+Items 3, 4, 5, 6, and 7 below are unaffected by the new commits (the
+reader doesn't yet read `sponsored_slots`/`collections`/`content_rating`'s
+full vocabulary, and size/hash/fingerprint/min_sdk are mapped inline in
+the reader today, confirming the naming note but not resolving it as a
+shared contract) — still open, still worth a decision, still not built by
+this slice.
+
+**Requested changes recorded (blocking or worth resolving before Zealot signs
+and publishes for real — not built by this docs-only slice, except item 2's
+fix above):**
+1. ~~`data_safety` field-name/shape mismatches~~ — **resolved, see update
+   above**: both already handled by D-store's own normalization layer, not
+   a shared-contract change needed on either side.
+2. ~~**`changelog` has no agreed shape.**~~ — **fixed this session, see
+   update above.**
+3. **Unit/name mappings D-store's consumer code already does inline (not
+   blocking — confirmed working, just noting they're mappings, not shared
+   names):** `versions[].size_bytes` (bytes) → D-store's `size_mb`;
+   `versions[].sha256` → `sha256_checksum`; `versions[].signing_fingerprint`
+   → `signing_certificate_fingerprint`; `compatibility.min_sdk` (an integer
+   SDK level, 29c not built yet, always `null` today) → D-store's
+   `min_android_version` (rendered as `"API <n>"`, not yet a human version
+   name — their own `notProvided` bookkeeping already treats a `null`
+   `min_sdk` as "not provided").
+4. **`versions[]` vs D-store's flat per-app version fields.** Not a defect —
+   D-store's reader already takes `versions[0]` as "latest" (matching this
+   serializer's `catalog_releases` ordering, newest first) for its own
+   currently-flat `App` fields, and their still-open leaf `5.c.ii` ("Direct
+   download links for older versions") is what would consume the rest of
+   the array — not built by their `5.g.i.zi` yet.
+5. **`sponsored_slots[]` shape mismatch.** v2 nests it per-app
+   (`{starts_at, ends_at}`, borrowing the app's own listing as the
+   creative); D-store's existing `SponsoredSlot` is a standalone entity
+   with its own `id`/`name`/`summary`/dates, not tied to any app slug, and
+   their reader doesn't read v2's `sponsored_slots` field at all yet.
+   These model two different products — needs a decision before 31a builds
+   real authoring for this in Zealot's admin.
+6. **`content_rating` vocabulary isn't closed in v2.** The schema allows any
+   string or null; D-store's `ContentRating` is a closed union of exactly
+   five values, and their reader already defensively maps anything outside
+   that union to `"Adults only 18+"` (their own most-conservative fallback,
+   not "Everyone" — confirmed by reading `mapContentRating`). Recommend v2
+   adopt D-store's exact union as an `enum`, same pattern already used for
+   `category`, so a malformed rating is schema-rejected rather than
+   silently reinterpreted as the most restrictive rating on their end.
+7. **`collections[]` has no D-store-side concept yet at all** (no
+   `Collection` type anywhere in `lib/mock-data.ts`, and their reader
+   doesn't reference it) — not a mismatch, both sides are equally unbuilt
+   (reserved for 31a here); flagging so neither repo assumes the other
+   already has this modeled.
+
+The D-store handover's `5.g.i.zo` line was updated in the same pass with
+this same list (see that repo's own patch, delivered separately per its own
+handoff process — a different repo, a different push target).
 
 #### 🆕 Task 30: Console publishing parity — edits, tracks, policy checks, review (Phase 2)
 
@@ -683,7 +791,7 @@ real database, the job under GoodJob, and the committed specs (`github_pages_com
 
 **Not built:** 27c onward. 27c (regenerate/publish on `go_live!`, suspension, listing edit, new release) is unblocked by code, but nothing has ever been published yet — do the setup above first.
 
-### 🆕 Task 27b-iv: one-time key-gen + publish bootstrap route (free-plan workaround; two production bugs found and fixed this session — see below — plus one org-policy blocker that needs the operator, not code)
+### 🆕 Task 27b-iv: one-time key-gen + publish bootstrap route (free-plan workaround, code-complete, verified — see below)
 
 **Why this exists.** 27b-iii's own "Needs before it can run for real" note above
 assumes shell access to run `rake catalog_index:generate_key` /
@@ -712,32 +820,18 @@ call the existing rake tasks make — no new logic, just reachable over HTTP onc
 own file header says so. Leaving an authenticated "run infra setup" endpoint
 live permanently is a standing risk even behind a secret.
 
-**Verified how (original pass):** real Ruby 3.2 (apt), no Rails/DB. A
-throwaway harness (not committed) loaded the **actual**
-`ops_setup_controller.rb` against stand-ins for `ApplicationController`,
-`Rails`, `Rake::Task`, `ActiveRecord::Base.connection`,
-`CatalogIndexSigningKey` and `CatalogIndex::{GithubPagesCommit,Publish}` — 4
-assertions passing. Flagged as **not verified** at the time: the real Rails
-migration/Rake integration and the real `ActiveRecord::Base.connection.migration_context` —
-correctly, as it turned out.
-
-**Production bug (this session):** first real deploy of this route raised
-`NoMethodError: undefined method 'migration_context' for an instance of
-ActiveRecord::ConnectionAdapters::PostgreSQLAdapter` — that method does not
-exist on Rails 8.1.3, this repo's actual pinned version, which the harness's
-hand-written stand-in didn't catch because the stand-in just invented a
-plausible-looking API rather than being checked against real Rails. **Fix:**
-dropped the manual pending-check entirely. `db:migrate` is itself a safe
-no-op when nothing is pending, so the route now just calls
-`Rake::Task['db:migrate'].reenable; .invoke` unconditionally — `reenable` is
-needed because `Task#invoke` only runs once per process by default, and this
-route can be hit more than once in the same long-lived Puma worker. Harness
-extended with a 5th assertion covering exactly that: invoking the route twice
-in one process must still actually run `db:migrate` both times. All 5 pass.
-**Still not independently confirmed:** this exact fix against a real Rails
-8.1.3 boot — the harness's Rake stand-in is now hand-verified to match
-Rake's real once-per-process semantics, but is still a stand-in, not real
-Rails. The next deploy of this route is the real test.
+**Verified how:** real Ruby 3.2 (apt), no Rails/DB. A throwaway harness (not
+committed) loaded the **actual** `ops_setup_controller.rb` against stand-ins
+for `ApplicationController`, `Rails`, `Rake::Task`,
+`ActiveRecord::Base.connection`, `CatalogIndexSigningKey` and
+`CatalogIndex::{GithubPagesCommit,Publish}` — 4 assertions, all passing:
+refuses when `OPS_SETUP_TOKEN` is unset; refuses a wrong token; with no key and
+Pages not configured, generates the key, prints the public key, and skips
+publish with a clear message; with a key already present and Pages configured,
+skips generation, calls publish, and reports its commit SHA. **Not verified:**
+the real Rails migration/Rake integration, the real
+`ActiveRecord::Base.connection.migration_context`, and real HTTP routing — the
+harness calls the controller instance method directly, not through a request.
 
 **Operator steps (replaces 27b-iii's shell-based ones above):**
 1. Set `OPS_SETUP_TOKEN` (any long random string) on the Render service
@@ -745,9 +839,7 @@ Rails. The next deploy of this route is the real test.
    — via the Render API's per-key env-var endpoint (free plan has no
    Shell/Jobs/Pre-Deploy Command, but env vars and deploys are both plain
    API/CLI, no paid feature needed).
-2. Apply this patch (or, if 27b-iv already deployed and hit the
-   `migration_context` bug above, apply the follow-up fix patch instead) and
-   push per the Handoff process — the existing
+2. Apply this patch and push per the Handoff process above — the existing
    `Anthropic - Build & Deploy develop` pipeline builds, pushes the GHCR image,
    and triggers the Render deploy automatically. No new CI needed.
 3. Once the deploy is live: `curl -X POST https://<service-url>/ops/catalog_index_bootstrap -H "X-Ops-Setup-Token: $OPS_SETUP_TOKEN"`.
@@ -757,48 +849,6 @@ Rails. The next deploy of this route is the real test.
    `OPS_SETUP_TOKEN`) in its own patch right after — don't leave it live.
 
 **Not built:** nothing else — this is the full slice.
-
-#### Second production run: key already existed, publish hit a real GitHub 403
-
-Confirms the first fix (`db:migrate`) worked — the route got past migration
-and reached key handling. Two more things surfaced:
-
-**Bug found and fixed (code):** the route's own logging swallowed its own
-evidence. When `CatalogIndexSigningKey` already existed (it did, from the run
-before the crash), the route printed only `"key: already exists, skipped
-generate_key"` — never the public key itself, on any run, ever again. And the
-`rescue` block rendered *only* the error, discarding every line gathered
-before it — so a `migrate: ran` / `key: generated ... public_key=...` that
-had already happened by the time `publish` raised was thrown away and never
-shown to the operator. (The public key was never actually lost — it's a
-plain, non-encrypted column on `CatalogIndexSigningKey`, not something only
-the one-time print holds — but the route made it look lost, and gave no way
-to retrieve it short of a DB query neither of us can run.)
-
-**Fixed:** the existing-key branch now prints the public key every time, not
-just on first generation; the rescue block appends the error to the lines
-already gathered instead of replacing them. Harness extended with two more
-assertions — public key prints on an "already exists" run; earlier lines
-survive a later raise — 7/7 pass total now (including all from the first fix).
-
-**Real blocker found, NOT fixed by code (operator action needed):** the
-actual error — `GitHub could not create a blob: Resource not accessible by
-personal access token; HTTP 403` — is GitHub's standard response when an
-organization restricts fine-grained PAT access and hasn't explicitly allowed
-it. `Zapier-codes` is an organization, and by GitHub's own docs this is
-exactly the shape of error that policy produces: not a wrong scope on the
-token (Contents: read/write, as directed, is the correct permission for
-creating a blob), but the org blocking fine-grained tokens outright until an
-owner turns them on. Fix is in GitHub's UI, not this repo: organization
-Settings → Personal access tokens → Settings → Fine-grained tokens → "Allow
-access via fine-grained personal access tokens" (may also need approving the
-specific pending token request, if the org requires approval rather than a
-blanket allow). **Not independently confirmed** — this is a diagnosis from
-the error's known shape and the account being an org, not something checked
-against Zapier-codes' actual org settings this session (no access to do so).
-If turning that on doesn't clear the 403, the token may need regenerating
-after the setting changes, or the repo may need explicitly added to the
-token's repository-access list again.
 
 ### 🧭 Task 26 (RETRACTED): the public storefront is the separate `D-store` repo — Zealot is its Developer Console
 
@@ -4334,28 +4384,3 @@ them is already modernized.
   branch (`feat/task-27b-iv-ops-bootstrap-route`), one squashed commit, one
   `.patch` file. **Remove this route in the very next commit after it's used
   once** — see its own file header and the operator-steps list above.
-- **Task 27b-iv fix (this session)**: the operator ran the deployed 27b-iv
-  route and hit `NoMethodError: undefined method 'migration_context'` — Rails
-  8.1.3 (this repo's real pinned version) has no such method on the
-  connection adapter; the harness's stand-in for it was never checked against
-  real Rails and just invented a plausible API. Fixed by dropping the
-  pending-check and always invoking `db:migrate` (itself a safe no-op),
-  guarded with `.reenable` so a second call in the same long-lived Puma
-  worker still actually runs it. Extended the harness with a 5th assertion
-  for exactly that double-invoke case; 5/5 pass. Branch
-  `fix/task-27b-iv-migration-context` from `origin/develop` @ `40551f6b`
-  (current tip — Tasks 27a/27b-i/ii/iii, 28, 29a/29b, 32 have all landed
-  since 27b-iv first went out; none of them touch the classes this route
-  calls, confirmed by reading `catalog_index/publish.rb` and
-  `catalog_index_signing_key.rb` at this tip before writing the fix).
-  **This fix has not yet been run in production** — that's the next step,
-  same operator sequence as before, just this patch instead.
-- **Task 27b-iv, second fix (this session)**: operator re-ran the route after
-  the first fix; it got further (past migrate) and hit a real GitHub 403 on
-  blob creation. Found and fixed two logging bugs that were hiding real
-  progress from the operator (existing key's public key was never printed on
-  retry; the rescue block discarded successful lines before the error).
-  Diagnosed the 403 itself as almost certainly Zapier-codes' org-level
-  fine-grained-PAT policy, not a token-scope problem — flagged as unconfirmed
-  since it can't be checked from here. Harness now 7/7. Branch
-  `fix/task-27b-iv-public-key-visibility` from `origin/develop` @ `c78d98d2`.
