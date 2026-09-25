@@ -49,6 +49,7 @@ en:
         publisher: "Publishing as %{name} (%{kind})."
         edit_publisher: Edit publisher details
         publish: Publish to the store
+        pay: Pay $14.99 to publish
         mark_paid: Mark as paid
         mark_paid_hint: Payments are not connected yet. Until they are, an admin can record the payment by hand, which puts the app live.
         draft:
@@ -64,6 +65,14 @@ en:
         need_profile: First tell us how you publish, as an individual or as a company.
         requested: Publishing requested. The app goes live once payment is received.
         not_available: This app can't be sent for payment right now.
+      pay:
+        title: Starting payment
+        starting: Starting your $14.99 payment with B-PAY…
+        not_finished: This page is a placeholder — the checkout form isn't wired up yet. The app goes live automatically once B-PAY confirms the charge.
+        client_secret_ready: Payment session ready.
+        back: Back to store listing
+        not_available: This app isn't waiting for payment.
+        payment_start_failed: Couldn't start payment right now. Please try again shortly.
       mark_paid:
         notice: Marked as paid. The app is now live on the store.
         not_available: This app isn't waiting for payment.

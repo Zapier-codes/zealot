@@ -1,0 +1,15 @@
+- content_for :title do
+  = @title
+
+.row
+  .col-md-12
+    .card
+      .card-body class="space-y-4"
+        p = t('.starting')
+        p.opacity-70 = t('.not_finished')
+        //- ⚠️ Task 32: no Hyperswitch.js checkout embed here yet — see
+        //- handover.md and HyperswitchWebhooksController's class comment.
+        //- @client_secret is exposed (via the controller instance
+        //- variable, not rendered here) for whoever wires that up next.
+        p.text-xs.opacity-50 = t('.client_secret_ready')
+        = link_to t('.back'), app_store_listing_path(@app), class: 'd-link'

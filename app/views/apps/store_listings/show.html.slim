@@ -35,6 +35,10 @@ ruby:
         - if status == 'draft' && policy(@app).list_on_store?
           = button_to t('.publish'), app_store_listing_path(@app), method: :post, class: 'd-btn d-btn-primary'
 
+        - if status == 'awaiting_payment' && policy(@app).list_on_store?
+          div class="space-y-2"
+            = button_to t('.pay'), pay_app_store_listing_path(@app), method: :post, class: 'd-btn d-btn-primary'
+
         - if status == 'awaiting_payment' && policy(@app).mark_paid?
           div class="space-y-2"
             p.text-sm.opacity-70 = t('.mark_paid_hint')

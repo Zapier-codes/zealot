@@ -9,6 +9,13 @@ Rails.application.routes.draw do
   get   'email_preferences/:token', to: 'email_preferences#show',   as: :email_preferences
   patch 'email_preferences/:token', to: 'email_preferences#update'
 
+  # Task 32: inbound B-PAY (Hyperswitch) webhook. Top-level, not under
+  # `namespace :api`, because it's signature-authenticated server-to-server
+  # (HyperswitchWebhooksController), not user-token authenticated like the
+  # rest of that namespace — same reasoning as email_preferences above
+  # being outside any auth-required scope.
+  post 'hooks/hyperswitch', to: 'hyperswitch_webhooks#create'
+
   #############################################
   # User
   #############################################
@@ -46,6 +53,9 @@ Rails.application.routes.draw do
     # Task 25: the app's store listing (draft -> awaiting payment -> live).
     resource :store_listing, only: %i[show create], module: :apps do
       patch :mark_paid
+      # Task 32: the real payment path — creates a Payment and starts a
+      # B-PAY checkout. See Apps::StoreListingsController#pay.
+      post :pay
     end
 
     resources :schemes, except: %i[show] do

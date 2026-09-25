@@ -9,6 +9,8 @@ class App < ApplicationRecord
   has_many :collaborators, dependent: :destroy
   has_many :schemes, dependent: :destroy
   has_many :debug_files, dependent: :destroy
+  # Task 32: listing-fee + maintenance charges via B-PAY.
+  has_many :payments, dependent: :destroy
 
   scope :all_names, -> { all.map { |c| [c.name, c.id] } }
   scope :debug_files, -> { joins(:debug_files).distinct }

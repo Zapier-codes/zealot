@@ -49,6 +49,7 @@ zh-CN:
         publisher: "发布身份：%{name}（%{kind}）。"
         edit_publisher: 编辑发布者信息
         publish: 发布到商店
+        pay: 支付 $14.99 以发布
         mark_paid: 标记为已付款
         mark_paid_hint: 支付功能尚未接入。在接入之前，管理员可以手动记录付款，应用随即上架。
         draft:
@@ -64,6 +65,14 @@ zh-CN:
         need_profile: 请先告诉我们你以个人还是企业身份发布。
         requested: 已提交发布请求。收到付款后应用立即上架。
         not_available: 此应用目前无法进入付款。
+      pay:
+        title: 正在发起付款
+        starting: 正在通过 B-PAY 发起 $14.99 付款…
+        not_finished: 此页面为占位页——收银表单尚未接入。B-PAY 确认付款后应用会自动上架。
+        client_secret_ready: 付款会话已就绪。
+        back: 返回商店上架页面
+        not_available: 此应用当前不在等待付款状态。
+        payment_start_failed: 暂时无法发起付款，请稍后重试。
       mark_paid:
         notice: 已标记为已付款，应用现已上架。
         not_available: 此应用当前不在等待付款状态。

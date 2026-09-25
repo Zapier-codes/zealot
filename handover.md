@@ -736,6 +736,118 @@ then open the alias to approved companies).
 **Revert:** `db:rollback` the migration, then revert the listed files (or
 `git revert` the commit).
 
+### 🆕 Task 32: Payment for the store listing fee — B-PAY (self-hosted Hyperswitch), calls `App#go_live!` (code-complete, not run)
+
+Closes the "payment provider is still open" ❓ that Task 25 left blocking its
+own next step (quoted above), and is the same gap Task 12 names for email #3
+("Payment receipt / invoice — ⛔ not built — there is still no
+payment/invoice model"). Provider is **B-PAY**, the operator's self-hosted
+Hyperswitch instance (`github.com/Zapier-codes/control-center` is
+Hyperswitch's **Control Center** — the merchant dashboard, not the API
+server; the actual API is the separate running service at
+`https://b-pay-backend-new.onrender.com`, confirmed live by the operator via
+`curl .../health` this session). Pricing (operator decision, this session):
+**$14.99** one-time listing fee, **$2/mo** maintenance, **$9.99 per 6
+months** if paid semi-annually (≈17% off the $12 raw 6-month rate), and a
+fully-custom annual tier (not priced yet). **Refund policy (operator
+decision, this session): none, ever — matches Play's own non-refundable
+registration-fee precedent** (`Payment#mark_refunded!` exists only for a
+manual admin action; nothing in this codebase calls it automatically).
+
+**⚠️ Read before starting anywhere else on this board.** This session
+briefly rewrote Task 9 (twice, across two earlier syncs) under the mistaken
+belief that Zealot hosts the storefront directly — it does not (Task 26).
+That confusion is fully retracted; this entry is the only surviving record
+of the payment work. If another session's board shows a *different*
+"Task 32," or a payment slice under a different number, **check for a
+duplicate before building further** — this repo had three concurrent
+sessions push directly to `develop` during the span of this one
+conversation (`0d0cab54`, then `6fdb905e`, discovered via `git fetch`
+partway through unrelated work), and Task 27's own numbers (27, 28, 29,
+31a–c) were already claimed by the time this entry was written. Numbers
+above 32 have not been checked as of this entry.
+
+**What's built:**
+- `db/migrate/20260925110000_create_payments.rb` + `app/models/payment.rb`:
+  `Payment` — `purpose` (`listing_fee`/`maintenance`, deliberately a
+  *different* field from `PublisherProfile#kind` — don't conflate the two),
+  `billing_period`, `amount_cents`, `status`, `hyperswitch_payment_id` /
+  `hyperswitch_mandate_id`, an **encrypted** `hyperswitch_raw_response`
+  (same `encrypts` pattern as `PlayCredential#service_account_json`),
+  `next_charge_at` for the recurring side. `has_many :payments` added to
+  `App` and `User`.
+- `app/services/hyperswitch_client.rb`: mirrors `NovuClient`'s exact shape
+  (plain Faraday, `TemporaryError`/`PermanentError`, no new gem).
+  `create_payment` (the listing fee, with `setup_future_usage` so a mandate
+  comes back in the same call), `charge_mandate` (a later maintenance
+  cycle, off-session, against the stored `mandate_id` — no card
+  re-entry), `retrieve_payment`. Reads `HYPERSWITCH_API_KEY` /
+  `HYPERSWITCH_API_URL` (`.env.example`), defaulting the URL to the
+  confirmed B-PAY instance.
+- `app/controllers/hyperswitch_webhooks_controller.rb` + `POST
+  /hooks/hyperswitch` (top-level, not under `namespace :api` — this is
+  signature-authenticated server-to-server, not user-token authenticated).
+  On `payment_succeeded`, marks the `Payment` succeeded **and, for a
+  `listing_fee` payment, calls `payment.app.go_live!`** — the exact
+  integration point `Apps::StoreListingsController#mark_paid`'s own
+  comment named ("the payment slice will call App#go_live! ... and this
+  action goes away"). The checkout redirect is never trusted alone, only
+  this signed call.
+- `Apps::StoreListingsController#pay` (`POST
+  /apps/:app_id/store_listing/pay`) — owner-only, only from
+  `awaiting_payment`, creates a `Payment` and calls
+  `HyperswitchClient.create_payment`. **`mark_paid` is deliberately left
+  in place**, not removed as Task 25's comment anticipated — there is no
+  confirmed client-side B-PAY checkout UI yet (see next paragraph), so
+  pulling the only working "go live" path before its replacement is
+  verified end-to-end would leave the app with no way to go live at all.
+  Remove `mark_paid` once `pay` is confirmed working against real B-PAY
+  traffic.
+- `app/views/apps/store_listings/pay.html.slim` + a new "Pay $14.99 to
+  publish" button on the `show` view (`awaiting_payment` state).
+- `spec/models/payment_spec.rb`, `spec/services/hyperswitch_client_spec.rb`,
+  `spec/requests/hyperswitch_payment_spec.rb` (covers both the webhook →
+  `go_live!` integration and the `pay` action, including the owner-only
+  check and the not-awaiting-payment refusal).
+
+**⚠️ Two things NOT finished, flagged rather than guessed at:**
+1. **Webhook signature format unconfirmed.** B-PAY's actual outgoing
+   webhook signing scheme (header name, algorithm, whether a timestamp is
+   included) was not independently verified for this self-hosted instance.
+   `signature_valid?` implements a generic, configurable
+   HMAC-SHA256-over-raw-body check (`HYPERSWITCH_WEBHOOK_SIGNATURE_HEADER`,
+   default `X-Webhook-Signature`) as the best available default. Fails
+   *safe* if wrong (rejects everything; nothing gets corrupted), but
+   still needs a real event from B-PAY's dashboard, logged headers, and a
+   one-line fix if the name/algorithm differs — before anything depends on
+   it working.
+2. **No checkout UI.** `#pay` creates the `Payment` and gets a
+   `client_secret` back from B-PAY, but nothing renders an actual payment
+   form — Hyperswitch's client-side confirmation (Hyperswitch.js) requires
+   integration details (SDK version, Elements config) that were not
+   available to confirm here, and this codebase does not ship guessed
+   frontend integrations. `pay.html.slim` is a placeholder that says so.
+   Whoever picks this up next needs B-PAY's actual client-side docs, not
+   an assumption.
+
+**Verified how:** no `bundle`/Rails/Postgres in this sandbox (same
+limitation as every other "code-complete, not run" item on this board).
+`apt-get install ruby` (archive.ubuntu.com is allowlisted) gave a real
+Ruby 3.2 interpreter; every new/edited `.rb` file was run through `ruby -c`
+(syntax only) and came back clean, including after each of the two
+mid-session renames (`Task 9` slice numbering → `Task 27` → `Task 32`, as
+the real board kept moving underneath this work — see the ⚠️ above). The
+two edited `.slim` views were checked by hand against this file's own
+working examples (no `slim` gem available — `rubygems.org` isn't on the
+allowed-domains list, unlike the apt mirrors). The two edited locale
+YAMLs were parsed with Ruby's `YAML.load_file` and came back valid. The
+migration has not actually run and the specs have not actually executed.
+
+**Not built:** the checkout UI (above), the 2-month company-suspension job
+and its reminder emails (natural next step once Task 25's KYB fields
+exist), and wiring `Payment::due_for_charge` to an actual recurring-billing
+job.
+
 ### 🆕 Task 24: Publisher alias — the front-facing "Published by" name on our own store pages (first slice of the store/publisher flow; code-complete, compiled, not run in Rails)
 
 **Status of earlier work.** Tasks 22 + 23 (one combined commit) **landed on
