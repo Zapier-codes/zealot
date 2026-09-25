@@ -87,6 +87,17 @@ class App < ApplicationRecord
     end
   end
 
+  # Task 29b: every release across every scheme/channel, newest first -- the
+  # catalog index v2 serializer's `versions[]` needs the full history, not
+  # just `recently_release`'s single latest one. Not cached like
+  # recently_release (no established invalidation hook for the whole list
+  # yet); revisit if index generation shows up as slow.
+  def catalog_releases
+    return Release.none unless channel_ids
+
+    Release.where(channel: channel_ids).order(created_at: :desc)
+  end
+
   def total_schemes
     schemes.size
   end

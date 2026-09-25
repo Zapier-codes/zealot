@@ -236,7 +236,7 @@ manual-only as well, it is the same one-line trigger change.)
 3. Which Aptoide MCP: the official `Aptoide/aptoide-mcp` (Python, MIT, listed on Aptoide's GitHub, last updated Feb 12, 2026) or the third-party "Aptoide Ultimate API" actor on Apify (pay-per-query, hosted by Apify). Neither was inspected beyond its public listing this session.
 4. Aptoide's terms for re-presenting its catalog and linking to its downloads: not checked. Confirm before building `5.h.ii` in D-store.
 
-#### 🟡 Task 29: Catalog index v2 — the fields D-store and the Updater actually need (Phase 1) (29a done this session; 29b–29d planned)
+#### 🟡 Task 29: Catalog index v2 — the fields D-store and the Updater actually need (Phase 1) (29a, 29b done; 29c–29d planned)
 
 D-store's `App` type needs fields index v1 doesn't carry (found by comparing `lib/mock-data.ts` with `docs/catalog_index_v1.md`). Nothing consumes v1 yet (27a is not published anywhere), so revising now costs nothing; after 27b signs and publishes, every change is a migration.
 
@@ -253,7 +253,7 @@ D-store's `App` type needs fields index v1 doesn't carry (found by comparing `li
 | ID | Goal | Depends on | Files (predicted) | Acceptance check | Risk |
 |---|---|---|---|---|---|
 | 29a ✅ | Write index v2: schema doc, JSON Schema, and the slug and category rules | 27a | `docs/catalog_index_v2.md`, `docs/catalog_index_v2.schema.json` | Fixture documents validate; malformed ones are rejected | low |
-| 29b | Serializer v2 over the new fields, defaults where data doesn't exist yet (empty, not invented) | 29a | `app/services/catalog_index/serializer.rb`, spec | Output validates against the 29a schema for a full app and a bare app | low |
+| 29b ✅ | Serializer v2 over the new fields, defaults where data doesn't exist yet (empty, not invented) | 29a | `app/services/catalog_index/serializer.rb`, spec | Output validates against the 29a schema for a full app and a bare app | low |
 | 29c | Extract compatibility metadata from the APK at upload and store it on `Release` | 29a | migration, service, `Release`, spec | An uploaded APK yields min/target SDK, ABIs, permissions | medium (APK parsing) |
 | 29d | D-store review of v2 as consumer (their `5.g.i.zo`); record sign-off or requested changes | 29a | docs only | D-store confirms every field it renders is present or intentionally store-owned | low |
 
@@ -285,6 +285,74 @@ deliberately malformed documents (a `category` outside the fixed vocabulary,
 `sequence` as a string, an extra unrecognized top-level field, a
 `versions[].status` outside its three allowed values) — all four correctly
 rejected. Neither `ajv` nor `ajv-formats` are dependencies of this repo.
+
+**Done in 29b (this session, code-complete, verified — see below):** rewrote
+`CatalogIndex::Serializer` to emit the v2 shape (`SCHEMA_VERSION = 2`):
+`sequence`/`expires_at` at the index level (both new keyword args, see the
+❓ below), every 29a-reserved per-app field at its documented default
+(`null`/`[]`/`false`, nothing invented), and `latest_version` replaced by
+`versions[]` built from a new `App#catalog_releases` (all releases across
+every scheme/channel, newest first — v1 only ever looked at
+`recently_release`, the single latest one). `Signer`/`Publish`/the rake
+tasks needed no changes — they call `Serializer.call` positionally and
+don't reference `latest_version`, so this doesn't touch 27b's already-built
+publish path. Spec rewritten alongside (`spec/services/catalog_index/serializer_spec.rb`)
+using the same real-`App`/real-`Release` approach as the v1 spec (no
+factory for `Release`, built by hand against `db/schema.rb`'s non-null
+columns) — adds cases for the envelope fields, multiple releases per app,
+and the two slug cases below.
+
+**Two things flagged rather than silently built past, per this file's own
+"❓ decisions resolved by the operator" rule:**
+1. **`sequence` is not really wired up.** The v2 doc says "27b/29b wires
+   this up"; 29b's own predicted-files list only names the serializer, so
+   this slice added `sequence:`/`expires_at:` as plain keyword args (default
+   `sequence: 0`, `expires_at:` a new `DEFAULT_TTL` of 24h past
+   `generated_at` if the caller doesn't supply one) rather than reaching
+   into `Signer`/`CatalogIndexSigningKey` to persist a real counter.
+   **`Signer.call` still doesn't pass a sequence, so every published index
+   today would carry `sequence: 0`** — schema-valid but not yet doing the
+   rollback-detection job the field exists for. The natural next slice
+   (call it 29b-ii, or fold into 27b's remaining work) is: add a
+   `last_sequence` column next to `CatalogIndexSigningKey#last_signed_at`,
+   advance it under the same row lock, and have `Signer` pass it through.
+   Not done here — flagging instead of guessing at the DB migration this
+   session wasn't asked to make.
+2. **`slug` is derived, not persisted.** It's the one v2 field the schema
+   does not allow `null` for, so leaving it unset wasn't an option the way
+   it was for `summary`/`category`/etc. `Serializer#slug_for` computes a
+   deterministic, schema-valid slug from the app's *current* `name`
+   (parameterized; falls back to `app-<id>` for a name with no alphanumeric
+   characters — see the "falls back to app-<id>" spec case) every time the
+   index is generated. This is **not** the real slug the v2 doc's "The slug
+   rule" describes: it is not frozen at first go-live, so renaming an app
+   changes its slug, which is exactly what that rule says must never
+   happen once live. Whoever picks up Task 30's listing-edit machinery
+   needs to add a persisted `slug` column, generate it once
+   (collision-checked) the first time `listing_status` reaches `live`, and
+   have the serializer prefer the persisted value — at which point
+   `slug_for`'s derivation becomes the fallback for apps that predate that
+   migration, not the only path.
+
+**Verified how:** no Rails boot in this sandbox (Ruby 3.2.3 is installable
+via `apt-get update && apt-get install ruby`, confirming Task 22's note —
+`bundle`/Rails itself still isn't, `rubygems.org` is not reachable from
+here). Two separate checks: (1) `ruby -c` on both changed files, and a
+standalone harness (plain Ruby, `Struct` fixtures duck-typing the
+`App`/`Release` interface, no `require 'rails_helper'`) that calls
+`CatalogIndex::Serializer.call` directly and dumps the JSON — this is how
+the "full app" / "bare app" (no releases, no package name) / "app with an
+empty `versions[]`" fixtures were produced; (2) those three fixtures
+checked against `docs/catalog_index_v2.schema.json` with `ajv`/`ajv-formats`
+(`ajv/dist/2020`, for `$schema: .../2020-12/schema` — the default `ajv`
+entrypoint doesn't recognize that draft and throws) installed via `npm` in
+a scratch directory (`registry.npmjs.org` is reachable from this sandbox,
+unlike `rubygems.org`) — all three valid, and the same five malformed
+mutations 29a already checked (bad `category`, `sequence` as a string, an
+extra top-level field, a bad `versions[].status`) plus a new one specific
+to this slice (`slug: null`) were all correctly rejected. The RSpec file
+itself was not run (no Rails runtime) — same "code-complete, not run"
+status every other item on this board without a green CI run carries.
 
 #### 🆕 Task 30: Console publishing parity — edits, tracks, policy checks, review (Phase 2)
 
