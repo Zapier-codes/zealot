@@ -588,6 +588,65 @@ real database, the job under GoodJob, and the committed specs (`github_pages_com
 
 **Not built:** 27c onward. 27c (regenerate/publish on `go_live!`, suspension, listing edit, new release) is unblocked by code, but nothing has ever been published yet — do the setup above first.
 
+### 🆕 Task 27b-iv: one-time key-gen + publish bootstrap route (free-plan workaround, code-complete, verified — see below)
+
+**Why this exists.** 27b-iii's own "Needs before it can run for real" note above
+assumes shell access to run `rake catalog_index:generate_key` /
+`catalog_index:publish` by hand. This session confirmed against Render's own
+docs and this service's own API response that `zealot-web` is on the **free**
+plan, and Shell, one-off Jobs, and Pre-Deploy Command are **all paid-only** —
+none are available here. (The API response's `envSpecificDetails` silently
+dropped `preDeployCommand` entirely when it was PATCHed in, which is what
+surfaced this.) There is no way to run those two rake tasks against the
+deployed instance except through the app itself.
+
+**What's built:** `OpsSetupController#catalog_index_bootstrap`
+(`POST /ops/catalog_index_bootstrap`), authenticated the same way
+`HyperswitchWebhooksController` is — a shared secret (`OPS_SETUP_TOKEN`)
+compared with `ActiveSupport::SecurityUtils.secure_compare`, refusing (404) if
+the env var isn't set. In order: `db:migrate` (only if pending — this session
+also confirmed **no migration step exists anywhere in this container's boot
+path**; `docker/rootfs/etc/services.d/{zealot,job}/run` just exec Puma/GoodJob
+directly, nothing runs migrations), then `CatalogIndexSigningKey.generate!`
+(skipped if a key already exists, same guard as the rake task), then
+`CatalogIndex::Publish.call` (skipped with a clear message if
+`CATALOG_PAGES_REPO`/`CATALOG_PAGES_TOKEN` aren't set). Every step is the same
+call the existing rake tasks make — no new logic, just reachable over HTTP once.
+
+**⚠️ Temporary by design — remove it in the very next commit after use.** Its
+own file header says so. Leaving an authenticated "run infra setup" endpoint
+live permanently is a standing risk even behind a secret.
+
+**Verified how:** real Ruby 3.2 (apt), no Rails/DB. A throwaway harness (not
+committed) loaded the **actual** `ops_setup_controller.rb` against stand-ins
+for `ApplicationController`, `Rails`, `Rake::Task`,
+`ActiveRecord::Base.connection`, `CatalogIndexSigningKey` and
+`CatalogIndex::{GithubPagesCommit,Publish}` — 4 assertions, all passing:
+refuses when `OPS_SETUP_TOKEN` is unset; refuses a wrong token; with no key and
+Pages not configured, generates the key, prints the public key, and skips
+publish with a clear message; with a key already present and Pages configured,
+skips generation, calls publish, and reports its commit SHA. **Not verified:**
+the real Rails migration/Rake integration, the real
+`ActiveRecord::Base.connection.migration_context`, and real HTTP routing — the
+harness calls the controller instance method directly, not through a request.
+
+**Operator steps (replaces 27b-iii's shell-based ones above):**
+1. Set `OPS_SETUP_TOKEN` (any long random string) on the Render service
+   alongside `CATALOG_PAGES_REPO` / `CATALOG_PAGES_TOKEN` / `CATALOG_PAGES_BRANCH`
+   — via the Render API's per-key env-var endpoint (free plan has no
+   Shell/Jobs/Pre-Deploy Command, but env vars and deploys are both plain
+   API/CLI, no paid feature needed).
+2. Apply this patch and push per the Handoff process above — the existing
+   `Anthropic - Build & Deploy develop` pipeline builds, pushes the GHCR image,
+   and triggers the Render deploy automatically. No new CI needed.
+3. Once the deploy is live: `curl -X POST https://<service-url>/ops/catalog_index_bootstrap -H "X-Ops-Setup-Token: $OPS_SETUP_TOKEN"`.
+   Copy the printed public key.
+4. Hand D-store that public key to pin.
+5. Ship the paired removal commit (delete the controller, the route, unset
+   `OPS_SETUP_TOKEN`) in its own patch right after — don't leave it live.
+
+**Not built:** nothing else — this is the full slice.
+
 ### 🧭 Task 26 (RETRACTED): the public storefront is the separate `D-store` repo — Zealot is its Developer Console
 
 **Operator correction.** The public storefront lives in its own repo,
@@ -4111,4 +4170,14 @@ them is already modernized.
   (27b-ii + 27b-iii) — apply that one, not a separate 27b-ii patch. Built the Git Data
   commit client, the locked sign+publish orchestrator, the job and a rake task; verified
   against an in-memory fake only (see the entry). Branch `feat/task-27b-iii-pages-publish`.
-
+- **Task 27b-iv (this session)**: confirmed Render's free plan blocks Shell,
+  one-off Jobs, and Pre-Deploy Command (checked against Render's docs and this
+  service's own API response, which silently dropped `preDeployCommand`). Built
+  a temporary secret-authenticated route running `db:migrate` + `generate_key`
+  + `publish` in-process instead, since this service also has no migration step
+  anywhere in its boot path. Verified against a harness loading the real
+  controller (4/4 assertions). This unblocks 27b-iii's own "needs before it can
+  run for real" note. **Followed the new single-patch handoff process**: one
+  branch (`feat/task-27b-iv-ops-bootstrap-route`), one squashed commit, one
+  `.patch` file. **Remove this route in the very next commit after it's used
+  once** — see its own file header and the operator-steps list above.
