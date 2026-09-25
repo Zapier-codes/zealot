@@ -53,7 +53,9 @@ class OpsSetupController < ApplicationController
     lines << 'migrate: ran (rails db:migrate is a no-op if nothing pending)'
 
     if CatalogIndexSigningKey.exists?
-      lines << 'key: already exists, skipped generate_key'
+      key = CatalogIndexSigningKey.current
+      lines << "key: already exists  key_id=#{key.key_id}"
+      lines << "key: public_key=#{key.public_key}   <-- copy this, hand it to D-store, then delete this route"
     else
       key = CatalogIndexSigningKey.generate!
       lines << "key: generated  key_id=#{key.key_id}"
@@ -72,7 +74,13 @@ class OpsSetupController < ApplicationController
     render plain: lines.join("\n")
   rescue StandardError => e
     Rails.logger.error("[OpsSetupController] #{e.class}: #{e.message}")
-    render plain: "error: #{e.class}: #{e.message}", status: :internal_server_error
+    # Render whatever succeeded before the failure too -- a rescue that only
+    # shows the error discards real progress (this cost a lost public-key
+    # print in production once already: migrate and generate_key had both
+    # already succeeded when publish raised, and the first version of this
+    # rescue threw that away).
+    lines << "error: #{e.class}: #{e.message}"
+    render plain: lines.join("\n"), status: :internal_server_error
   end
 
   private

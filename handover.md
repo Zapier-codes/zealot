@@ -683,7 +683,7 @@ real database, the job under GoodJob, and the committed specs (`github_pages_com
 
 **Not built:** 27c onward. 27c (regenerate/publish on `go_live!`, suspension, listing edit, new release) is unblocked by code, but nothing has ever been published yet — do the setup above first.
 
-### 🆕 Task 27b-iv: one-time key-gen + publish bootstrap route (free-plan workaround; hit and fixed a production bug this session, not yet re-run)
+### 🆕 Task 27b-iv: one-time key-gen + publish bootstrap route (free-plan workaround; two production bugs found and fixed this session — see below — plus one org-policy blocker that needs the operator, not code)
 
 **Why this exists.** 27b-iii's own "Needs before it can run for real" note above
 assumes shell access to run `rake catalog_index:generate_key` /
@@ -757,6 +757,48 @@ Rails. The next deploy of this route is the real test.
    `OPS_SETUP_TOKEN`) in its own patch right after — don't leave it live.
 
 **Not built:** nothing else — this is the full slice.
+
+#### Second production run: key already existed, publish hit a real GitHub 403
+
+Confirms the first fix (`db:migrate`) worked — the route got past migration
+and reached key handling. Two more things surfaced:
+
+**Bug found and fixed (code):** the route's own logging swallowed its own
+evidence. When `CatalogIndexSigningKey` already existed (it did, from the run
+before the crash), the route printed only `"key: already exists, skipped
+generate_key"` — never the public key itself, on any run, ever again. And the
+`rescue` block rendered *only* the error, discarding every line gathered
+before it — so a `migrate: ran` / `key: generated ... public_key=...` that
+had already happened by the time `publish` raised was thrown away and never
+shown to the operator. (The public key was never actually lost — it's a
+plain, non-encrypted column on `CatalogIndexSigningKey`, not something only
+the one-time print holds — but the route made it look lost, and gave no way
+to retrieve it short of a DB query neither of us can run.)
+
+**Fixed:** the existing-key branch now prints the public key every time, not
+just on first generation; the rescue block appends the error to the lines
+already gathered instead of replacing them. Harness extended with two more
+assertions — public key prints on an "already exists" run; earlier lines
+survive a later raise — 7/7 pass total now (including all from the first fix).
+
+**Real blocker found, NOT fixed by code (operator action needed):** the
+actual error — `GitHub could not create a blob: Resource not accessible by
+personal access token; HTTP 403` — is GitHub's standard response when an
+organization restricts fine-grained PAT access and hasn't explicitly allowed
+it. `Zapier-codes` is an organization, and by GitHub's own docs this is
+exactly the shape of error that policy produces: not a wrong scope on the
+token (Contents: read/write, as directed, is the correct permission for
+creating a blob), but the org blocking fine-grained tokens outright until an
+owner turns them on. Fix is in GitHub's UI, not this repo: organization
+Settings → Personal access tokens → Settings → Fine-grained tokens → "Allow
+access via fine-grained personal access tokens" (may also need approving the
+specific pending token request, if the org requires approval rather than a
+blanket allow). **Not independently confirmed** — this is a diagnosis from
+the error's known shape and the account being an org, not something checked
+against Zapier-codes' actual org settings this session (no access to do so).
+If turning that on doesn't clear the 403, the token may need regenerating
+after the setting changes, or the repo may need explicitly added to the
+token's repository-access list again.
 
 ### 🧭 Task 26 (RETRACTED): the public storefront is the separate `D-store` repo — Zealot is its Developer Console
 
@@ -4308,3 +4350,12 @@ them is already modernized.
   `catalog_index_signing_key.rb` at this tip before writing the fix).
   **This fix has not yet been run in production** — that's the next step,
   same operator sequence as before, just this patch instead.
+- **Task 27b-iv, second fix (this session)**: operator re-ran the route after
+  the first fix; it got further (past migrate) and hit a real GitHub 403 on
+  blob creation. Found and fixed two logging bugs that were hiding real
+  progress from the operator (existing key's public key was never printed on
+  retry; the rescue block discarded successful lines before the error).
+  Diagnosed the 403 itself as almost certainly Zapier-codes' org-level
+  fine-grained-PAT policy, not a token-scope problem — flagged as unconfirmed
+  since it can't be checked from here. Harness now 7/7. Branch
+  `fix/task-27b-iv-public-key-visibility` from `origin/develop` @ `c78d98d2`.
