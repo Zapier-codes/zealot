@@ -66,6 +66,14 @@ en:
         download_events: Download events
         changelog_events: Changelog events
         channels: Enabled channels
+      collection:
+        slug: Slug
+        name: Name
+        description: Description
+      sponsored_slot:
+        app: App
+        starts_at: Starts at
+        ends_at: Ends at
       debug_file:
         app_id: App
         device_type: Device type

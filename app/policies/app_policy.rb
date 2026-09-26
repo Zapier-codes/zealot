@@ -51,6 +51,15 @@ class AppPolicy < ApplicationPolicy
     admin?
   end
 
+  # Task 31a: featured / Editors' Pick are store-owned editorial data (the
+  # outcome of ❓6), not something an app's own owner can set on themselves
+  # -- admin-only, same reasoning as set_publisher_alias? above. Enforced
+  # here (not just by Admin::AppsController living in the admin namespace)
+  # so the rule holds even if a future non-admin surface calls it.
+  def set_editorial_flags?
+    admin?
+  end
+
   # Task 25: putting an app on our own store is the owner's call (the person
   # who uploaded it); admins can see the listing and record the payment.
   def list_on_store?

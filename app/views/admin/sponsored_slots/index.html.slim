@@ -1,0 +1,31 @@
+- content_for :title do
+  = t('.title')
+
+- content_for :section_title do
+  = t('.title')
+  = link_to t('.new_sponsored_slot'), new_admin_sponsored_slot_path, class: 'd-btn d-btn-primary d-btn-sm'
+
+- if @sponsored_slots.any?
+  .card
+    .card-body.p-0
+      table.d-table
+        thead
+          tr
+            th = t('.app')
+            th = t('.starts_at')
+            th = t('.ends_at')
+            th.hidden.sm:table-cell
+        tbody
+          - @sponsored_slots.each do |slot|
+            tr
+              td = link_to slot.app.name, edit_admin_sponsored_slot_path(slot)
+              td = l(slot.starts_at, format: :nice)
+              td = l(slot.ends_at, format: :nice)
+              td.hidden.sm:table-cell
+                = button_link_to '', admin_sponsored_slot_path(slot), 'trash-alt', \
+                  class: 'd-btn d-btn-sm text-error', title: t('modals.buttons.destroy'), \
+                  data: { turbo_method: :delete, turbo_confirm: t('modals.confirm.body') }
+- else
+  .card.card-outline.card-warning
+    .card-header.card-border
+      h3.card-title = t('.not_found')

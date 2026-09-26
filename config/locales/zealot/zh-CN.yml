@@ -191,6 +191,52 @@ zh-CN:
       messages:
         approved: "%{name} 已通过 Play Store 发布审批"
         rejected: "%{name} 已被拒绝 Play Store 发布"
+    apps:
+      title: 编辑推荐
+      index:
+        title: :'admin.apps.title'
+        name: 应用
+        featured: 精选
+        editors_pick: 编辑精选
+        set: 设置
+        unset: 取消
+      toggle_featured:
+        success: "已更新 %{name} 的精选状态。"
+      toggle_editors_pick:
+        success: "已更新 %{name} 的编辑精选状态。"
+    collections:
+      title: 合集
+      index:
+        title: :'admin.collections.title'
+        new_collection: 新建合集
+        slug: Slug
+        name: 名称
+        apps: 应用数
+        not_found:
+          title: 暂无合集
+      new:
+        title: 新建合集
+      edit:
+        title: 编辑合集
+        apps_in_collection: 合集中的应用
+        no_apps: 该合集暂无应用
+        remove: 移除
+        pick_an_app: 选择应用
+        add: 添加
+    sponsored_slots:
+      title: 赞助位
+      index:
+        title: :'admin.sponsored_slots.title'
+        new_sponsored_slot: 新建赞助位
+        app: 应用
+        starts_at: 开始时间
+        ends_at: 结束时间
+        not_found:
+          title: 暂无赞助位
+      new:
+        title: 新建赞助位
+      edit:
+        title: 编辑赞助位
     play_preflight:
       messages:
         ready: "Google Play 已识别 %{package}，服务账号可以编辑该应用，可以继续发布。"

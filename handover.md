@@ -550,13 +550,33 @@ Play's publishing model is a transactional edit on top of tracks, with automated
 
 **❓ Decisions:** how Zealot's existing channels map to tracks (confirm against the `Channel` model before 30b); which scan provider, if any, for 30c; whether review is always manual or only for flagged versions.
 
-#### 🟡 Task 31: Editorial controls and store-owned data (the outcome of ❓6) (Phase 2) — 31a in progress, this is D-store's `5.g.v.zi` blocker
+#### 🟡 Task 31: Editorial controls and store-owned data (the outcome of ❓6) (Phase 2) — 31a admin UI done this session, acceptance check now met on the Zealot side; this is still D-store's `5.g.v.zi` blocker until D-store's own side reads it
 
 | ID | Goal | Depends on | Files (predicted) | Acceptance check | Risk |
 |---|---|---|---|---|---|
-| 31a | Author featured, Editors' Pick, sponsored slots (with dates) and collections in Zealot's admin; publish them in the index editorial blocks | 29a, 27c | model, views, serializer, locales | Toggling featured changes the next index; D-store shows it with no write access | medium |
+| 31a ✅ | Author featured, Editors' Pick, sponsored slots (with dates) and collections in Zealot's admin; publish them in the index editorial blocks | 29a, 27c | model, views, serializer, locales | Toggling featured changes the next index; D-store shows it with no write access | medium |
 
-**31a status — data-model + serializer + schema-doc slices done this session, still NOT wired to admin UI. See "Task 31a, session 2 (this session)" in the Session log for exactly what shipped and what the next session picks up: `db/schema.rb` matches the four migrations; `CatalogIndex::Serializer` now reads real `featured`/`editors_pick`/`sponsored_slots`/`collections` data (duck-typed, old Struct fixtures still fall back to the previous all-empty defaults) and publishes a new top-level `collections` registry; `docs/catalog_index_v2.schema.json`/`.md` updated to match and re-validated with `ajv`. No admin UI, no routes, no policies, no locale entries, no sidebar links yet — an admin still has no way to toggle anything, so the acceptance check above is still not met end-to-end.**
+**31a status — admin UI slice (item 4 of the original list) done this session, on top of session 2's data-model/serializer/schema work (base `8bc47e7f`, this checkout's `develop` tip; confirmed landed, matches the four migrations and the wired serializer). See "Task 31a, session 3 (this session)" below for exactly what shipped.**
+- New `Admin::AppsController` (`index`, `toggle_featured`, `toggle_editors_pick`) — deliberately not a full `resources :apps`; an app's own fields stay on the existing top-level `AppsController`, only the two editorial flags move to this admin-only surface. New `AppPolicy#set_editorial_flags?` (admin-only, same shape as `#set_publisher_alias?`).
+- New `Admin::CollectionsController` (full CRUD, plus `add_app`/`remove_app` member actions against `CollectionApp` from the edit page) and `CollectionPolicy` (defaults only, same shape as `PlayUploadKeyPolicy`).
+- New `Admin::SponsoredSlotsController` (full CRUD, app picked via `f.association`) and `SponsoredSlotPolicy` (same shape).
+- `config/routes.rb`: `admin/apps` (index + two member `PUT`s), `admin/collections` (resources + two member actions), `admin/sponsored_slots` (resources, no `show`).
+- Sidebar links added to `_main_sidebar.html.slim` (Editorial / Collections / Sponsored Slots, under the existing admin-section header).
+- Views: `admin/apps/index`, `admin/collections/{index,new,edit,_form}`, `admin/sponsored_slots/{index,new,edit,_form}` — slim, simple_form, follows the `web_hooks`/`backups` admin views' table/card conventions already in the app.
+- Locale keys added under `admin.apps`/`admin.collections`/`admin.sponsored_slots` in both `config/locales/zealot/en.yml` and `.zh-CN.yml`, plus `simple_form.labels.collection`/`.sponsored_slot` in both `simple_form.*.yml` files.
+
+**Acceptance check status:** "Toggling featured changes the next index" — yes, `CatalogIndex::Serializer` already reads the real column (session 2), and this session gives an admin an actual toggle to flip it, so the two together satisfy the Zealot-side half of the check. "D-store shows it with no write access" is D-store's own side, not re-verified from this repo/sandbox.
+
+**Explicitly NOT done this session:**
+- No test coverage for the three new controllers/policies (no request/policy specs written). The existing `spec/services/catalog_index/serializer_spec.rb` coverage from session 2 already covers the serializer side.
+- `SponsoredSlot#chronological`/`#current_or_upcoming` scopes aren't used by the new admin index (it just orders by `starts_at desc` so expired/past slots stay visible for an admin to review) — worth revisiting if the list gets long.
+- No pagination on `Admin::AppsController#index` or `Admin::CollectionsController#index` — fine at current app counts, not fine indefinitely.
+- Collection membership ordering/position (`CollectionApp` has no `position` column) — apps in a collection publish in whatever order `has_many :apps, through: :collection_apps` returns, not a curated order. Flagged in `CollectionApp`'s own comment as a later slice, not solved here.
+
+**Verified how:** same sandbox limitation as every other slice in this file — no Postgres, no Rails boot. Ruby *was* installable this session (`apt-get update` after removing a blocked `nodesource` source, then `apt-get install ruby` succeeded — same install-flakiness this file has documented before, different specific blocker this time). Ran `ruby -c` on every new/changed `.rb` file (all OK). All four touched YAML locale files parsed clean with Python's `yaml` module. The four new/changed `.html.slim` views were not run through the `slim` gem (not installable — `rubygems.org` isn't in this sandbox's allowed domains) or exercised in a browser; they were written by close imitation of `admin/web_hooks` and `admin/backups`' existing markup and haven't been syntax-checked beyond that.
+
+- One combined patch, branch `feat/task-31a-admin-ui`, base `develop` @ `8bc47e7f`.
+
 | 31b | Read-only view in Zealot of D-store-owned data (traffic, top searches, report counts, review aggregates), fed by a token-authenticated D-store read API | D-store `5.f.i` and its `5.g.v.zo` | service, admin views | Zealot shows current figures; the token can only read | blocked on D-store database |
 | 31c | Decide and record where moderation actions live (hide a review, dismiss a report) | 31b | docs only | Decision recorded | low |
 

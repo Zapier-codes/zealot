@@ -193,6 +193,52 @@ en:
       messages:
         approved: "%{name} approved for Play Store publishing"
         rejected: "%{name} rejected for Play Store publishing"
+    apps:
+      title: Editorial
+      index:
+        title: :admin.apps.title
+        name: App
+        featured: Featured
+        editors_pick: Editors' Pick
+        set: Set
+        unset: Unset
+      toggle_featured:
+        success: "Updated %{name}'s featured flag."
+      toggle_editors_pick:
+        success: "Updated %{name}'s Editors' Pick flag."
+    collections:
+      title: Collections
+      index:
+        title: :admin.collections.title
+        new_collection: New collection
+        slug: Slug
+        name: Name
+        apps: Apps
+        not_found:
+          title: No collections yet.
+      new:
+        title: New collection
+      edit:
+        title: Edit collection
+        apps_in_collection: Apps in this collection
+        no_apps: No apps in this collection yet.
+        remove: Remove
+        pick_an_app: Pick an app
+        add: Add
+    sponsored_slots:
+      title: Sponsored Slots
+      index:
+        title: :admin.sponsored_slots.title
+        new_sponsored_slot: New sponsored slot
+        app: App
+        starts_at: Starts at
+        ends_at: Ends at
+        not_found:
+          title: No sponsored slots yet.
+      new:
+        title: New sponsored slot
+      edit:
+        title: Edit sponsored slot
     play_preflight:
       messages:
         ready: "Google Play recognises %{package} and the service account can edit it. Publishing can go ahead."

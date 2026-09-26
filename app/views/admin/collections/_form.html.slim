@@ -1,0 +1,8 @@
+= simple_form_for [:admin, collection] do |f|
+  = f.error_notification
+  = f.input :slug, required: true
+  = f.input :name, required: true
+  = f.input :description, as: :text
+
+  .mt-4
+    = f.button :submit

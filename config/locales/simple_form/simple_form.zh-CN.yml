@@ -66,6 +66,14 @@ zh-CN:
         download_events: 下载事件
         changelog_events: 日志变更事件
         channels: 启用的应用渠道
+      collection:
+        slug: Slug
+        name: 名称
+        description: 描述
+      sponsored_slot:
+        app: 应用
+        starts_at: 开始时间
+        ends_at: 结束时间
       debug_file:
         app_id: 应用
         device_type: 应用平台

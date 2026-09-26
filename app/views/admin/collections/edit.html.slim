@@ -1,0 +1,36 @@
+- content_for :section_title do
+  = t('.title')
+
+- content_for :title do
+  = t('.title')
+
+.row
+  .col-md-6
+    .card
+      .card-header
+        h3.card-title = t('.title')
+      .card-body
+        == render 'form', collection: @collection
+
+  .col-md-6
+    .card
+      .card-header
+        h3.card-title = t('.apps_in_collection')
+      .card-body.p-0
+        - if @collection.apps.any?
+          table.d-table
+            tbody
+              - @collection.apps.each do |app|
+                tr
+                  td = app.name
+                  td.hidden.sm:table-cell
+                    = button_to t('.remove'), remove_app_admin_collection_path(@collection, app_id: app.id), \
+                      method: :delete, class: 'd-btn d-btn-sm text-error'
+        - else
+          .p-4.opacity-65 = t('.no_apps')
+      .card-footer
+        = form_with url: add_app_admin_collection_path(@collection), method: :post, local: true do |f|
+          .flex.gap-2
+            = f.select :app_id, options_from_collection_for_select(@candidate_apps, :id, :name), \
+              { include_blank: t('.pick_an_app') }, class: 'd-select flex-1'
+            = f.submit t('.add'), class: 'd-btn d-btn-primary'

@@ -1,0 +1,30 @@
+- content_for :title do
+  = t('.title')
+
+- content_for :section_title do
+  = t('.title')
+
+.card
+  .card-header
+    h3.card-title
+      i.fa-solid.fa-star
+      = t('.title')
+  .card-body.p-0
+    table.d-table
+      thead
+        tr
+          th = t('.name')
+          th = t('.featured')
+          th = t('.editors_pick')
+      tbody
+        - @apps.each do |app|
+          tr
+            td = app.name
+            td
+              = button_link_to (app.featured? ? t('.unset') : t('.set')), toggle_featured_admin_app_path(app), \
+                nil, class: "d-btn d-btn-sm #{app.featured? ? 'd-btn-warning' : 'd-btn-outline'}", \
+                data: { turbo_method: :put }
+            td
+              = button_link_to (app.editors_pick? ? t('.unset') : t('.set')), toggle_editors_pick_admin_app_path(app), \
+                nil, class: "d-btn d-btn-sm #{app.editors_pick? ? 'd-btn-warning' : 'd-btn-outline'}", \
+                data: { turbo_method: :put }

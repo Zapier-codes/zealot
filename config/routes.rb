@@ -213,6 +213,31 @@ Rails.application.routes.draw do
         end
       end
 
+      # Task 31a (item 4): editorial flags an app's own owner cannot set on
+      # themselves -- see Admin::AppsController and AppPolicy#set_editorial_flags?.
+      # Deliberately not a full `resources :apps`: an admin manages an app's
+      # own fields (name, category, etc.) through the top-level, non-admin
+      # `resources :apps` further down this file.
+      resources :apps, only: %i[ index ] do
+        member do
+          put :toggle_featured
+          put :toggle_editors_pick
+        end
+      end
+
+      # Task 31a (item 4): the `collections[]` top-level registry
+      # CatalogIndex::Serializer#serialize_collections already publishes.
+      resources :collections do
+        member do
+          post :add_app
+          delete :remove_app
+        end
+      end
+
+      # Task 31a (item 4): dated sponsored-placement windows, one per app
+      # per window -- see SponsoredSlot and #sponsored_slots_for.
+      resources :sponsored_slots, except: %i[ show ]
+
       # Task #7: two deliberately separate org-wide singletons — the key
       # that signs an AAB for Play (PlayUploadKey) and the credential that
       # authenticates the API call that uploads it (PlayCredential). See

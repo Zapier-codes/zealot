@@ -1,0 +1,32 @@
+- content_for :title do
+  = t('.title')
+
+- content_for :section_title do
+  = t('.title')
+  = link_to t('.new_collection'), new_admin_collection_path, class: 'd-btn d-btn-primary d-btn-sm'
+
+- if @collections.any?
+  .card
+    .card-body.p-0
+      table.d-table
+        thead
+          tr
+            th = t('.slug')
+            th = t('.name')
+            th = t('.apps')
+            th.hidden.sm:table-cell
+        tbody
+          - @collections.each do |collection|
+            tr
+              td = collection.slug
+              td = link_to collection.name, edit_admin_collection_path(collection)
+              td.w-25
+                .d-badge.text-bg-info = collection.apps.size
+              td.hidden.sm:table-cell
+                = button_link_to '', admin_collection_path(collection), 'trash-alt', \
+                  class: 'd-btn d-btn-sm text-error', title: t('modals.buttons.destroy'), \
+                  data: { turbo_method: :delete, turbo_confirm: t('modals.confirm.body') }
+- else
+  .card.card-outline.card-warning
+    .card-header.card-border
+      h3.card-title = t('.not_found')
