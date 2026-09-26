@@ -13,10 +13,13 @@ module CatalogIndex
   #
   # Scope of this slice, deliberately: fill in every v2 field the current
   # data model can actually answer, and leave every field a later slice owns
-  # (29c's APK compatibility extraction, 27f's version status, 31a's
-  # editorial/sponsored/collections, 30's staged listing edits) at its
-  # documented reserved default -- null, empty array/object, or false.
-  # Nothing here invents data that doesn't exist.
+  # (27f's version status, 31a's editorial/sponsored/collections, 30's
+  # staged listing edits) at its documented reserved default -- null, empty
+  # array/object, or false. Nothing here invents data that doesn't exist.
+  #
+  # 29c later filled in `compatibility` (see #compatibility_for below) --
+  # this comment block is 29b's original scope note, left as history rather
+  # than rewritten, since 27f/31a/30 are still genuinely open.
   #
   # Two things this slice deliberately does NOT do, both flagged in
   # handover.md's Task 29 entry rather than silently expanded into: it does
@@ -198,14 +201,7 @@ module CatalogIndex
         # one halted or pulled, so every release the serializer sees is, by
         # definition, available. 27f replaces this with the real column.
         status: 'available',
-        compatibility: {
-          min_sdk: nil,           # reserved for 29c
-          target_sdk: nil,        # reserved for 29c
-          abis: [],                # reserved for 29c
-          screen_densities: [],    # reserved for 29c
-          required_features: [],   # reserved for 29c
-          permissions: [],         # reserved for 29c
-        },
+        compatibility: compatibility_for(release),
       }
     end
 
@@ -240,6 +236,26 @@ module CatalogIndex
 
     def iso(timestamp)
       timestamp&.utc&.iso8601
+    end
+
+    # Task 29c fills these columns in for Android releases at upload time
+    # (see app/models/concerns/release_parser.rb); every other case --
+    # non-Android releases, and any release uploaded before this migration
+    # or before 29c shipped -- simply has them at their column defaults
+    # (nil/[]), which is exactly the "empty, not invented" value 29a/29b
+    # already documented and shipped for this block. `respond_to?` keeps
+    # this duck-typed like the rest of the class, so the old v1-style
+    # Struct fixtures (with none of these columns) still produce a
+    # schema-valid, all-empty compatibility block instead of raising.
+    def compatibility_for(release)
+      {
+        min_sdk: release.respond_to?(:min_sdk_version) ? release.min_sdk_version : nil,
+        target_sdk: release.respond_to?(:target_sdk_version) ? release.target_sdk_version : nil,
+        abis: release.respond_to?(:abis) ? Array(release.abis) : [],
+        screen_densities: release.respond_to?(:screen_densities) ? Array(release.screen_densities) : [],
+        required_features: release.respond_to?(:required_features) ? Array(release.required_features) : [],
+        permissions: release.respond_to?(:permissions) ? Array(release.permissions) : [],
+      }
     end
 
     # `Release#changelog` is jsonb internally -- an array of `{'message' =>
