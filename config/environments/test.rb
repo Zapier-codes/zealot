@@ -42,6 +42,15 @@ Rails.application.configure do
   # ActionMailer::Base.deliveries array.
   config.action_mailer.delivery_method = :test
 
+  # Task 27c: config/application.rb sets the real queue_adapter to :good_job
+  # (it persists jobs to the database, so it has no in-memory enqueued_jobs
+  # array for a matcher to read), but nothing overrode it for tests -- so
+  # rspec-rails' have_enqueued_job matcher, which this task's app_spec.rb is
+  # the first spec in this repo to use, would call a method the good_job
+  # adapter doesn't implement. :test is the standard ActiveJob test adapter
+  # every Rails app scaffolds by default; this file was just missing it.
+  config.active_job.queue_adapter = :test
+
   # Print deprecation notices to the stderr.
   config.active_support.deprecation = :stderr
 

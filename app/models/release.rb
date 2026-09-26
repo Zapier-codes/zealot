@@ -6,6 +6,13 @@ class Release < ApplicationRecord
     ProxySdkInjectionJob.perform_later(self.id)
   end
 
+  # Task 27c: see the after_create registration above.
+  def publish_catalog_index_if_app_live
+    return unless app.listing_live?
+
+    CatalogIndexPublishJob.perform_later
+  end
+
   # Task 12 emails: "new build published" to the app's members, and a notice
   # when a Play Store publish fails. Both only enqueue a job (GoodJob) and
   # never block or fail the upload.
@@ -140,6 +147,14 @@ class Release < ApplicationRecord
   after_create  :retained_build_job
   after_create  :anthropic_asset_delivery_job
   after_create  :request_play_approval_if_targeted
+  # Task 27c: a new release changes CatalogIndex::Serializer's versions[]
+  # for this app (see App#catalog_releases, added in 29b for exactly this
+  # list), so the next index has to be regenerated. Only matters for an app
+  # already on the catalog -- CatalogIndex::Serializer.for_live_apps scopes
+  # to App.listing_live, so a release on a draft/awaiting_payment/suspended
+  # app doesn't change anything the index currently shows and would just be
+  # a wasted publish.
+  after_create  :publish_catalog_index_if_app_live
 
   delegate :scheme, to: :channel
   delegate :app, to: :scheme

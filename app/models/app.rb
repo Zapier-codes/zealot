@@ -71,6 +71,35 @@ class App < ApplicationRecord
                if: -> { saved_change_to_play_package_name? && play_package_name.present? }
   after_destroy :delete_app_recently_releases_cache
 
+  # Task 27c: regenerate the signed catalog index whenever something the
+  # index actually carries about this app changes -- CatalogIndex::Serializer
+  # reads listing_status, play_package_name, name (title + slug_for) and
+  # publisher_display_name (publisher_alias, or profile_publisher_name which
+  # itself depends on listing_status/publisher_profile) directly off App, so
+  # those are exactly the columns this hook watches. Nothing else on App
+  # (timestamps aside, which the index reads as-is) feeds the index today.
+  #
+  # One after_commit covers go_live!/suspend! (both just update
+  # listing_status) and a plain listing edit (renaming the app, changing the
+  # publisher alias, re-pointing the package name, switching publisher
+  # profile) without three separate callbacks -- ActiveRecord already
+  # coalesces multiple attribute changes in one save into one after_commit
+  # call, so a single go_live! that also happens to touch another watched
+  # column still only enqueues once.
+  #
+  # Fires on the transition *out* of live too (suspend!), not just into it:
+  # CatalogIndex::Serializer.for_live_apps scopes to App.listing_live, so a
+  # newly-suspended app has to disappear from the next index, which only
+  # happens if a publish runs after the transition either way.
+  #
+  # CatalogIndexPublishJob itself no-ops (logs and returns) until
+  # CATALOG_PAGES_REPO/CATALOG_PAGES_TOKEN and a signing key exist (see that
+  # job's own comment), so it's safe to always enqueue here rather than
+  # re-checking CatalogIndex::Publish.configured? on every save.
+  CATALOG_INDEX_LISTING_FIELDS = %w[name publisher_alias play_package_name publisher_profile_id].freeze
+
+  after_commit :publish_catalog_index_if_needed, on: :update
+
   def channel_ids
     return unless schcmes_ids = schemes.select(:id).map(&:id)
     return unless channel_ids = Channel.select(:id).where(scheme: schcmes_ids).map(&:id)
@@ -214,6 +243,24 @@ class App < ApplicationRecord
     update!(listing_status: :live, listed_at: listed_at || Time.current)
   end
 
+  # Task 27c: the other half of go_live!'s transition -- takes a live app
+  # off the public catalog. No caller exists yet (no admin suspension UI
+  # has been built -- see handover.md's Task 27c entry), but the enum
+  # already models `suspended` as a real listing_status (see the class
+  # comment above go_live!, "later slice: unverified company past its
+  # deadline"), and go_live! itself already treats listing_suspended? as a
+  # valid state to resume live from. This gives that state a symmetric,
+  # explicit way in rather than only a way back out, and is what the
+  # publish-on-suspension half of this task's acceptance check hooks into.
+  # Deliberately narrow like go_live!: only a currently-live app can be
+  # suspended (an app in draft/awaiting_payment was never on the catalog,
+  # so there is nothing to take down).
+  def suspend!
+    return false unless listing_live?
+
+    update!(listing_status: :suspended)
+  end
+
   # All releases of this app, across its schemes and channels.
   def play_releases_scope
     Release.where(channel_id: Channel.where(scheme_id: schemes.select(:id)).select(:id))
@@ -351,6 +398,15 @@ class App < ApplicationRecord
 
   def schedule_play_preflight
     AnthropicPlayPreflightJob.perform_later(id)
+  end
+
+  # Task 27c: see the after_commit registration and CATALOG_INDEX_LISTING_FIELDS
+  # above for what this watches and why.
+  def publish_catalog_index_if_needed
+    watched_field_changed = CATALOG_INDEX_LISTING_FIELDS.any? { |field| saved_change_to_attribute?(field) }
+    return unless saved_change_to_listing_status? || watched_field_changed
+
+    CatalogIndexPublishJob.perform_later
   end
 
   def recently_release_app_id
