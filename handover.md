@@ -482,7 +482,7 @@ Play's publishing model is a transactional edit on top of tracks, with automated
 |---|---|---|---|---|---|
 | 31a | Author featured, Editors' Pick, sponsored slots (with dates) and collections in Zealot's admin; publish them in the index editorial blocks | 29a, 27c | model, views, serializer, locales | Toggling featured changes the next index; D-store shows it with no write access | medium |
 
-**31a status — data-model slice only, code-complete but NOT wired to the serializer or admin yet. See "Task 31a (this session, WIP)" in the Session log for exactly what shipped and what the next session picks up: migrations + models for `featured`/`editors_pick`/`sponsored_slots`/`collections` exist; `CatalogIndex::Serializer` still emits the old hardcoded `false`/`[]` placeholders; no admin UI, no routes, no schema-doc update yet. Toggling anything still does nothing — the acceptance check above is not met by this slice alone.**
+**31a status — data-model + serializer + schema-doc slices done this session, still NOT wired to admin UI. See "Task 31a, session 2 (this session)" in the Session log for exactly what shipped and what the next session picks up: `db/schema.rb` matches the four migrations; `CatalogIndex::Serializer` now reads real `featured`/`editors_pick`/`sponsored_slots`/`collections` data (duck-typed, old Struct fixtures still fall back to the previous all-empty defaults) and publishes a new top-level `collections` registry; `docs/catalog_index_v2.schema.json`/`.md` updated to match and re-validated with `ajv`. No admin UI, no routes, no policies, no locale entries, no sidebar links yet — an admin still has no way to toggle anything, so the acceptance check above is still not met end-to-end.**
 | 31b | Read-only view in Zealot of D-store-owned data (traffic, top searches, report counts, review aggregates), fed by a token-authenticated D-store read API | D-store `5.f.i` and its `5.g.v.zo` | service, admin views | Zealot shows current figures; the token can only read | blocked on D-store database |
 | 31c | Decide and record where moderation actions live (hide a review, dismiss a report) | 31b | docs only | Decision recorded | low |
 
@@ -4507,3 +4507,63 @@ them is already modernized.
   real. Branch `feat/task-31a-editorial-data-model` (data-model slice only;
   the branch name is scoped narrower than the task on purpose since more
   slices are coming).
+- **Task 31a, session 2 (this session)**: base `2071e54f` (Task 31a session
+  1's data-model patch, confirmed landed — the four migrations and three
+  models were already present in this checkout). Picked up steps (1)–(3)
+  of that session's own "Next session on this task, in order" list, and
+  deliberately stopped before (4):
+  1. Hand-updated `db/schema.rb`: version bump to `2026_09_29_100300`,
+     `apps.featured`/`apps.editors_pick` columns, `collections`,
+     `collection_apps`, `sponsored_slots` tables and their foreign keys, in
+     the alphabetical positions Rails' dumper would produce. Not run against
+     a real database (none in this sandbox) — hand-derived from the four
+     migration files and checked by eye against the dumper's existing
+     alphabetical-column/alphabetical-table convention elsewhere in the same
+     file.
+  2. Rewrote `CatalogIndex::Serializer#serialize_app`'s `editorial`/
+     `sponsored_slots`/`collections` block to read the real columns/
+     associations (`#editorial_for`, `#sponsored_slots_for`,
+     `#collection_slugs_for`), and added a new top-level
+     `#serialize_collections` registry method wired into `#call`. Kept the
+     class's existing `respond_to?` duck-typing convention throughout, so
+     the old Struct-based fixtures the class already tolerates for
+     `catalog_releases`/etc. still get the previous all-`false`/`[]`
+     defaults instead of raising.
+  3. Added the top-level `collections` property (required, alongside
+     `apps`) and a new `$defs/collection` shape to
+     `docs/catalog_index_v2.schema.json`; updated the worked example and
+     per-app field comments in `docs/catalog_index_v2.md` to say what's now
+     actually true instead of "reserved for 31a".
+  - Also added four new `spec/services/catalog_index/serializer_spec.rb`
+    examples covering the new behavior (real editorial flags, sponsored-slot
+    filtering/ordering, per-app collection slugs, the top-level registry) —
+    not run (no Postgres in this sandbox) but written directly against the
+    existing spec file's own `create(:app)`/`Scheme.create!`/`Release.new`
+    patterns, so they should exercise real ActiveRecord once run rather than
+    stubs.
+  - Ruby *was* installable this sandbox (`apt-get update` first, then
+    `apt-get install ruby` succeeded — inconsistent from session to session,
+    same flakiness this file has documented before). Ran `ruby -c` on every
+    changed `.rb` file, and additionally wrote a throwaway, Rails-free Ruby
+    harness (`/tmp/smoke.rb`, `/tmp/smoke2.rb`, not part of this patch) with
+    plain Struct/Array stand-ins for the AR associations, to exercise the
+    new private methods' actual logic (chronological filtering of expired
+    slots, slug resolution, the duck-typed fallback path) beyond what a bare
+    syntax check would catch. Node/`ajv`/`ajv-formats` (2020-12 draft build)
+    were available and used to re-validate the updated
+    `catalog_index_v2.schema.json` against a fully-populated document, a
+    bare-minimum one, and a deliberately malformed one missing the new
+    required top-level `collections` field — all three behaved as expected.
+    None of this is a substitute for actually running the new RSpec examples
+    against Postgres.
+  - **Explicitly not done, same as session 1's own list, item (4) still
+    open:** no `Admin::CollectionsController`/`Admin::SponsoredSlotsController`,
+    no featured/editors_pick toggle on `Admin::AppsController`, no new
+    routes, no `CollectionPolicy`/`SponsoredSlotPolicy`, no locale entries,
+    no sidebar links. An admin still cannot toggle anything through the UI —
+    only the read/publish side (serializer + schema) is done. That admin
+    surface, plus `db/schema.rb`'s version needing a real migration run
+    (or hand-verification) once Postgres exists, are exactly what the next
+    session on this task should pick up next.
+  - One combined patch, branch `feat/task-31a-serializer-and-schema`, base
+    `develop` @ `2071e54f`.

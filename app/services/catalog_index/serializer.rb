@@ -13,13 +13,16 @@ module CatalogIndex
   #
   # Scope of this slice, deliberately: fill in every v2 field the current
   # data model can actually answer, and leave every field a later slice owns
-  # (27f's version status, 31a's editorial/sponsored/collections, 30's
-  # staged listing edits) at its documented reserved default -- null, empty
-  # array/object, or false. Nothing here invents data that doesn't exist.
+  # (27f's version status, 30's staged listing edits) at its documented
+  # reserved default -- null, empty array/object, or false. Nothing here
+  # invents data that doesn't exist.
   #
-  # 29c later filled in `compatibility` (see #compatibility_for below) --
-  # this comment block is 29b's original scope note, left as history rather
-  # than rewritten, since 27f/31a/30 are still genuinely open.
+  # 29c later filled in `compatibility` (see #compatibility_for below); 31a
+  # later filled in `editorial`/`sponsored_slots`/`collections` (see
+  # #editorial_for/#sponsored_slots_for/#collection_slugs_for below, and the
+  # new top-level #serialize_collections registry) -- this comment block is
+  # 29b's original scope note, left as history rather than rewritten, since
+  # 27f/30 are still genuinely open.
   #
   # Two things this slice deliberately does NOT do, both flagged in
   # handover.md's Task 29 entry rather than silently expanded into: it does
@@ -95,6 +98,7 @@ module CatalogIndex
         sequence: @sequence,
         expires_at: @expires_at.utc.iso8601,
         apps: @apps.map { |app| serialize_app(app) },
+        collections: serialize_collections,
       }
     end
 
@@ -138,11 +142,67 @@ module CatalogIndex
         available_regions: nil, # nil = all regions; reserved until an owner/org default exists
         created_at: iso(app.created_at),
         updated_at: iso(app.updated_at),
-        editorial: { featured: false, editors_pick: false }, # reserved for 31a
-        sponsored_slots: [],                                 # reserved for 31a
-        collections: [],                                     # reserved for 31a
+        editorial: editorial_for(app),
+        sponsored_slots: sponsored_slots_for(app),
+        collections: collection_slugs_for(app),
         versions: releases_for(app).map { |release| serialize_version(release) },
       }
+    end
+
+    # Task 31a: real columns as of the editorial-flags migration --
+    # `respond_to?` keeps this duck-typed like the rest of the class, so a
+    # Struct fixture without them still gets the same all-false default the
+    # hardcoded literal used to return, rather than raising.
+    def editorial_for(app)
+      {
+        featured: app.respond_to?(:featured) ? !!app.featured : false,
+        editors_pick: app.respond_to?(:editors_pick) ? !!app.editors_pick : false,
+      }
+    end
+
+    # Task 31a: real `SponsoredSlot` rows once an app has any. Only
+    # current-or-upcoming windows publish (see the model's own scope) --
+    # an expired one has nothing left to tell a reader building today's
+    # storefront, and dropping it here means no separate cleanup job is
+    # needed. Chronological (soonest-to-start first), matching the shape
+    # already documented in catalog_index_v2.md. `respond_to?` on the
+    # association itself, not just the app, since a Struct fixture that
+    # merely answers `respond_to?(:sponsored_slots)` would still blow up
+    # calling Rails scope methods it doesn't implement.
+    def sponsored_slots_for(app)
+      return [] unless app.respond_to?(:sponsored_slots)
+
+      app.sponsored_slots.current_or_upcoming.chronological.map do |slot|
+        { starts_at: iso(slot.starts_at), ends_at: iso(slot.ends_at) }
+      end
+    end
+
+    # Task 31a: the schema's per-app shape is an array of collection
+    # *slugs* (see docs/catalog_index_v2.md), not the full Collection
+    # object -- that's the separate top-level registry, #serialize_collections
+    # below. Ordered the same way (`Collection.ordered` == by slug) so a
+    # reader can join the two deterministically.
+    def collection_slugs_for(app)
+      return [] unless app.respond_to?(:collections)
+
+      app.collections.ordered.pluck(:slug)
+    end
+
+    # Task 31a: the new top-level registry the per-app `collections[]`
+    # field (above) resolves against -- distinct from any single app's
+    # membership list. Called directly rather than duck-typed: `Collection`
+    # is a real, already-migrated ActiveRecord model as of this same slice,
+    # and nothing before this slice ever populated or read it, so there is
+    # no legacy fixture shape here to stay compatible with (unlike
+    # `releases_for`, which predates this convention).
+    def serialize_collections
+      Collection.ordered.map do |collection|
+        {
+          slug: collection.slug,
+          name: collection.name,
+          description: collection.description,
+        }
+      end
     end
 
     # `slug` is the one v2 field the schema does not allow to come back

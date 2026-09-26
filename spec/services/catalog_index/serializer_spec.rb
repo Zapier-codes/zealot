@@ -92,7 +92,6 @@ RSpec.describe CatalogIndex::Serializer do
       expect(entry[:editorial]).to eq(featured: false, editors_pick: false)
       expect(entry[:sponsored_slots]).to eq([])
       expect(entry[:collections]).to eq([])
-
       expect(entry[:versions].size).to eq(1)
       version = entry[:versions].first
       expect(version[:release_id]).to eq(release.id)
@@ -182,6 +181,59 @@ RSpec.describe CatalogIndex::Serializer do
       result = described_class.call(app)
 
       expect(result[:apps].size).to eq(1)
+    end
+
+    it 'reads real editorial flags once an admin has set them (Task 31a)' do
+      app, = build_app_with_release
+      app.update!(featured: true, editors_pick: true)
+
+      result = described_class.call(app)
+
+      expect(result[:apps].first[:editorial]).to eq(featured: true, editors_pick: true)
+    end
+
+    it 'includes only current-or-upcoming sponsored slots, soonest first (Task 31a)' do
+      app, = build_app_with_release
+      upcoming = SponsoredSlot.create!(app: app, starts_at: 1.day.from_now, ends_at: 2.days.from_now)
+      SponsoredSlot.create!(app: app, starts_at: 10.days.from_now, ends_at: 11.days.from_now)
+      SponsoredSlot.create!(app: app, starts_at: 10.days.ago, ends_at: 1.day.ago) # expired, excluded
+
+      result = described_class.call(app)
+
+      expect(result[:apps].first[:sponsored_slots]).to eq(
+        [
+          { starts_at: upcoming.starts_at.utc.iso8601, ends_at: upcoming.ends_at.utc.iso8601 },
+          { starts_at: SponsoredSlot.order(:starts_at).second.starts_at.utc.iso8601,
+            ends_at: SponsoredSlot.order(:starts_at).second.ends_at.utc.iso8601 },
+        ]
+      )
+    end
+
+    it "lists an app's collection memberships as slugs (Task 31a)" do
+      app, = build_app_with_release
+      picks = Collection.create!(slug: 'editors-picks', name: "Editor's Picks")
+      new_and_notable = Collection.create!(slug: 'new-and-notable', name: 'New & Notable')
+      CollectionApp.create!(app: app, collection: new_and_notable)
+      CollectionApp.create!(app: app, collection: picks)
+
+      result = described_class.call(app)
+
+      expect(result[:apps].first[:collections]).to eq(%w[editors-picks new-and-notable])
+    end
+
+    it 'publishes the top-level collections registry regardless of which app was serialized (Task 31a)' do
+      app, = build_app_with_release
+      Collection.create!(slug: 'new-and-notable', name: 'New & Notable', description: 'Fresh releases')
+      Collection.create!(slug: 'editors-picks', name: "Editor's Picks")
+
+      result = described_class.call(app)
+
+      expect(result[:collections]).to eq(
+        [
+          { slug: 'editors-picks', name: "Editor's Picks", description: nil },
+          { slug: 'new-and-notable', name: 'New & Notable', description: 'Fresh releases' },
+        ]
+      )
     end
   end
 

@@ -75,9 +75,9 @@ full rationale and the phase this sits in (Phase 1, trust core).
       "available_regions": null,           // null = all regions; else an array of ISO 3166-1 alpha-2 codes
       "created_at": "2026-01-01T00:00:00Z",
       "updated_at": "2026-09-01T00:00:00Z",
-      "editorial": { "featured": false, "editors_pick": false },  // NEW, reserved for 31a -- Zealot-authored, D-store reads only
-      "sponsored_slots": [],               // NEW, reserved for 31a. Shape once used: [{ "starts_at": "...", "ends_at": "..." }]
-      "collections": [],                   // NEW, reserved for 31a -- array of collection slugs
+      "editorial": { "featured": false, "editors_pick": false },  // Task 31a -- Zealot-authored, D-store reads only. Real `apps.featured`/`apps.editors_pick` columns; false is the default until an admin opts an app in, not a placeholder
+      "sponsored_slots": [],               // Task 31a -- real `SponsoredSlot` rows, current-or-upcoming only, soonest first. Shape: [{ "starts_at": "...", "ends_at": "..." }]
+      "collections": [],                   // Task 31a -- real `Collection` membership via `CollectionApp`. Array of collection slugs, resolving against the top-level `collections` registry below
 
       // --- v2: `latest_version` replaced by `versions[]` ---
       "versions": [
@@ -102,6 +102,17 @@ full rationale and the phase this sits in (Phase 1, trust core).
           }
         }
       ]
+    }
+  ],
+  // --- v2: NEW top-level registry, added 31a ---
+  // The registry the per-app `collections[]` array (above) resolves
+  // against. A collection with no apps in it yet is still a valid entry
+  // here (nothing requires membership to publish the registry row).
+  "collections": [
+    {
+      "slug": "editors-picks",
+      "name": "Editor's Picks",
+      "description": "Hand-picked by the Zealot team."
     }
   ]
 }

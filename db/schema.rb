@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_28_100000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_29_100300) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -61,6 +61,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_28_100000) do
     t.boolean "archived", default: false, null: false
     t.datetime "created_at", null: false
     t.string "description"
+    t.boolean "editors_pick", default: false, null: false
+    t.boolean "featured", default: false, null: false
     t.datetime "listed_at"
     t.string "listing_status", default: "draft", null: false
     t.string "name", null: false
@@ -132,6 +134,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_28_100000) do
     t.bigint "web_hook_id", null: false
     t.index ["channel_id", "web_hook_id"], name: "index_channels_web_hooks_on_channel_id_and_web_hook_id"
     t.index ["web_hook_id", "channel_id"], name: "index_channels_web_hooks_on_web_hook_id_and_channel_id"
+  end
+
+  create_table "collection_apps", force: :cascade do |t|
+    t.bigint "app_id", null: false
+    t.bigint "collection_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["app_id"], name: "index_collection_apps_on_app_id"
+    t.index ["collection_id", "app_id"], name: "index_collection_apps_on_collection_id_and_app_id", unique: true
+    t.index ["collection_id"], name: "index_collection_apps_on_collection_id"
+  end
+
+  create_table "collections", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.text "description"
+    t.string "name", null: false
+    t.string "slug", null: false
+    t.datetime "updated_at", null: false
+    t.index ["slug"], name: "index_collections_on_slug", unique: true
   end
 
   create_table "debug_file_metadata", force: :cascade do |t|
@@ -438,6 +459,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_28_100000) do
     t.index ["key_hash"], name: "index_solid_cache_entries_on_key_hash", unique: true
   end
 
+  create_table "sponsored_slots", force: :cascade do |t|
+    t.bigint "app_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "ends_at", null: false
+    t.datetime "starts_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["app_id", "starts_at"], name: "index_sponsored_slots_on_app_id_and_starts_at"
+    t.index ["app_id"], name: "index_sponsored_slots_on_app_id"
+  end
+
   create_table "user_providers", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.boolean "expires"
@@ -501,6 +532,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_28_100000) do
   add_foreign_key "apple_teams", "apple_keys", on_delete: :cascade
   add_foreign_key "apps", "publisher_profiles", on_delete: :nullify
   add_foreign_key "channels", "schemes", on_delete: :cascade
+  add_foreign_key "collection_apps", "apps"
+  add_foreign_key "collection_apps", "collections"
   add_foreign_key "debug_file_metadata", "debug_files"
   add_foreign_key "debug_files", "apps", on_delete: :cascade
   add_foreign_key "metadata", "releases", on_delete: :cascade
@@ -510,6 +543,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_28_100000) do
   add_foreign_key "releases", "users", column: "play_approved_by_id"
   add_foreign_key "releases", "users", column: "play_rejected_by_id"
   add_foreign_key "schemes", "apps", on_delete: :cascade
+  add_foreign_key "sponsored_slots", "apps"
   add_foreign_key "user_providers", "users", on_delete: :cascade
   add_foreign_key "web_hooks", "channels", on_delete: :cascade
 end

@@ -4,7 +4,7 @@
   "title": "Zealot catalog index v2",
   "description": "Task 29a. Supersedes catalog_index_v1.schema.json. Read docs/catalog_index_v2.md and app/services/catalog_index/serializer.rb (once 29b lands) alongside this file -- all three are kept in sync by hand.",
   "type": "object",
-  "required": [ "schema_version", "generated_at", "sequence", "expires_at", "apps" ],
+  "required": [ "schema_version", "generated_at", "sequence", "expires_at", "apps", "collections" ],
   "additionalProperties": false,
   "properties": {
     "schema_version": { "const": 2 },
@@ -22,6 +22,11 @@
     "apps": {
       "type": "array",
       "items": { "$ref": "#/$defs/app" }
+    },
+    "collections": {
+      "type": "array",
+      "description": "Task 31a: the top-level registry an app's own `collections[]` (an array of slugs, see $defs/app) resolves against. A slug appearing in an app's list with no matching entry here is not itself schema-invalid (this array can be extended independently) but a reader should treat it as unresolvable.",
+      "items": { "$ref": "#/$defs/collection" }
     }
   },
   "$defs": {
@@ -40,6 +45,16 @@
     "iso_date_time_or_null": {
       "type": [ "string", "null" ],
       "format": "date-time"
+    },
+    "collection": {
+      "type": "object",
+      "required": [ "slug", "name", "description" ],
+      "additionalProperties": false,
+      "properties": {
+        "slug": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": [ "string", "null" ] }
+      }
     },
     "app": {
       "type": "object",
