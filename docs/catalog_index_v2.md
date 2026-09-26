@@ -137,17 +137,44 @@ on it not changing later.
 
 ## Category vocabulary
 
-Fixed list, matching D-store's current categories exactly (not a Zealot-owned
-free-text field mapped by D-store — see the open ❓ below for why this isn't
-settled yet):
+**❓1 resolved (this slice):** the operator chose full Play parity over the
+small D-store-matching list this section used to carry. The vocabulary is
+now the same category (and, for games, sub-category) list Play Console
+itself offers a developer —
+[Play Console Help: choose a category and tags](https://support.google.com/googleplay/android-developer/answer/9859673)
+— fixed, not Zealot-owned free text. `App::APP_CATEGORIES`/
+`App::GAME_CATEGORIES` are the source of truth; this list and the schema's
+`category` enum are kept in sync with them by hand, same convention as the
+rest of this file. `game_*` values mirror Play's own `GAME_*` category enum
+naming so a game category can't collide with an app category of the same
+name (Play has both an app "Sports" and a game "Sports").
 
-`system`, `multimedia`, `games`, `internet`, `navigation`,
-`science-education`, `theming`, `time`, `reading`, `writing`, `development`,
-`finance`
+Apps (32): `art_and_design`, `auto_and_vehicles`, `beauty`,
+`books_and_reference`, `business`, `comics`, `communications`, `dating`,
+`education`, `entertainment`, `events`, `finance`, `food_and_drink`,
+`health_and_fitness`, `house_and_home`, `libraries_and_demo`, `lifestyle`,
+`maps_and_navigation`, `medical`, `music_and_audio`, `news_and_magazines`,
+`parenting`, `personalization`, `photography`, `productivity`, `shopping`,
+`social`, `sports`, `tools`, `travel_and_local`,
+`video_players_and_editors`, `weather`.
 
-`null` is valid (an app not yet categorized) but any non-null value MUST be
-one of the above — the JSON Schema enforces this with an `enum`, not free
-text.
+Games (17): `game_action`, `game_adventure`, `game_arcade`, `game_board`,
+`game_card`, `game_casino`, `game_casual`, `game_educational`,
+`game_music`, `game_puzzle`, `game_racing`, `game_role_playing`,
+`game_simulation`, `game_sports`, `game_strategy`, `game_trivia`,
+`game_word`.
+
+`null` is valid (an app not yet categorized — Play Console has no
+"uncategorized" option at publish time, but nothing here forces a choice at
+draft time either) but any non-null value MUST be one of the above — the
+JSON Schema enforces this with an `enum`, not free text.
+
+**Cross-repo follow-up, not done by this slice:** D-store's own category
+list/mapping (if it has one) still reflects the old 12-item vocabulary this
+section used to document. Nothing in this repo can fix that from here —
+flagged so the next session touching D-store's side knows the vocabulary
+changed and free-text/legacy values need a mapping or a one-time
+migration, not silent drift.
 
 ## What's intentionally excluded
 
@@ -163,7 +190,8 @@ document makes it invalid, not just against convention.
 
 Everything v1's serializer already reads, plus (all currently nonexistent on
 the models and expected to come back `null`/empty until their owning slice
-lands): `App#slug`, `App#summary`, `App#category`, `App#license`,
+lands): `App#slug`, `App#summary`, `App#category` (real column as of the
+category slice above — see the serializer's `#category_for`), `App#license`,
 `App#links` (or a small value object), `App#available_regions`,
 `App#created_at`/`updated_at` (already exist as AR timestamps — just not
 serialized in v1), publisher bio/profile_url/joined_at, the `data_safety`/
@@ -178,11 +206,9 @@ D-store's reader already committed to a plain string), `released_at`
 ## ❓ Open decisions (not resolved by this slice)
 
 Recorded in `handover.md`'s Task 29 section, repeated here for visibility:
-1. **Category vocabulary**: fixed list (as written above) vs. Zealot-owned
-   free text that D-store maps to its own categories. This doc assumes the
-   fixed list because that's what ships today with zero mapping code on
-   either side — if the operator wants free text instead, this section and
-   the schema's `category` enum both need to change together.
+1. ~~**Category vocabulary**~~ — resolved this slice (see "Category
+   vocabulary" above): full Play parity, `App::APP_CATEGORIES`/
+   `App::GAME_CATEGORIES` as the source of truth.
 2. **Who authors `available_regions`**: per-app in the (future) listing
    editor, or an org-wide default that individual apps can override. Schema
    allows either (`null` = all regions, an array = a restriction) without

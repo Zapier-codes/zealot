@@ -31,11 +31,22 @@
   },
   "$defs": {
     "category": {
+      "description": "Full Play-parity vocabulary -- see docs/catalog_index_v2.md's 'Category vocabulary' section and App::APP_CATEGORIES/App::GAME_CATEGORIES, the source of truth this list is kept in sync with by hand. `game_*` values mirror Play's own GAME_* category enum naming.",
       "enum": [
         null,
-        "system", "multimedia", "games", "internet", "navigation",
-        "science-education", "theming", "time", "reading", "writing",
-        "development", "finance"
+        "art_and_design", "auto_and_vehicles", "beauty", "books_and_reference",
+        "business", "comics", "communications", "dating", "education",
+        "entertainment", "events", "finance", "food_and_drink",
+        "health_and_fitness", "house_and_home", "libraries_and_demo",
+        "lifestyle", "maps_and_navigation", "medical", "music_and_audio",
+        "news_and_magazines", "parenting", "personalization", "photography",
+        "productivity", "shopping", "social", "sports", "tools",
+        "travel_and_local", "video_players_and_editors", "weather",
+        "game_action", "game_adventure", "game_arcade", "game_board",
+        "game_card", "game_casino", "game_casual", "game_educational",
+        "game_music", "game_puzzle", "game_racing", "game_role_playing",
+        "game_simulation", "game_sports", "game_strategy", "game_trivia",
+        "game_word"
       ]
     },
     "sha256_or_null": {

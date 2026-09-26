@@ -39,16 +39,18 @@ module CatalogIndex
   class Serializer
     SCHEMA_VERSION = 2
 
-    # Matches docs/catalog_index_v2.md's "Category vocabulary" list and the
-    # schema's `category` enum exactly. Not used to validate an app's
-    # category here (nothing sets one yet -- see CATEGORY_ATTRIBUTE below);
-    # kept alongside the schema as the one other place this vocabulary is
-    # written down, same convention as CatalogIndex::Serializer::SCHEMA_VERSION
-    # tracking catalog_index_v2.schema.json's `schema_version` const.
-    CATEGORIES = %w[
-      system multimedia games internet navigation science-education
-      theming time reading writing development finance
-    ].freeze
+    # Resolves catalog_index_v2.md's open ❓1: full Play-parity categories
+    # (App::APP_CATEGORIES/App::GAME_CATEGORIES), not the old 12-item
+    # placeholder list this constant used to hardcode to match D-store's
+    # categories. `App` is the single source of truth for the vocabulary
+    # now that a real `category` column exists (see AddCategoryToApps);
+    # this constant just mirrors it here so callers that want "the
+    # published vocabulary" don't have to reach into `App` directly, same
+    # convention as SCHEMA_VERSION tracking catalog_index_v2.schema.json's
+    # `schema_version` const. Kept in sync with the schema's `category`
+    # enum and catalog_index_v2.md's "Category vocabulary" section by hand,
+    # same as the rest of this file.
+    CATEGORIES = App::CATEGORY_VALUES
 
     # Freshness bound for `expires_at` when the caller doesn't supply one.
     # Arbitrary and undecided for real (not one of Task 29's two recorded
@@ -136,7 +138,7 @@ module CatalogIndex
         },
         slug: slug_for(app),
         summary: nil,     # reserved -- no summary column yet
-        category: nil,    # reserved -- no category column yet; see CATEGORIES
+        category: category_for(app),
         license: nil,     # reserved
         links: { site: nil, source: nil, tracker: nil, donate: nil }, # reserved
         available_regions: nil, # nil = all regions; reserved until an owner/org default exists
@@ -147,6 +149,14 @@ module CatalogIndex
         collections: collection_slugs_for(app),
         versions: releases_for(app).map { |release| serialize_version(release) },
       }
+    end
+
+    # Real column as of AddCategoryToApps; duck-typed like the rest of this
+    # class so an old Struct-based fixture without it still gets `nil`
+    # (the same "not categorized yet" value a real app with no category set
+    # would produce) instead of raising.
+    def category_for(app)
+      app.respond_to?(:category) ? app.category : nil
     end
 
     # Task 31a: real columns as of the editorial-flags migration --

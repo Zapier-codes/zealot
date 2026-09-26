@@ -27,6 +27,15 @@ ruby:
   / verification exists); the controller enforces it too.
   - if policy(app).set_publisher_alias?
     = f.input :publisher_alias, required: false, input_html: { maxlength: App::PUBLISHER_ALIAS_MAX_LENGTH }
+  / Category: mirrors Play Console's own "App category" picker exactly --
+  / pick an application type (Apps/Games), then one category from that
+  / type's list -- see App::APP_CATEGORIES/App::GAME_CATEGORIES and
+  / catalog_index_v2.md's "Category vocabulary" section (❓1, resolved).
+  / No policy gate, unlike publisher_alias above: any collaborator who can
+  / edit this app can set its category, same as name/play_package_name.
+  = f.input :category, as: :grouped_select, required: false, include_blank: true, \
+    collection: [ [ 'Apps', App::APP_CATEGORIES ], [ 'Games', App::GAME_CATEGORIES ] ], \
+    group_method: :last, group_label_method: :first
   - if new_or_create_route?
     = f.simple_fields_for :scheme_attributes do |n|
       = n.input :name, as: :check_boxes, collection: preset_schemes, checked: schemes, required: false

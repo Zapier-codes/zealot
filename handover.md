@@ -236,12 +236,12 @@ manual-only as well, it is the same one-line trigger change.)
 3. Which Aptoide MCP: the official `Aptoide/aptoide-mcp` (Python, MIT, listed on Aptoide's GitHub, last updated Feb 12, 2026) or the third-party "Aptoide Ultimate API" actor on Apify (pay-per-query, hosted by Apify). Neither was inspected beyond its public listing this session.
 4. Aptoide's terms for re-presenting its catalog and linking to its downloads: not checked. Confirm before building `5.h.ii` in D-store.
 
-#### 🟡 Task 29: Catalog index v2 — the fields D-store and the Updater actually need (Phase 1) (29a, 29b done; 29c–29d planned)
+#### 🟡 Task 29: Catalog index v2 — the fields D-store and the Updater actually need (Phase 1) (29a, 29b, 29d, 29e done; 29c planned)
 
 D-store's `App` type needs fields index v1 doesn't carry (found by comparing `lib/mock-data.ts` with `docs/catalog_index_v1.md`). Nothing consumes v1 yet (27a is not published anywhere), so revising now costs nothing; after 27b signs and publishes, every change is a migration.
 
 **Fields to add (proposal; D-store signs off through its `5.g.i.zo`):**
-- Per app: immutable `slug` (rule: never changes once live), `summary`, `category` (fixed vocabulary shared by both repos; D-store's current list is system, multimedia, games, internet, navigation, science-education, theming, time, reading, writing, development, finance), `license`, `links` (site, source, tracker, donate), `available_regions`, `created_at`/`updated_at`.
+- Per app: immutable `slug` (rule: never changes once live), `summary`, `category` (fixed vocabulary shared by both repos — originally proposed as D-store's then-current 12-item list; superseded by 29e's full Play-parity list, see that entry), `license`, `links` (site, source, tracker, donate), `available_regions`, `created_at`/`updated_at`.
 - Listing declarations: `content_rating`, `data_safety` (collects data, data types, shared with third parties, encrypted in transit, deletion requests), `contains_ads`, `has_in_app_purchases`.
 - Developer block: name, bio, profile URL, joined date.
 - Compatibility: min and target SDK, ABIs, screen densities, required features, permissions. Zealot's `releases` table has no dedicated columns for these today, so extraction from the APK is new work (29c).
@@ -256,8 +256,12 @@ D-store's `App` type needs fields index v1 doesn't carry (found by comparing `li
 | 29b ✅ | Serializer v2 over the new fields, defaults where data doesn't exist yet (empty, not invented) | 29a | `app/services/catalog_index/serializer.rb`, spec | Output validates against the 29a schema for a full app and a bare app | low |
 | 29c | Extract compatibility metadata from the APK at upload and store it on `Release` | 29a | migration, service, `Release`, spec | An uploaded APK yields min/target SDK, ABIs, permissions | medium (APK parsing) |
 | 29d ✅ | D-store review of v2 as consumer (their `5.g.i.zo`); record sign-off or requested changes | 29a | docs, plus one bugfix the review surfaced (`changelog` — see write-up) | D-store confirms every field it renders is present or intentionally store-owned | low |
+| 29e ✅ | Resolve the category-vocabulary ❓: full Play parity, real `apps.category` column, wired into admin form | 29a | migration, `App`, serializer, schema, form, locales | Category select shows Play's Apps/Games groups; chosen value publishes in the index | low |
 
-**❓ Decisions:** the category vocabulary (fixed list vs Zealot-owned free text mapped by D-store); who authors `available_regions` (owner in the listing editor, or org-wide default).
+**❓ Decisions:** ~~the category vocabulary~~ — resolved this session, see
+"29e" below: full Play-parity list, not a fixed D-store-matching list or
+Zealot-owned free text. Still open: who authors `available_regions` (owner
+in the listing editor, or org-wide default).
 
 **Done in 29a (this session, code-complete, verified — see below):**
 `docs/catalog_index_v2.md` + `docs/catalog_index_v2.schema.json`. Defines the
@@ -461,6 +465,76 @@ fix above):**
 The D-store handover's `5.g.i.zo` line was updated in the same pass with
 this same list (see that repo's own patch, delivered separately per its own
 handoff process — a different repo, a different push target).
+
+**29e (this session): category vocabulary ❓ resolved — full Play parity,
+real `apps.category` column, wired into the admin form.** The operator
+chose Play Console's own category vocabulary over the small 12-item list
+this section previously documented (which, per 29a/29d above, D-store's
+current list also matches exactly — so this is a breaking cross-repo
+vocabulary change, flagged below, not a same-day sync).
+
+- `db/migrate/20260929100400_add_category_to_apps.rb` — new nullable
+  `apps.category` string column; `db/schema.rb` hand-updated to match (no
+  Postgres in this sandbox, same limitation this file already documents).
+- `app/models/app.rb` — `App::APP_CATEGORIES` (32, matching
+  [Play Console's own list](https://support.google.com/googleplay/android-developer/answer/9859673))
+  and `App::GAME_CATEGORIES` (17, `game_`-prefixed to avoid the
+  "Sports"-appears-in-both collision — mirrors Play's own `GAME_*` enum
+  naming), `CATEGORIES_BY_GROUP` for the grouped picker, `CATEGORY_VALUES`
+  as the flat list everything else validates/serializes against, an
+  inclusion validation (`allow_nil: true` — Play Console itself has no
+  "uncategorized" option at publish time, but nothing here forces a choice
+  at draft time), and `category` added to `CATALOG_INDEX_LISTING_FIELDS` so
+  a category change republishes the index like any other listing edit.
+- `app/services/catalog_index/serializer.rb` — `CATEGORIES` now points at
+  `App::CATEGORY_VALUES` instead of hardcoding a second copy of the
+  vocabulary; new duck-typed `#category_for` reads the real column instead
+  of the old always-`nil` literal.
+- `docs/catalog_index_v2.schema.json` — `category` enum expanded to the
+  full 49-value list (verified to match `App::CATEGORY_VALUES` exactly by
+  the harness below).
+- `docs/catalog_index_v2.md` — "Category vocabulary" section rewritten,
+  ❓1 marked resolved, and a new cross-repo follow-up note added: **D-store's
+  own category list/mapping still reflects the old 12-item vocabulary and
+  needs its own patch** — not fixed here, this repo has no access to that
+  one this session.
+- `app/controllers/apps_controller.rb` — `:category` permitted (no policy
+  gate, unlike `publisher_alias` — any collaborator who can edit the app
+  can set its category, same as `name`/`play_package_name`).
+- `app/views/apps/_form.html.slim` — grouped select (`Apps` / `Games`
+  optgroups, matching Play Console's own two-step picker) added to the
+  shared create/edit form.
+- `config/locales/simple_form/simple_form.en.yml` and `.zh-CN.yml` — label
+  + hint for `category` in both.
+
+**Explicitly NOT done — cross-repo and future-slice items, not silently
+folded in:**
+- D-store's category list itself (separate repo, not cloned this session —
+  see the doc note above).
+- No UI anywhere yet shows D-store's *existing* 12-category apps a
+  post-migration path to a new value — every existing app simply has
+  `category: nil` after this migration runs (nothing invents a mapping from
+  old implicit categories that were never actually stored on any column).
+- Task 30's "who authors `available_regions`" ❓ is untouched — different ❓,
+  not resolved by this slice.
+
+**Verified how:** same constraint as every other slice in this file — no
+Rails boot in this sandbox. Ruby 3.2.3 was installable this session
+(`apt-get update && apt-get install ruby`, same flakiness previously
+documented). Ran `ruby -c` on every changed/new `.rb` file (all OK), plus a
+throwaway Rails-free harness that `eval`'d the `APP_CATEGORIES`/
+`GAME_CATEGORIES` array literals directly out of `app/models/app.rb` and
+checked: exactly 32 app categories, exactly 17 game categories, all 49
+values unique, every game value `game_`-prefixed, and — cross-checked
+against `docs/catalog_index_v2.schema.json` parsed with Ruby's `JSON` — the
+schema's `category` enum matches `App::CATEGORY_VALUES` exactly, same set,
+same size. Both locale YAML files parsed cleanly with Python's `yaml`
+module; the schema JSON parsed cleanly with Python's `json` module. The
+Slim form template was reviewed by eye against this file's own existing
+multi-line `f.input` continuation convention (the `play_publish_track`
+block just below it) — `slim` itself isn't installable in this sandbox
+(rubygems.org unreachable), so this is **not** template-rendering-checked,
+same "code-complete, not run" caveat as everything else in this file.
 
 #### 🆕 Task 30: Console publishing parity — edits, tracks, policy checks, review (Phase 2)
 

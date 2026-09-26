@@ -38,6 +38,82 @@ class App < ApplicationRecord
   before_validation :normalize_publisher_alias
   validates :publisher_alias, length: { maximum: PUBLISHER_ALIAS_MAX_LENGTH }, allow_nil: true
 
+  # Category vocabulary, resolving catalog_index_v2.md's open ❓1 in favor of
+  # full Play parity: Play Console has a developer pick an application type
+  # (Apps or Games) and then one category from that type's own list --
+  # https://support.google.com/googleplay/android-developer/answer/9859673
+  # -- rather than one flat, Zealot-owned list. Grouped here the same way so
+  # the picker matches Play Console's own UI (see the form's grouped
+  # select), but still stored as a single flat `category` column: nothing
+  # else on this model needs "is this a game" as a separate fact yet, and
+  # the value alone is already unambiguous thanks to the `game_` prefix,
+  # which mirrors Play's own GAME_* enum naming (see the Google Play
+  # Categories API reference) rather than inventing a new one.
+  #
+  # [label, value] pairs, in the order Play Console's own picker lists them,
+  # values lower_snake_case to match this codebase's other enum-ish string
+  # columns (`listing_status`, `play_setup_status`).
+  APP_CATEGORIES = [
+    ['Art & design', 'art_and_design'],
+    ['Auto & vehicles', 'auto_and_vehicles'],
+    ['Beauty', 'beauty'],
+    ['Books & reference', 'books_and_reference'],
+    ['Business', 'business'],
+    ['Comics', 'comics'],
+    ['Communications', 'communications'],
+    ['Dating', 'dating'],
+    ['Education', 'education'],
+    ['Entertainment', 'entertainment'],
+    ['Events', 'events'],
+    ['Finance', 'finance'],
+    ['Food & drink', 'food_and_drink'],
+    ['Health & fitness', 'health_and_fitness'],
+    ['House & home', 'house_and_home'],
+    ['Libraries & demo', 'libraries_and_demo'],
+    ['Lifestyle', 'lifestyle'],
+    ['Maps & navigation', 'maps_and_navigation'],
+    ['Medical', 'medical'],
+    ['Music & audio', 'music_and_audio'],
+    ['News & magazines', 'news_and_magazines'],
+    ['Parenting', 'parenting'],
+    ['Personalization', 'personalization'],
+    ['Photography', 'photography'],
+    ['Productivity', 'productivity'],
+    ['Shopping', 'shopping'],
+    ['Social', 'social'],
+    ['Sports', 'sports'],
+    ['Tools', 'tools'],
+    ['Travel & local', 'travel_and_local'],
+    ['Video players & editors', 'video_players_and_editors'],
+    ['Weather', 'weather'],
+  ].freeze
+
+  GAME_CATEGORIES = [
+    ['Action', 'game_action'],
+    ['Adventure', 'game_adventure'],
+    ['Arcade', 'game_arcade'],
+    ['Board', 'game_board'],
+    ['Card', 'game_card'],
+    ['Casino', 'game_casino'],
+    ['Casual', 'game_casual'],
+    ['Educational', 'game_educational'],
+    ['Music', 'game_music'],
+    ['Puzzle', 'game_puzzle'],
+    ['Racing', 'game_racing'],
+    ['Role playing', 'game_role_playing'],
+    ['Simulation', 'game_simulation'],
+    ['Sports', 'game_sports'],
+    ['Strategy', 'game_strategy'],
+    ['Trivia', 'game_trivia'],
+    ['Word', 'game_word'],
+  ].freeze
+
+  # Grouped shape a grouped select wants: { group label => [[label, value], ...] }.
+  CATEGORIES_BY_GROUP = { 'Apps' => APP_CATEGORIES, 'Games' => GAME_CATEGORIES }.freeze
+  CATEGORY_VALUES = (APP_CATEGORIES + GAME_CATEGORIES).map(&:last).freeze
+
+  validates :category, inclusion: { in: CATEGORY_VALUES }, allow_nil: true
+
   # Task 25: is the app on our own stores? draft -> awaiting_payment (owner
   # asked to publish, under their PublisherProfile) -> live (paid) ->
   # suspended (later slice: unverified company past its deadline).
@@ -87,7 +163,7 @@ class App < ApplicationRecord
   # One after_commit covers go_live!/suspend! (both just update
   # listing_status) and a plain listing edit (renaming the app, changing the
   # publisher alias, re-pointing the package name, switching publisher
-  # profile) without three separate callbacks -- ActiveRecord already
+  # profile, changing category) without three separate callbacks -- ActiveRecord already
   # coalesces multiple attribute changes in one save into one after_commit
   # call, so a single go_live! that also happens to touch another watched
   # column still only enqueues once.
@@ -101,7 +177,7 @@ class App < ApplicationRecord
   # CATALOG_PAGES_REPO/CATALOG_PAGES_TOKEN and a signing key exist (see that
   # job's own comment), so it's safe to always enqueue here rather than
   # re-checking CatalogIndex::Publish.configured? on every save.
-  CATALOG_INDEX_LISTING_FIELDS = %w[name publisher_alias play_package_name publisher_profile_id].freeze
+  CATALOG_INDEX_LISTING_FIELDS = %w[name publisher_alias play_package_name publisher_profile_id category].freeze
 
   after_commit :publish_catalog_index_if_needed, on: :update
 
