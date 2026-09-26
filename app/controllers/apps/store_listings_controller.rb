@@ -71,7 +71,7 @@ class Apps::StoreListingsController < ApplicationController
     begin
       result = HyperswitchClient.create_payment(
         amount_cents: payment.amount_cents, currency: payment.currency,
-        customer_id: "app-#{@app.id}", return_url: app_store_listing_url(@app),
+        customer_id: "app-#{@app.id}", return_url: pay_app_store_listing_url(@app),
         setup_future_usage: 'off_session', metadata: { app_id: @app.id, payment_id: payment.id }
       )
     rescue HyperswitchClient::Error => e
@@ -82,14 +82,21 @@ class Apps::StoreListingsController < ApplicationController
 
     payment.update!(hyperswitch_payment_id: result.payment_id)
 
-    # ⚠️ Not a finished checkout flow — see handover.md's Task 32 entry.
-    # B-PAY/Hyperswitch confirms a payment client-side (Hyperswitch.js +
-    # the returned client_secret), which is not wired up here: building
-    # that against unconfirmed client-integration details would mean
-    # guessing at a payment form, which this codebase does not do. This
-    # renders a minimal page carrying @client_secret for whoever picks up
-    # that slice next.
+    # Unified Checkout embed (app/views/apps/store_listings/pay.html.slim) —
+    # real Hyperswitch client-side API (Hyper(), widgets(), confirmPayment(),
+    # retrievePayment() on return), grounded in Hyperswitch's own
+    # open-source web-client integration docs, not guessed. return_url
+    # points back at this same action so the post-redirect status check
+    # (payment_intent_client_secret in the query string) has the same page
+    # to land on. Two values only the operator can supply, both documented
+    # in handover.md's payment-listing-fee Task 32 entry: the publishable
+    # key (Control Center -> Developer -> API Keys) and the *web client*
+    # URL — self-hosted Hyperswitch serves HyperLoader.js from a separately
+    # deployed "web client" component, not from B-PAY's API host, per
+    # Hyperswitch's own open-source deployment docs.
     @client_secret = result.client_secret
+    @publishable_key = ENV['HYPERSWITCH_PUBLISHABLE_KEY'].to_s.strip
+    @sdk_url = ENV['HYPERSWITCH_SDK_URL'].to_s.strip
     @title = t('.title')
   end
 

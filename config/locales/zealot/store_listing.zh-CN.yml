@@ -67,12 +67,17 @@ zh-CN:
         not_available: 此应用目前无法进入付款。
       pay:
         title: 正在发起付款
-        starting: 正在通过 B-PAY 发起 $14.99 付款…
-        not_finished: 此页面为占位页——收银表单尚未接入。B-PAY 确认付款后应用会自动上架。
-        client_secret_ready: 付款会话已就绪。
+        pay_button: 支付 $14.99
+        not_configured: 支付尚未完全配置（缺少收银台可发布密钥或 Web 客户端地址），请联系管理员。
+        not_finished: B-PAY 确认付款后应用会自动上架——付款完成后可能需要几秒钟。
         back: 返回商店上架页面
         not_available: 此应用当前不在等待付款状态。
         payment_start_failed: 暂时无法发起付款，请稍后重试。
+        status:
+          succeeded: 付款成功！应用上架后本页会自动更新。
+          processing: 你的付款正在处理中。
+          requires_payment_method: 付款未成功——请重试。
+          unknown: 出现问题，请重试或联系支持。
       mark_paid:
         notice: 已标记为已付款，应用现已上架。
         not_available: 此应用当前不在等待付款状态。

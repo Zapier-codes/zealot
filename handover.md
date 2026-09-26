@@ -998,7 +998,25 @@ then open the alias to approved companies).
 **Revert:** `db:rollback` the migration, then revert the listed files (or
 `git revert` the commit).
 
-### 🆕 Task 32: Payment for the store listing fee — B-PAY (self-hosted Hyperswitch), calls `App#go_live!` (code-complete, not run)
+### 🆕 Task 32 (PAYMENT — see disambiguation note): Payment for the store listing fee — B-PAY (self-hosted Hyperswitch), calls `App#go_live!` (code-complete, not run)
+
+**⚠️ Number collision, confirmed, not just anticipated.** This repo now
+has *two* unrelated `### 🆕 Task 32:` entries — this one (payment/B-PAY),
+and "Task 32: D-Store Updater — the on-device trust anchor" elsewhere in
+this file, filed by a different concurrent session. Both merged to
+`develop` under the same number. **Every in-code comment referencing
+"Task 32"** — in `app/models/payment.rb`, `app/services/hyperswitch_client.rb`,
+`app/controllers/hyperswitch_webhooks_controller.rb`,
+`app/controllers/apps/store_listings_controller.rb`, `config/routes.rb`,
+`.env.example`, the migration, and the specs — **means this entry, the
+payment one, never the Updater.** Not renumbering those files: the
+comments are unambiguous in their own context (a comment inside
+`payment.rb` can only mean the payment task), and a mass rename across
+~15 already-merged, working files to chase a label collision is more risk
+than the collision itself. If a future session needs to reference this
+task by number in *new* code, prefer citing it by name ("the B-PAY
+payment task") rather than by number, until/unless an operator decides to
+formally renumber one of the two.
 
 Closes the "payment provider is still open" ❓ that Task 25 left blocking its
 own next step (quoted above), and is the same gap Task 12 names for email #3
