@@ -476,11 +476,13 @@ Play's publishing model is a transactional edit on top of tracks, with automated
 
 **❓ Decisions:** how Zealot's existing channels map to tracks (confirm against the `Channel` model before 30b); which scan provider, if any, for 30c; whether review is always manual or only for flagged versions.
 
-#### 🆕 Task 31: Editorial controls and store-owned data (the outcome of ❓6) (Phase 2)
+#### 🟡 Task 31: Editorial controls and store-owned data (the outcome of ❓6) (Phase 2) — 31a in progress, this is D-store's `5.g.v.zi` blocker
 
 | ID | Goal | Depends on | Files (predicted) | Acceptance check | Risk |
 |---|---|---|---|---|---|
 | 31a | Author featured, Editors' Pick, sponsored slots (with dates) and collections in Zealot's admin; publish them in the index editorial blocks | 29a, 27c | model, views, serializer, locales | Toggling featured changes the next index; D-store shows it with no write access | medium |
+
+**31a status — data-model slice only, code-complete but NOT wired to the serializer or admin yet. See "Task 31a (this session, WIP)" in the Session log for exactly what shipped and what the next session picks up: migrations + models for `featured`/`editors_pick`/`sponsored_slots`/`collections` exist; `CatalogIndex::Serializer` still emits the old hardcoded `false`/`[]` placeholders; no admin UI, no routes, no schema-doc update yet. Toggling anything still does nothing — the acceptance check above is not met by this slice alone.**
 | 31b | Read-only view in Zealot of D-store-owned data (traffic, top searches, report counts, review aggregates), fed by a token-authenticated D-store read API | D-store `5.f.i` and its `5.g.v.zo` | service, admin views | Zealot shows current figures; the token can only read | blocked on D-store database |
 | 31c | Decide and record where moderation actions live (hide a review, dismiss a report) | 31b | docs only | Decision recorded | low |
 
@@ -4417,3 +4419,91 @@ them is already modernized.
   branch (`feat/task-27b-iv-ops-bootstrap-route`), one squashed commit, one
   `.patch` file. **Remove this route in the very next commit after it's used
   once** — see its own file header and the operator-steps list above.
+- **Task 31a (this session, WIP — marked `[~]` in spirit, not finished; do not
+  treat as done):** picked up because it's D-store's own `5.g.v.zi` blocker —
+  read straight from D-store's `HANDOVER.md` (cloned read-only alongside this
+  repo), whose "collections is reserved but has no registry behind it
+  anywhere" and "sponsored_slots... needs real admin/model/serializer work"
+  notes point directly at this task. Confirmed the gap is real, not assumed:
+  `db/schema.rb`'s `apps` table has no `featured`/`editors_pick` columns at
+  all, no `sponsored_slots`/`collections`/`collection_apps` table exists
+  anywhere, and `CatalogIndex::Serializer#serialize_app` hardcodes
+  `editorial: { featured: false, editors_pick: false }`, `sponsored_slots: []`,
+  `collections: []` with a `# reserved for 31a` comment on each — exactly
+  what both handover files already said, verified against the actual code
+  rather than taken on faith.
+
+  **What this session actually built — data-model foundation only, one TSF
+  slice, deliberately stopped before the serializer/admin/schema-doc slices
+  that would make it end-to-end:**
+  - `db/migrate/20260929100000_add_editorial_flags_to_apps.rb` — real
+    `featured`/`editors_pick` boolean columns on `apps`, default `false` (no
+    behavior change for any existing app until an admin opts one in).
+  - `db/migrate/20260929100100_create_collections.rb` — the top-level
+    registry table (`slug`/`name`/`description`) the index's per-app
+    `collections[]` field has had nothing to resolve against.
+  - `db/migrate/20260929100200_create_collection_apps.rb` — the
+    Collection↔App membership join table, a real model rather than a bare
+    HABTM so a later slice can hang per-membership data off it without
+    another migration (same reasoning `Collaborator` already uses).
+  - `db/migrate/20260929100300_create_sponsored_slots.rb` — one row per
+    paid-placement date window, the bare `{starts_at, ends_at}` shape the
+    v2 schema already commits to (the app's own listing is the creative,
+    per the cross-repo "sponsored placement" decision already recorded in
+    D-store's `HANDOVER.md` — nothing new decided here).
+  - `app/models/collection.rb`, `app/models/collection_app.rb`,
+    `app/models/sponsored_slot.rb` — new models with basic validations
+    (`Collection#slug` uniqueness/format, `SponsoredSlot` end-after-start,
+    a `current_or_upcoming` scope so an expired window drops out of the
+    index on its own without a cleanup job).
+  - `app/models/app.rb` — added `has_many :sponsored_slots`,
+    `has_many :collection_apps`, `has_many :collections, through:
+    :collection_apps`.
+
+  **Explicitly NOT done — do not assume otherwise, this is not a "polish
+  later" list, it's "the feature doesn't work yet" list:**
+  - `CatalogIndex::Serializer` is **untouched** — it still emits the old
+    hardcoded placeholders. The new columns/tables exist but nothing reads
+    them into the index. This is the very next step and is most of what's
+    left to unblock D-store.
+  - No top-level `collections` registry block added to the index's `call`
+    output, and `docs/catalog_index_v2.schema.json`/`.md` are **untouched**
+    — the schema still has no top-level `collections` property, only the
+    per-app one. Both need updating together with the serializer change,
+    per this file's own "all three kept in sync by hand" convention.
+  - No admin UI, no new routes, no policies (`CollectionPolicy`,
+    `SponsoredSlotPolicy` don't exist yet), no locale entries, no sidebar
+    links. Task 31a's own acceptance check ("toggling featured changes the
+    next index") cannot be exercised at all yet — there is nothing to
+    toggle from.
+  - `db/schema.rb` was **not** hand-updated to match these four migrations
+    (left as a job for whoever runs them for real, or the next session if
+    it also has no live Postgres). Same sandbox limitation this file
+    already documents repo-wide: no Ruby/Node/Postgres here, so nothing
+    above was run — `ruby -c`, a migration, `rails runner`, none of it.
+    Code-complete and reviewed by hand against this repo's existing
+    conventions (matched `CreatePayments`/`CreateCatalogIndexSigningKeys`
+    for migration style, `AppPolicy`/`WebHookPolicy` for the policy
+    pattern expected next), **not build- or syntax-checked.**
+
+  **Next session on this task, in order:** (1) hand-update `db/schema.rb`'s
+  version and tables to match the four migrations above (or run them for
+  real if a database is available); (2) rewrite
+  `CatalogIndex::Serializer#serialize_app`'s `editorial`/`sponsored_slots`/
+  `collections` block to read the new columns/associations, duck-typed the
+  same way `releases_for` already guards `catalog_releases` so old
+  Struct-based spec fixtures without these columns don't raise; (3) add a
+  top-level `collections` registry array to the serializer's `call` output
+  and to `docs/catalog_index_v2.schema.json`/`.md` (a `$defs/collection`
+  ref, required at the root alongside `apps`); (4) build the admin
+  surface — `Admin::AppsController` (featured/editors_pick toggle, reusing
+  the existing `AppPolicy`, whose `manage?` already passes for any admin),
+  `Admin::CollectionsController`, `Admin::SponsoredSlotsController`, routes,
+  locale entries under `config/locales/zealot/en.yml`'s `admin:` block, and
+  three new sidebar links in `app/views/layouts/_sidebar.html.slim` (the
+  one actually rendered by `application.html.slim` — `_main_sidebar.html.slim`
+  is dead code, not rendered anywhere, don't bother updating it); (5) once
+  real data can flow, tell D-store's session it can resume `5.g.v.zi` for
+  real. Branch `feat/task-31a-editorial-data-model` (data-model slice only;
+  the branch name is scoped narrower than the task on purpose since more
+  slices are coming).

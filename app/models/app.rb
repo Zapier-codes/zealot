@@ -11,6 +11,11 @@ class App < ApplicationRecord
   has_many :debug_files, dependent: :destroy
   # Task 32: listing-fee + maintenance charges via B-PAY.
   has_many :payments, dependent: :destroy
+  # Task 31a: editorial/store-owned data the catalog index publishes --
+  # see CatalogIndex::Serializer's `sponsored_slots`/`collections` blocks.
+  has_many :sponsored_slots, dependent: :destroy
+  has_many :collection_apps, dependent: :destroy
+  has_many :collections, through: :collection_apps
 
   scope :all_names, -> { all.map { |c| [c.name, c.id] } }
   scope :debug_files, -> { joins(:debug_files).distinct }
