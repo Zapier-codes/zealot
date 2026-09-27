@@ -188,7 +188,7 @@ manual-only as well, it is the same one-line trigger change.)
 
 ## Task board
 
-### 🧭 Play-parity program — Tasks 28–36 (added this session, docs only; nothing below is built)
+### 🧭 Play-parity program — Tasks 28–37 (Task 37 added this session; docs only; nothing below is built)
 
 *Read Task 28 first. Tasks 29–36 are listed in phase order, not newest-first. Every slice follows the TSF; every ❓ is for the operator, not for a session to guess.*
 
@@ -225,6 +225,7 @@ manual-only as well, it is the same one-line trigger change.)
 - **Phase 2, console parity:** 27c–27f, Task 30, Task 31.
 - **Phase 3, client and feedback:** Task 32, Task 33, Task 34.
 - **Phase 4, scale and trust:** Task 35, Task 36.
+- **Phase 5, multi-tenant:** Task 37 *(added this session — cross-repo operator decision, docs only, nothing built)*.
 
 **Catalog sources (operator rule):** first-party = Zealot's signed index; third-party = Aptoide via MCP. First-party is always first on the home page. Third-party apps are labelled as such, download from Aptoide (not Zealot), and never carry Zealot's verified/fingerprint claims. If the same package is in both, the Zealot entry wins. D-store owns the merge (`5.h`).
 
@@ -759,7 +760,19 @@ Text reviews and replies (27g) stay parked; see the Task 27 note on ❓4.
 
 Date note (from Task 27): Google's registration enforcement starts September 30, 2026 in Brazil, Indonesia, Singapore and Thailand. Confirm whether D-store distributes in those countries; if it does, 36b becomes urgent.
 
-**Not built (Tasks 28–36):** all of it. No code, schema or config changed by recording this program.
+#### 🆕 Task 37: Multi-tenant / white-label (Phase 5, new — cross-repo operator decision, this session)
+
+Companion to D-store's `6.b` track and Storeapp's Track c (both already recorded in their own `HANDOVER.md` files). **Model, decided by the operator, cross-repo: one Zealot deployment serving every tenant, tenant resolved dynamically by domain/config at request time — not a separate Console instance stood up per white-label operator.** This is the same "single runtime, no forking" posture recorded for D-store and Storeapp; it governs how every leaf below is built, so none of them are a from-scratch multi-instance design.
+
+| ID | Goal | Depends on | Files (predicted) | Acceptance check | Risk |
+|---|---|---|---|---|---|
+| 37a | Define the tenant-config schema/contract shared with D-store and Storeapp: fields, `schema_version`, additive-only-with-defaults policy (an older client/deployment never breaks on a newer field). Must land before 37b/37c — all three repos need to agree on shape first. | ❓ (spec only, no code) | docs (shared schema doc, mirrored into each repo) | Schema reviewed and referenced by name in all three `HANDOVER.md` files | low |
+| 37b | Tenant/organization model: each white-label operator gets its own signing key, its own catalog index (or a namespaced slice of one), and its own publish-pipeline config, resolved by domain/config within the one deployment — never a second Console instance | 37a | model, migration, admin views | A request for tenant A's domain never surfaces tenant B's apps/keys/config | medium |
+| 37c | Serve the tenant-config record itself (the one 37a/37b define) to Storeapp on request, signed the same way the catalog index is (pinned key, anti-rollback, `expires_at`) — Storeapp's `TenantConfig` fetch-on-launch reads this endpoint | 37a, 37b, 27b-iii (reuses its signing/verification posture) | route, serializer | A tampered or expired tenant-config response is refused, same as a tampered index | medium |
+
+**❓ Decisions:** none blocking — the "single deployment, dynamic resolution, no fork" model is the operator's recorded call (see D-store's `HANDOVER.md`, "Resolved — multi-tenant model clarified," and Storeapp's `HANDOVER.md` Track c). Open only on implementation detail: whether 37b's per-tenant signing key sits in the same `AndroidSigningKey`/upload-key model Task 27 already built, or a new key type — decide when 37b starts, not before.
+
+**Not built (Tasks 28–37):** all of it. No code, schema or config changed by recording this program.
 
 ### 🟡 Task 27: Zealot as the Play Console — signed catalog index, store-listing management, release controls (27a–27c done; 27d–27h planned, several blocked on ❓ decisions)
 
