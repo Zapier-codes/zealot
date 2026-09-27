@@ -272,7 +272,26 @@ module CatalogIndex
         # definition, available. 27f replaces this with the real column.
         status: 'available',
         compatibility: compatibility_for(release),
+        rollout: rollout_for(release),
       }
+    end
+
+    # Task 32a: staged rollout, Play-Console-parity. `respond_to?` keeps this
+    # duck-typed like the rest of the class -- a fixture/Struct without the
+    # new columns gets the fully-rolled-out default (percentage: 100,
+    # status: 'complete'), same "honest current behavior" fallback the
+    # compatibility block above uses, rather than raising. The device-bucket
+    # decision itself (`Release#rollout_includes_device?`) is deliberately
+    # NOT made here -- this index is signed and cached (same "read from
+    # storage/downloads, never live" rule Section 3 of the D-store handover
+    # documents on the consumer side), so it has to describe the rollout,
+    # not evaluate it for one specific device. Whichever layer knows the
+    # requesting device (D-store's update-check path, not this
+    # once-per-publish serialization) is what calls that method.
+    def rollout_for(release)
+      percentage = release.respond_to?(:rollout_percentage) ? release.rollout_percentage : 100
+      status = release.respond_to?(:rollout_status) ? release.rollout_status : 'complete'
+      { percentage: percentage, status: status }
     end
 
     # Task 27b-i closed the gap this method used to carry alone: as of that

@@ -205,7 +205,7 @@
       "required": [
         "release_id", "version_name", "version_code", "download_url",
         "sha256", "size_bytes", "signing_fingerprint", "changelog",
-        "released_at", "status", "compatibility"
+        "released_at", "status", "compatibility", "rollout"
       ],
       "additionalProperties": false,
       "properties": {
@@ -230,6 +230,16 @@
             "screen_densities": { "type": "array", "items": { "type": "string" } },
             "required_features": { "type": "array", "items": { "type": "string" } },
             "permissions": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "rollout": {
+          "type": "object",
+          "description": "Task 32a: staged rollout, Play-Console parity. percentage is 0-100 (100 = fully available, the default for every release that has never had a rollout narrowed). status is the admin-controlled ramp state, distinct from the sibling `status` field on this same version object (which tracks the release's overall lifecycle, not the rollout ramp). A reader deciding whether to offer this version to one specific device computes bucket = first 8 bytes of sha256(\"<device_id>:<release_id>\") as a big-endian uint64, mod 100, and offers the update only if bucket < percentage -- the same deterministic, sticky bucketing Play itself uses, so a given device's inclusion never flips as the percentage climbs.",
+          "required": [ "percentage", "status" ],
+          "additionalProperties": false,
+          "properties": {
+            "percentage": { "type": "integer", "minimum": 0, "maximum": 100 },
+            "status": { "enum": [ "active", "halted", "complete" ] }
           }
         }
       }

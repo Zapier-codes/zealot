@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'digest'
+
 class Release < ApplicationRecord
   after_commit :schedule_proxy_injection, on: :create
   def schedule_proxy_injection
@@ -123,6 +125,20 @@ class Release < ApplicationRecord
     waiting_for_setup: 'waiting_for_setup'
   }, prefix: :play_publish
 
+  # Task 32a: staged rollout (see AddStagedRolloutToReleases for why this is
+  # a separate concept from the 27f-owned `status` enum). `active` is the
+  # steady ramping state; `complete` means the percentage no longer matters
+  # (everyone gets it -- set automatically once percentage hits 100, see
+  # #sync_rollout_status_with_percentage below, or settable directly by an
+  # admin who wants to skip the ramp); `halted` freezes the current
+  # percentage without changing it, the same "pause, don't undo" behavior
+  # Play's own halt control has.
+  enum :rollout_status, {
+    active: 'active',
+    halted: 'halted',
+    complete: 'complete'
+  }, prefix: :rollout
+
   belongs_to :channel
   belongs_to :play_approved_by, class_name: 'User', optional: true
   belongs_to :play_rejected_by, class_name: 'User', optional: true
@@ -130,9 +146,42 @@ class Release < ApplicationRecord
   has_and_belongs_to_many :devices, dependent: :destroy
 
   validates :file, presence: true, on: :create
+  validates :rollout_percentage, numericality: {
+    only_integer: true, greater_than_or_equal_to: 0, less_than_or_equal_to: 100
+  }
   validate :bundle_id_matched, on: :create
   validate :determine_file_exist, on: :create
   validate :play_target_bundle_valid, on: :create, if: :play_store_target?
+
+  before_save :sync_rollout_status_with_percentage, if: :rollout_percentage_changed?
+
+  # Reaching 100 always means "done ramping," regardless of how it got
+  # there (an admin dragging the slider up, or setting it to 100 directly).
+  # Does not fight an explicit halt: an admin who halts *at* 100 (freezing a
+  # release that was already fully rolled out, e.g. ahead of investigating a
+  # late-arriving report) stays halted rather than being silently flipped
+  # back to complete.
+  def sync_rollout_status_with_percentage
+    self.rollout_status = 'complete' if rollout_percentage == 100 && !rollout_halted?
+  end
+
+  # Deterministic, sticky device bucketing -- same reference algorithm the
+  # design note this leaf implements is based on: bucket = first 8 bytes of
+  # sha256("device_id:release_id") as a big-endian uint64, mod 100. Using
+  # this release's own id as the seed (rather than a separately-stored
+  # random seed) keeps the bucket reproducible from data Zealot already has
+  # for every release, with no extra column, while still being
+  # release-specific -- the same device lands in a different bucket for a
+  # different release, so being "in" one rollout says nothing about being
+  # "in" the next one.
+  def rollout_includes_device?(device_id)
+    return true if rollout_percentage >= 100
+    return false if rollout_percentage <= 0 || device_id.blank?
+
+    digest = Digest::SHA256.digest("#{device_id}:#{id}")
+    bucket = digest.byteslice(0, 8).unpack1('Q>') % 100
+    bucket < rollout_percentage
+  end
   validate :play_version_code_newer, on: :create, if: :play_store_target?
 
   before_validation :drop_unsupported_play_target, on: :create

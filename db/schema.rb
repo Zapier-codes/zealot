@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_29_100400) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_29_100500) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -406,6 +406,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_29_100400) do
     t.jsonb "screen_densities", default: [], null: false
     t.jsonb "required_features", default: [], null: false
     t.jsonb "permissions", default: [], null: false
+    t.integer "rollout_percentage", default: 100, null: false
+    t.string "rollout_status", default: "active", null: false
+    t.check_constraint "rollout_percentage >= 0 AND rollout_percentage <= 100", name: "releases_rollout_percentage_range"
     t.index ["asset_pack_type"], name: "index_releases_on_asset_pack_type"
     t.index ["build_version"], name: "index_releases_on_build_version"
     t.index ["bundle_id"], name: "index_releases_on_bundle_id"
@@ -418,6 +421,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_29_100400) do
     t.index ["play_rejected_by_id"], name: "index_releases_on_play_rejected_by_id"
     t.index ["release_type"], name: "index_releases_on_release_type"
     t.index ["release_version", "build_version"], name: "index_releases_on_release_version_and_build_version"
+    t.index ["rollout_status"], name: "index_releases_on_rollout_status"
     t.index ["source"], name: "index_releases_on_source"
     t.index ["version"], name: "index_releases_on_version"
   end

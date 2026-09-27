@@ -99,6 +99,10 @@ full rationale and the phase this sits in (Phase 1, trust core).
             "screen_densities": [],
             "required_features": [],
             "permissions": []
+          },
+          "rollout": {                      // NEW, 32a -- staged rollout, Play-Console parity. percentage 0-100 (100 = fully available, the default). status is the admin-controlled ramp state ("active" | "halted" | "complete"), distinct from the sibling "status" field above (which is the release's overall lifecycle, not the rollout ramp).
+            "percentage": 100,
+            "status": "complete"
           }
         }
       ]
@@ -202,6 +206,15 @@ the raw jsonb column — fixed by 29b/29d after cross-repo review found
 D-store's reader already committed to a plain string), `released_at`
 (`Release#created_at` — already exists), `status` (27f), and
 `compatibility` (29c).
+
+**32a, added later:** `versions[].rollout` — real as of this slice
+(`Release#rollout_percentage`/`#rollout_status`, `AddStagedRolloutToReleases`),
+not reserved. Every release defaults to `{percentage: 100, status:
+"complete"}`, so nothing published before this slice changes shape. The
+device-bucket decision (`Release#rollout_includes_device?`) is intentionally
+not part of this serializer — the signed index describes the rollout for
+every device alike; whichever layer knows the requesting device's stable ID
+evaluates the bucket per request.
 
 ## ❓ Open decisions (not resolved by this slice)
 
