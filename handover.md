@@ -236,7 +236,7 @@ manual-only as well, it is the same one-line trigger change.)
 3. Which Aptoide MCP: the official `Aptoide/aptoide-mcp` (Python, MIT, listed on Aptoide's GitHub, last updated Feb 12, 2026) or the third-party "Aptoide Ultimate API" actor on Apify (pay-per-query, hosted by Apify). Neither was inspected beyond its public listing this session.
 4. Aptoide's terms for re-presenting its catalog and linking to its downloads: not checked. Confirm before building `5.h.ii` in D-store.
 
-#### 🟡 Task 29: Catalog index v2 — the fields D-store and the Updater actually need (Phase 1) (29a, 29b, 29d, 29e done; 29c planned)
+#### 🟡 Task 29: Catalog index v2 — the fields D-store and the Updater actually need (Phase 1) (29a, 29b, 29c, 29d, 29e done)
 
 D-store's `App` type needs fields index v1 doesn't carry (found by comparing `lib/mock-data.ts` with `docs/catalog_index_v1.md`). Nothing consumes v1 yet (27a is not published anywhere), so revising now costs nothing; after 27b signs and publishes, every change is a migration.
 
@@ -254,7 +254,7 @@ D-store's `App` type needs fields index v1 doesn't carry (found by comparing `li
 |---|---|---|---|---|---|
 | 29a ✅ | Write index v2: schema doc, JSON Schema, and the slug and category rules | 27a | `docs/catalog_index_v2.md`, `docs/catalog_index_v2.schema.json` | Fixture documents validate; malformed ones are rejected | low |
 | 29b ✅ | Serializer v2 over the new fields, defaults where data doesn't exist yet (empty, not invented) | 29a | `app/services/catalog_index/serializer.rb`, spec | Output validates against the 29a schema for a full app and a bare app | low |
-| 29c | Extract compatibility metadata from the APK at upload and store it on `Release` | 29a | migration, service, `Release`, spec | An uploaded APK yields min/target SDK, ABIs, permissions | medium (APK parsing) |
+| 29c ✅ | Extract compatibility metadata from the APK at upload and store it on `Release` | 29a | migration, service, `Release`, spec | An uploaded APK yields min/target SDK, ABIs, permissions | medium (APK parsing) |
 | 29d ✅ | D-store review of v2 as consumer (their `5.g.i.zo`); record sign-off or requested changes | 29a | docs, plus one bugfix the review surfaced (`changelog` — see write-up) | D-store confirms every field it renders is present or intentionally store-owned | low |
 | 29e ✅ | Resolve the category-vocabulary ❓: full Play parity, real `apps.category` column, wired into admin form | 29a | migration, `App`, serializer, schema, form, locales | Category select shows Play's Apps/Games groups; chosen value publishes in the index | low |
 
@@ -535,6 +535,73 @@ multi-line `f.input` continuation convention (the `play_publish_track`
 block just below it) — `slim` itself isn't installable in this sandbox
 (rubygems.org unreachable), so this is **not** template-rendering-checked,
 same "code-complete, not run" caveat as everything else in this file.
+
+**29c, session 2 (this session): closing out the paperwork a prior session
+(`18663c43`) deliberately left open.** That commit shipped the actual
+extraction and serializer wiring — `ReleaseParser#extract_compatibility`,
+`CatalogIndex::Serializer#compatibility_for`, the
+`AddCompatibilityMetadataToReleases` migration — and said so explicitly in
+its own commit message, but by its own admission skipped three things:
+`serializer_spec.rb`'s compatibility assertions, a dedicated `ReleaseParser`
+spec (neither existed), and this file's own Task 29 board/write-up. Per
+this file's standing handoff rule (every session's patch includes the
+`handover.md` update), that's a broken convention, not a stylistic gap, and
+is what this session closes:
+- `spec/models/concerns/release_parser_spec.rb` — new file (no `Release`
+  factory exists in this repo, so `Release.new` is built directly against
+  `db/schema.rb`'s non-null columns, same approach `serializer_spec.rb`
+  already uses). Covers `#extract_compatibility` directly via `.send`
+  (all its methods are private, same as everywhere else in this concern):
+  multi-arch + multi-density extraction from zip entry paths, an APK with
+  no native code/density resources yielding `[]` rather than an error,
+  `required_features`/`permissions` duck-typed against both object and
+  Hash shapes, and the documented not-atomic rescue behavior (min/target
+  SDK stay set even when the zip read that follows them raises). A
+  `#build_metadata` test confirms an iOS release never touches any of the
+  six compatibility columns.
+- `spec/services/catalog_index/serializer_spec.rb` — added one example
+  (`'reads real compatibility columns once Task 29c has populated
+  them...'`) exercising `#compatibility_for` against a release with real
+  columns set via `update_columns`, same pattern the existing changelog
+  test already uses. The pre-existing all-nil/empty compatibility
+  assertion in the main serialization test was **not** changed — it's
+  still correct, since that test's release never sets these columns, so
+  they're genuinely still at their schema defaults; the gap was missing
+  coverage for the populated case, not a wrong assertion.
+- `docs/catalog_index_v2.md` — the worked example's `compatibility` block
+  (previously all-null/empty, commented "reserved for 29c — APK extraction
+  is separate work") now shows real extracted-looking values with a
+  comment explaining where they come from and that non-Android or
+  pre-29c releases still get the all-empty default; the "NEW, reserved for
+  29c" and bare "`compatibility` (29c)" wording elsewhere in the doc's
+  field-by-field list updated to say the field is real now, not still
+  reserved.
+
+**Explicitly NOT done this session:** the extraction/serializer code
+itself is untouched — this is spec and doc paperwork only, matching what
+`18663c43` actually left open, not a re-review of that session's
+extraction logic. `docs/catalog_index_v2.schema.json` needed no change —
+it never referenced "29c" or "reserved" in the first place, only
+`docs/catalog_index_v2.md` did.
+
+**Verified how:** `ruby -c` clean on both spec files. Ruby 3.2.3 was
+installable this session (same intermittent `apt-get` availability this
+file has documented before); a throwaway, Rails-free harness (`eval`'d the
+real `release_parser.rb` source with minimal `blank?`/`present?`/`try` and
+`AppInfo::Platform` stand-ins, not part of this patch) exercised
+`#extract_compatibility` and `#build_metadata` directly against the exact
+same fixtures the new RSpec examples use, confirming every assertion in
+both new/changed spec files matches the real method's actual behavior —
+not just written against my own mental model of it. Node + `ajv`/
+`ajv-formats` (2020-12 draft) re-validated a full fixture document built
+from `docs/catalog_index_v2.md`'s updated worked example — including the
+new non-empty `compatibility` block — against
+`docs/catalog_index_v2.schema.json`; it passes. None of this is a
+substitute for actually running the new RSpec examples against a real
+Rails boot, which this sandbox still can't do.
+
+- One patch, branch `feat/task-29c-spec-and-docs-cleanup`, base `develop`
+  @ `41337be7` (this checkout's tip — includes 30f session 2).
 
 #### 🆕 Task 30: Console publishing parity — edits, tracks, policy checks, review (Phase 2)
 

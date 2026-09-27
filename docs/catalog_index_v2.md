@@ -92,13 +92,13 @@ full rationale and the phase this sits in (Phase 1, trust core).
           "changelog": "- Fixed login crash\n- Improved battery usage",  // NEW -- a plain string via Release#text_changelog(default_template: false), not the raw jsonb column; "" (not null) for a release with no entries
           "released_at": "2026-09-01T00:00:00Z",  // NEW -- the release's created_at
           "status": "available",           // NEW -- "available" | "halted" | "pulled" (27f owns transitions; 29b just reads whatever the column says once 27f adds it)
-          "compatibility": {                // NEW, reserved for 29c -- APK extraction is separate work
-            "min_sdk": null,
-            "target_sdk": null,
-            "abis": [],
-            "screen_densities": [],
-            "required_features": [],
-            "permissions": []
+          "compatibility": {                // NEW, 29c -- extracted from the APK at upload time for Android releases (see app/models/concerns/release_parser.rb#extract_compatibility). abis/screen_densities are read off the APK's own zip entry paths, not AppInfo::APK's public API, which doesn't expose either directly; both are a lower bound (no native code or no density-qualified resources correctly yields [], not a parsing failure). Still all-null/empty for a non-Android release, or any release uploaded before this slice shipped -- "empty, not invented" per 29a/29b's original rule.
+            "min_sdk": 24,
+            "target_sdk": 34,
+            "abis": [ "arm64-v8a", "armeabi-v7a" ],
+            "screen_densities": [ "xhdpi", "xxhdpi" ],
+            "required_features": [ "android.hardware.camera" ],
+            "permissions": [ "android.permission.INTERNET", "android.permission.CAMERA" ]
           },
           "rollout": {                      // NEW, 32a -- staged rollout, Play-Console parity. percentage 0-100 (100 = fully available, the default). status is the admin-controlled ramp state ("active" | "halted" | "complete"), distinct from the sibling "status" field above (which is the release's overall lifecycle, not the rollout ramp).
             "percentage": 100,
@@ -205,7 +205,10 @@ serialized in v1), publisher bio/profile_url/joined_at, the `data_safety`/
 the raw jsonb column — fixed by 29b/29d after cross-repo review found
 D-store's reader already committed to a plain string), `released_at`
 (`Release#created_at` — already exists), `status` (27f), and
-`compatibility` (29c).
+`compatibility` (29c — real as of that slice for Android releases going
+forward; still empty for anything uploaded earlier or on another platform,
+same "empty, not invented" rule as every other field on this list until its
+owning slice lands).
 
 **32a, added later:** `versions[].rollout` — real as of this slice
 (`Release#rollout_percentage`/`#rollout_status`, `AddStagedRolloutToReleases`),

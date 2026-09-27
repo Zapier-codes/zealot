@@ -119,6 +119,25 @@ RSpec.describe CatalogIndex::Serializer do
         .to eq("- Fixed login crash\n- Improved battery usage")
     end
 
+    it 'reads real compatibility columns once Task 29c has populated them at upload time' do
+      app, release = build_app_with_release
+      release.update_columns(
+        min_sdk_version: 24, target_sdk_version: 34,
+        abis: [ 'arm64-v8a', 'armeabi-v7a' ], screen_densities: [ 'xhdpi', 'xxhdpi' ],
+        required_features: [ 'android.hardware.camera' ],
+        permissions: [ 'android.permission.INTERNET', 'android.permission.CAMERA' ]
+      )
+
+      result = described_class.call(app)
+
+      expect(result[:apps].first[:versions].first[:compatibility]).to eq(
+        min_sdk: 24, target_sdk: 34,
+        abis: [ 'arm64-v8a', 'armeabi-v7a' ], screen_densities: [ 'xhdpi', 'xxhdpi' ],
+        required_features: [ 'android.hardware.camera' ],
+        permissions: [ 'android.permission.INTERNET', 'android.permission.CAMERA' ]
+      )
+    end
+
     it 'derives a schema-valid slug from the app name' do
       app, = build_app_with_release(app_name: 'My Cool App!!')
 
