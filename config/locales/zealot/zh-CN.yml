@@ -652,6 +652,15 @@ zh-CN:
         published: 已发布
         failed: 失败
         waiting_for_setup: 等待 Play 配置
+      rollout: 分阶段发布
+      rollout_percentage: "%{percentage}% 的安装用户"
+      rollout_percentage_label: 百分比
+      rollout_status_label: 状态
+      rollout_update: 更新
+      rollout_status_badges:
+        active: 进行中
+        halted: 已暂停
+        complete: 已完成
       install: 安装
       download: 下载
       installing: 安装中 ...

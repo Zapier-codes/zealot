@@ -5,7 +5,7 @@ class ReleasesController < ApplicationController
 
   before_action :authenticate_login!, except: %i[index show auth]
   before_action :set_channel
-  before_action :set_release, only: %i[show auth destroy]
+  before_action :set_release, only: %i[show update auth destroy]
   before_action :authenticate_app!, only: :show
   before_action -> { set_app_breadcrumbs(channel: @channel) }
 
@@ -73,6 +73,25 @@ class ReleasesController < ApplicationController
     redirect_to friendly_channel_releases_path(@channel), status: :see_other, notice: notice
   end
 
+  # Task 30f: staged rollout control on the existing release page. Not a
+  # general-purpose release edit -- everything else about a release
+  # (file, changelog, version strings) is fixed at upload time and has no
+  # edit route rendered anywhere; this action only ever touches the two
+  # rollout columns, via its own narrow params allowlist below, whatever
+  # else a request tries to send.
+  def update
+    authorize @release
+    raise_if_app_archived!(@channel.app)
+
+    if @release.update(rollout_params)
+      notice = t('activerecord.success.update', key: t('releases.show.rollout'))
+      redirect_to friendly_channel_release_path(@channel, @release), notice: notice
+    else
+      redirect_to friendly_channel_release_path(@channel, @release),
+        alert: @release.errors.full_messages.to_sentence
+    end
+  end
+
   def auth
     raise_if_app_archived!(@channel.app)
 
@@ -114,6 +133,16 @@ class ReleasesController < ApplicationController
       :file, :changelog, :release_version, :build_version, :release_type, :branch, :git_commit, :ci_url,
       :play_store_target
     )
+  end
+
+  # Deliberately its own allowlist, not folded into release_params above --
+  # #update only ever accepts these two columns, regardless of what a
+  # crafted request body includes; keeps the "one release-managing
+  # developer, two very different write surfaces" boundary the 30f handoff
+  # note described (upload-time fields vs. the post-publish rollout knob)
+  # enforced in code, not just by which view happens to render which form.
+  def rollout_params
+    params.require(:release).permit(:rollout_percentage, :rollout_status)
   end
 
   def not_found(e)

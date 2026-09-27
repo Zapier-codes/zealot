@@ -658,6 +658,15 @@ en:
         published: Published
         failed: Failed
         waiting_for_setup: Waiting for Play setup
+      rollout: Staged rollout
+      rollout_percentage: "%{percentage}% of installs"
+      rollout_percentage_label: Percentage
+      rollout_status_label: Status
+      rollout_update: Update
+      rollout_status_badges:
+        active: Active
+        halted: Halted
+        complete: Complete
       install: Install
       download: Download
       installing: Installing ...
