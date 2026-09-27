@@ -207,10 +207,24 @@ class App < ApplicationRecord
   # just `recently_release`'s single latest one. Not cached like
   # recently_release (no established invalidation hook for the whole list
   # yet); revisit if index generation shows up as slow.
+  #
+  # Task 30b: scoped to `production`-track channels only -- "the store
+  # shows production only" (Task 28's principle #4). Deliberately a
+  # separate scope from `channel_ids` (every other caller of that method
+  # -- the dashboard, teardown, `recently_release`, the Play-publish
+  # check -- is a management-facing view of an app's own uploads and
+  # rightly still sees internal/closed/open builds too; only what feeds
+  # the *public, signed* index should be track-filtered).
   def catalog_releases
-    return Release.none unless channel_ids
+    return Release.none unless (ids = production_channel_ids).present?
 
-    Release.where(channel: channel_ids).order(created_at: :desc)
+    Release.where(channel_id: ids).order(created_at: :desc)
+  end
+
+  def production_channel_ids
+    return unless channel_ids
+
+    Channel.where(id: channel_ids, track: 'production').pluck(:id)
   end
 
   # Task 30a: the one in-flight staged edit, if any -- see ListingEdit's

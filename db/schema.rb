@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_30_100000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_30_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -122,11 +122,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_100000) do
     t.string "password"
     t.bigint "scheme_id"
     t.string "slug", null: false
+    t.string "track", default: "production", null: false
     t.index ["bundle_id"], name: "index_channels_on_bundle_id"
     t.index ["device_type"], name: "index_channels_on_device_type"
     t.index ["name"], name: "index_channels_on_name"
     t.index ["scheme_id", "device_type"], name: "index_channels_on_scheme_id_and_device_type"
     t.index ["slug"], name: "index_channels_on_slug", unique: true
+    t.index ["track"], name: "index_channels_on_track"
+    t.check_constraint "track IN ('internal', 'closed', 'open', 'production')", name: "channels_track_allowed_values"
   end
 
   create_table "channels_web_hooks", id: false, force: :cascade do |t|

@@ -19,6 +19,20 @@ class Channel < ApplicationRecord
     macos: 'macOS', windows: 'Windows', linux: 'Linux'
   }
 
+  # Task 30b: Play's publishing tracks. Only `production` feeds the
+  # catalog index (see App#catalog_releases) -- the other three exist so
+  # an app can distribute pre-release builds through Zealot the same way
+  # it always could, just without those builds appearing on the public
+  # store. Ordered loosest-audience-first to match Play Console's own
+  # track list ordering (internal test -> closed test -> open test ->
+  # production).
+  enum :track, {
+    internal: 'internal',
+    closed: 'closed',
+    open: 'open',
+    production: 'production'
+  }, prefix: :track
+
   DEFAULT_DOWNLOAD_FILENAME_TYPE = :version_datetime
 
   enum :download_filename_type, {
@@ -37,6 +51,7 @@ class Channel < ApplicationRecord
   validates :name, presence: true
   validates :slug, uniqueness: true
   validates :device_type, presence: true, inclusion: { in: self.device_types.keys }
+  validates :track, presence: true, inclusion: { in: self.tracks.keys }
   validates :download_filename_type, presence: true, inclusion: { in: self.download_filename_types.keys }
   validate :bundle_id_format_valid
 
