@@ -16,6 +16,11 @@ class App < ApplicationRecord
   has_many :sponsored_slots, dependent: :destroy
   has_many :collection_apps, dependent: :destroy
   has_many :collections, through: :collection_apps
+  # Task 30a: the staged-copy layer under the future 27e store-listing
+  # editor. See ListingEdit for the model that actually owns the
+  # draft/commit/discard behavior; App itself stays a plain parent here,
+  # the same relationship shape as sponsored_slots/collection_apps above.
+  has_many :listing_edits, dependent: :destroy
 
   scope :all_names, -> { all.map { |c| [c.name, c.id] } }
   scope :debug_files, -> { joins(:debug_files).distinct }
@@ -206,6 +211,13 @@ class App < ApplicationRecord
     return Release.none unless channel_ids
 
     Release.where(channel: channel_ids).order(created_at: :desc)
+  end
+
+  # Task 30a: the one in-flight staged edit, if any -- see ListingEdit's
+  # own "one draft per app" uniqueness validation for why this is `.first`
+  # and not a list.
+  def draft_listing_edit
+    listing_edits.status_draft.first
   end
 
   def total_schemes

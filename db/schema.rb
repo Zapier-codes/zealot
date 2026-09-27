@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_29_100500) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_30_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -289,6 +289,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_29_100500) do
     t.index ["scheduled_at"], name: "index_good_jobs_on_scheduled_at", where: "(finished_at IS NULL)"
   end
 
+  create_table "listing_edits", force: :cascade do |t|
+    t.bigint "app_id", null: false
+    t.datetime "committed_at"
+    t.datetime "created_at", null: false
+    t.datetime "discarded_at"
+    t.bigint "editor_id"
+    t.jsonb "staged_attributes", default: {}, null: false
+    t.string "status", default: "draft", null: false
+    t.datetime "updated_at", null: false
+    t.index ["app_id", "status"], name: "index_listing_edits_on_app_id_and_status"
+    t.index ["app_id"], name: "index_listing_edits_on_app_id_when_draft", unique: true, where: "((status)::text = 'draft'::text)"
+    t.index ["app_id"], name: "index_listing_edits_on_app_id"
+    t.index ["editor_id"], name: "index_listing_edits_on_editor_id"
+  end
+
   create_table "metadata", force: :cascade do |t|
     t.jsonb "activities", default: [], null: false
     t.string "build_version"
@@ -541,6 +556,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_29_100500) do
   add_foreign_key "collection_apps", "collections"
   add_foreign_key "debug_file_metadata", "debug_files"
   add_foreign_key "debug_files", "apps", on_delete: :cascade
+  add_foreign_key "listing_edits", "apps", on_delete: :cascade
+  add_foreign_key "listing_edits", "users", column: "editor_id", on_delete: :nullify
   add_foreign_key "metadata", "releases", on_delete: :cascade
   add_foreign_key "metadata", "users", on_delete: :cascade
   add_foreign_key "publisher_profiles", "users", on_delete: :cascade
