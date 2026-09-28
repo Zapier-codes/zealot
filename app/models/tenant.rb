@@ -16,6 +16,9 @@ class Tenant < ApplicationRecord
   SHA256_FORMAT = /\A[a-f0-9]{64}\z/
   DOMAIN_INPUT_FORMAT = /\A[^\s\/:@]+(:\d{1,5})?\.?\z/
 
+  # Key material is never deleted with its tenant; what deleting a tenant means is 37b-iii's call.
+  has_many :tenant_signing_keys, dependent: :restrict_with_error
+
   # Permanent once created, same rule as the catalog index's `slug`.
   attr_readonly :tenant_id
 

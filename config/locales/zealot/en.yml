@@ -1282,6 +1282,11 @@ en:
               invalid: must be an https URL
             catalog_index_base_url:
               invalid: must be an https URL
+        tenant_signing_key:
+          attributes:
+            status:
+              taken: already used by another key of this tenant; there is at most one pending, one active and one retiring key
+              backwards: can only move forward (pending, active, retiring, retired)
         apple_key:
           attributes:
             issuer_id:

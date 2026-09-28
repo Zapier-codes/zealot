@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_30_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_30_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -492,6 +492,29 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_120000) do
     t.index ["app_id"], name: "index_sponsored_slots_on_app_id"
   end
 
+  create_table "tenant_signing_keys", force: :cascade do |t|
+    t.datetime "activated_at"
+    t.datetime "created_at", null: false
+    t.string "key_id", null: false
+    t.datetime "last_signed_at"
+    t.text "private_key_pem"
+    t.string "public_key", null: false
+    t.string "purpose", default: "catalog_index", null: false
+    t.datetime "retired_at"
+    t.integer "sequence", default: 0, null: false
+    t.string "status", null: false
+    t.bigint "tenant_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["public_key"], name: "index_tenant_signing_keys_on_public_key", unique: true
+    t.index ["tenant_id", "purpose"], name: "index_tenant_signing_keys_one_active", unique: true, where: "((status)::text = 'active'::text)"
+    t.index ["tenant_id", "purpose"], name: "index_tenant_signing_keys_one_pending", unique: true, where: "((status)::text = 'pending'::text)"
+    t.index ["tenant_id", "purpose"], name: "index_tenant_signing_keys_one_retiring", unique: true, where: "((status)::text = 'retiring'::text)"
+    t.index ["tenant_id"], name: "index_tenant_signing_keys_on_tenant_id"
+    t.check_constraint "purpose::text = 'catalog_index'::text", name: "tenant_signing_keys_purpose_known"
+    t.check_constraint "status::text = 'pending'::text OR status::text = 'active'::text OR status::text = 'retiring'::text OR status::text = 'retired'::text", name: "tenant_signing_keys_status_known"
+    t.check_constraint "status::text = 'retired'::text OR private_key_pem IS NOT NULL", name: "tenant_signing_keys_private_key_unless_retired"
+  end
+
   create_table "tenants", force: :cascade do |t|
     t.string "catalog_index_base_url"
     t.string "cdn_base", null: false
@@ -504,8 +527,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_120000) do
     t.string "tenant_id", limit: 63, null: false
     t.datetime "updated_at", null: false
     t.index ["tenant_id"], name: "index_tenants_on_tenant_id", unique: true
-    t.check_constraint "(jsonb_typeof(domains) = 'array'::text)", name: "tenants_domains_is_array"
-    t.check_constraint "(((tenant_id)::text ~ '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'::text) AND ((tenant_id)::text <> 'default'::text))", name: "tenants_tenant_id_format"
+    t.check_constraint "jsonb_typeof(domains) = 'array'::text", name: "tenants_domains_is_array"
+    t.check_constraint "tenant_id::text ~ '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'::text AND tenant_id::text <> 'default'::text", name: "tenants_tenant_id_format"
   end
 
   create_table "user_providers", force: :cascade do |t|
@@ -585,6 +608,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_120000) do
   add_foreign_key "releases", "users", column: "play_rejected_by_id"
   add_foreign_key "schemes", "apps", on_delete: :cascade
   add_foreign_key "sponsored_slots", "apps"
+  add_foreign_key "tenant_signing_keys", "tenants"
   add_foreign_key "user_providers", "users", on_delete: :cascade
   add_foreign_key "web_hooks", "channels", on_delete: :cascade
 end

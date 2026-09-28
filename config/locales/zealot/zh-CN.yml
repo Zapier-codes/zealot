@@ -1292,6 +1292,11 @@ zh-CN:
               invalid: 必须是 https 地址
             catalog_index_base_url:
               invalid: 必须是 https 地址
+        tenant_signing_key:
+          attributes:
+            status:
+              taken: 该租户已有同状态的密钥；待启用、启用中、淘汰中各最多一个
+              backwards: 只能向前变更（待启用、启用中、淘汰中、已淘汰）
         setting:
           default_message: "请检查 '%{key}' 的如下问题："
         apple_key:
