@@ -1,0 +1,99 @@
+name: CI - RSpec (tests only, NOT the deploy)
+
+# Runs the RSpec suite against a real PostgreSQL. It exists because every
+# 37b-iii and Task 38 slice since s2 was written without a Rails/Postgres
+# runtime, so none of their specs had ever run (handover.md, Task 38 "Open
+# items": "Check that CI runs rspec against a real Postgres database").
+#
+# THIS IS NOT THE DEPLOY PIPELINE. It builds no image and touches no
+# registry or Render hook. Deliberately NOT triggered on push to develop
+# (handover.md, "Which workflow is the deploy pipeline?", rule 3): two
+# workflows racing on one push is how the Nightly confusion started. It runs
+# on pull requests and by hand (Actions -> "CI - RSpec" -> Run workflow).
+# The operator's real flow is `git am` + `git push` to develop, so use the
+# manual trigger after a push (or on any branch) to get the result.
+#
+# Not verified from the sandbox that wrote it: no Ruby/Postgres there, so the
+# first run is the first proof. Expect to fix things in the first run's log.
+
+on:
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - ".devcontainer/**"
+      - ".vscode/**"
+      - "LICENSE"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-rspec-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rspec:
+    name: RSpec (PostgreSQL 16)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      RAILS_ENV: test
+      CI: "true"
+      ZEALOT_POSTGRES_HOST: localhost
+      ZEALOT_POSTGRES_PORT: "5432"
+      ZEALOT_POSTGRES_USERNAME: postgres
+      ZEALOT_POSTGRES_PASSWORD: postgres
+      ZEALOT_SENTRY_DISABLE: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install system libraries (from Aptfile)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpq-dev libmagickwand-dev libwebp-dev webp
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4.8" # keep in step with .mise.toml
+          bundler-cache: true
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24.12.0" # keep in step with .mise.toml
+          cache: pnpm
+
+      # config/vite.json has autoBuild=true for the test env, so view specs
+      # that render vite tags build the frontend on first use.
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare database from db/schema.rb
+        run: bin/rails db:create db:schema:load
+
+      - name: Run RSpec
+        run: bundle exec rspec --format documentation
