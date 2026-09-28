@@ -126,6 +126,15 @@ overlap the signer uses the **maximum** across the signing keys and advances all
 so the index counter never goes backwards at the seam. Without this, a client that
 remembers the old key's last value could refuse every index the new key issues.
 
+**Signing during overlap (k5).** `CatalogIndex::Signer` signs the index with every key valid for
+the tenant (`active`, plus `retiring` while a rotation overlaps), over the same bytes.
+`Result#signature` is the `active` key's; `Result#signatures` lists every `{key_id, signature}`.
+`generated_at` is the maximum of the keys' counters (plus one second if the clock has not passed
+it) and every key is advanced to it, so no key's counter decreases. Key rows are locked in
+ascending id order, the order `TenantKeys::Lifecycle` uses. Which key is chosen, and refusing to
+fall back to the default tenant's key, is `CatalogIndex::KeyResolver` (k4). Publishing the extra
+`index.json.<key_id>.sig` files is k8.
+
 ## 6. What a reader (D-store, Storeapp) must do
 
 Pin **a set** of keys per (tenant, purpose), chosen by the tenant resolved from the host

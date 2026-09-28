@@ -19,10 +19,19 @@ module CatalogIndex
   # and advanced under a row lock, so two concurrent signings can't hand out
   # the same timestamp. (Second resolution, because that is what the v1 schema
   # carries.)
+  #
+  # Task 37b-ii-k4/k5: the key is chosen by `CatalogIndex::KeyResolver` (default: the tenant's
+  # key; no tenant means the default tenant, so today's callers are unchanged). During a key
+  # rotation a tenant has TWO valid keys (`active` + `retiring`); every one of them signs the
+  # SAME bytes. `Result#signature`/`key_id` stay the primary's (the `active` key, the first one),
+  # `Result#signatures` lists all of them. The counter is the maximum across the keys, plus one
+  # second if needed, and every key is advanced to it, so no key's counter (and so no reader's
+  # anti-rollback memory) ever goes backwards. Key rows are locked in ascending id order, the same
+  # order `TenantKeys::Lifecycle` uses for them, so the two cannot deadlock.
   class Signer
     class NoKeyError < StandardError; end
 
-    Result = Struct.new(:index_json, :signature, :key_id, :generated_at, keyword_init: true)
+    Result = Struct.new(:index_json, :signature, :key_id, :generated_at, :signatures, keyword_init: true)
 
     # The next `generated_at`: now, but at least one second after the last
     # one signed.
@@ -38,28 +47,49 @@ module CatalogIndex
       App.listing_live.where(archived: [false, nil])
     end
 
-    def self.call(apps = nil, now: Time.now.utc, key: CatalogIndexSigningKey.current)
+    # `key:` is one key or an array of keys, primary first. It defaults to every key valid for
+    # `tenant` right now (see the class comment); pass `key:` to override, as before.
+    #
+    # A non-default tenant must pass `apps` explicitly: the default app list is EVERY live app,
+    # and scoping apps to a tenant is 37b-iii's job, so signing "all apps" with a tenant's key
+    # would put other tenants' apps in its index.
+    def self.call(apps = nil, now: Time.now.utc, tenant: nil, key: CatalogIndex::KeyResolver.signing_keys_for(tenant))
+      if apps.nil? && !CatalogIndex::KeyResolver.default?(tenant)
+        raise ArgumentError, "tenant #{tenant.inspect} needs an explicit apps list until apps are tenant-scoped (Task 37b-iii)"
+      end
+
       new(apps, now: now, key: key).call
     end
 
     def initialize(apps, now:, key:)
       @apps = apps
       @now = now
-      @key = key
+      @keys = key.is_a?(Array) ? key.compact : [key].compact
     end
 
     def call
-      raise NoKeyError, 'no catalog-index signing key; run `rake catalog_index:generate_key`' if @key.nil?
+      raise NoKeyError, 'no catalog-index signing key; run `rake catalog_index:generate_key`' if @keys.empty?
 
-      @key.with_lock do
-        generated_at = self.class.next_generated_at(@now, @key.last_signed_at)
+      with_locks(@keys.sort_by(&:id)) do
+        generated_at = self.class.next_generated_at(@now, @keys.filter_map(&:last_signed_at).max)
         index = CatalogIndex::Serializer.call(@apps || self.class.default_apps, generated_at: generated_at)
         json = "#{JSON.pretty_generate(index)}\n"
-        signature = @key.sign(json)
-        @key.update!(last_signed_at: generated_at)
+        signatures = @keys.map { |k| { key_id: k.key_id, signature: k.sign(json) } }
+        @keys.each { |k| k.update!(last_signed_at: generated_at) }
 
-        Result.new(index_json: json, signature: signature, key_id: @key.key_id, generated_at: generated_at)
+        Result.new(index_json: json, signature: signatures.first[:signature], key_id: signatures.first[:key_id],
+                   generated_at: generated_at, signatures: signatures)
       end
+    end
+
+    private
+
+    # Nested `with_lock`s, outermost first, so the rows are locked in the order given. Each one
+    # is its own transaction level, and all of them commit or roll back together.
+    def with_locks(keys, &block)
+      return yield if keys.empty?
+
+      keys.first.with_lock { with_locks(keys.drop(1), &block) }
     end
   end
 end

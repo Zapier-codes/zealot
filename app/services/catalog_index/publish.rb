@@ -24,6 +24,11 @@ module CatalogIndex
   class Publish
     LOCK_KEY = 2_027_003 # arbitrary, fixed: "task 27b-iii"
 
+    # Task 37b-ii-k4: `Publish` still writes the four FIXED root paths under one global lock, so
+    # a non-default tenant's index would overwrite the default tenant's files. Refused until
+    # 37b-iii gives each tenant its own publish root (and k8 its own lock and key manifest).
+    class TenantNotScopedError < StandardError; end
+
     Result = Struct.new(:status, :commit_sha, :generated_at, :key_id, :hook, keyword_init: true)
 
     def self.configured?
@@ -34,8 +39,12 @@ module CatalogIndex
       new(**opts).call
     end
 
-    def initialize(apps: nil, client: nil, key: CatalogIndexSigningKey.current, now: Time.now.utc,
+    def initialize(apps: nil, client: nil, tenant: nil, key: CatalogIndex::KeyResolver.for(tenant), now: Time.now.utc,
                    hook_url: ENV['DSTORE_DEPLOY_HOOK_URL'], hook_transport: nil, logger: Rails.logger)
+      unless CatalogIndex::KeyResolver.default?(tenant)
+        raise TenantNotScopedError, "publishing for tenant #{tenant.inspect} is not built yet (Task 37b-iii)"
+      end
+
       @apps = apps
       @client = client
       @key = key

@@ -36,6 +36,26 @@ RSpec.describe CatalogIndex::Publish do
     described_class.call(apps: [], client: client, key: key, hook_url: 'https://hooks.example/secret', hook_transport: transport)
   end
 
+  # Task 37b-ii-k4
+  it 'takes the default tenant\'s key from the resolver, publishing exactly the same four files' do
+    key
+    files = nil
+    allow(client).to receive(:publish) { |f, **| files = f; landed }
+
+    described_class.call(apps: [], client: client, hook_url: '')
+
+    expect(files.keys).to contain_exactly('index.json', 'index.json.sig', 'signing_key.pub', '.nojekyll')
+    expect(files['signing_key.pub'].strip).to eq(key.public_key)
+  end
+
+  it 'refuses a non-default tenant before touching GitHub, until 37b-iii gives it its own publish root' do
+    create(:tenant_signing_key, tenant: create(:tenant, tenant_id: 'acme'))
+    expect(client).not_to receive(:publish)
+
+    expect { described_class.call(apps: [], client: client, tenant: 'acme', hook_url: '') }
+      .to raise_error(described_class::TenantNotScopedError, /acme/)
+  end
+
   it 'raises NoKeyError before touching GitHub when there is no signing key' do
     expect(client).not_to receive(:publish)
 
