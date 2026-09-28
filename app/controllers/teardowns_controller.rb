@@ -8,8 +8,12 @@ class TeardownsController < ApplicationController
     @title = t('.title')
     page = params.fetch(:page, 1)
     per_page = params.fetch(:per_page, Setting.per_page)
+    # Task 37b-iii-s7c-4b: refuse a non-member on a tenant's host; read through the policy scope
+    # (`Metadatum.all` on the default host, so nothing changes there).
+    authorize App, :console?
+    scoped = policy_scope(Metadatum)
     if manage_user_or_guest_mode?
-      @metadata = Metadatum.page(page)
+      @metadata = scoped.page(page)
         .per(per_page)
         .order(id: :desc)
     else
@@ -19,6 +23,7 @@ class TeardownsController < ApplicationController
       end.flatten
 
       @metadata = current_user.metadatum.or(Metadatum.where(release_id: release_ids))
+        .merge(scoped)
         .page(page)
         .per(per_page)
         .order(id: :desc)
@@ -76,7 +81,7 @@ class TeardownsController < ApplicationController
   private
 
   def set_metadata
-    @metadata = Metadatum.find(params[:id])
+    @metadata = policy_scope(Metadatum).find(params[:id])
   end
 
   def parse_app

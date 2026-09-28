@@ -6,7 +6,11 @@ class DebugFilesController < ApplicationController
 
   def index
     @title = t('debug_files.title')
+    # Task 37b-iii-s7c-4b: refuse a non-member on a tenant's host, and list only the apps the
+    # request may see (the policy scope; `App.all` on the default host, so nothing changes there).
+    authorize App, :console?
     @apps = manage_user_or_guest_mode? ? App.debug_files.all : current_user&.apps
+    @apps = @apps.merge(policy_scope(App)) if @apps
 
     authorize @apps.present? ? @apps.first : DebugFile.new
   end
@@ -17,9 +21,10 @@ class DebugFilesController < ApplicationController
 
   def new
     @title = t('debug_files.index.upload')
-    @apps = manage_user_or_guest_mode? ? App.active : current_user.apps.active 
+    authorize App, :console?
+    @apps = (manage_user_or_guest_mode? ? App.active : current_user.apps.active).merge(policy_scope(App))
     @debug_file = DebugFile.new
-    @debug_file.app_id = params[:app_id] if params[:app_id] && App.find(params[:app_id])
+    @debug_file.app_id = params[:app_id] if params[:app_id] && policy_scope(App).find(params[:app_id])
     @debug_file.device_type = params[:device]
 
     authorize @debug_file
@@ -28,6 +33,9 @@ class DebugFilesController < ApplicationController
   def create
     @title = t('debug_files.index.upload')
     @debug_file = DebugFile.new(debug_file_params)
+    # An app outside the request's scope is "not found", so a file cannot be placed on another
+    # tenant's app (a blank app id is left to the model's validation).
+    policy_scope(App).find(debug_file_params[:app_id]) if debug_file_params[:app_id].present?
     authorize @debug_file
 
     return render :new, status: :unprocessable_entity unless @debug_file.save
@@ -46,7 +54,7 @@ class DebugFilesController < ApplicationController
   end
 
   def device
-    @app = App.find(params[:app_id])
+    @app = policy_scope(App).find(params[:app_id])
     @title = t('.title', app: @app.name, device: params[:device])
 
     @debug_files = DebugFile
@@ -68,7 +76,7 @@ class DebugFilesController < ApplicationController
   private
 
   def set_debug_file
-    @debug_file = DebugFile.find(params[:id])
+    @debug_file = policy_scope(DebugFile).find(params[:id])
     authorize @debug_file
   end
 

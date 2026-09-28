@@ -15,8 +15,14 @@ class MetadatumPolicy < ApplicationPolicy
   end
 
   class Scope < Scope
+    # Task 37b-iii-s7c-4b: a teardown belongs to a tenant through its release's app. Default host:
+    # all, as before. A tenant's host: nothing for a non-member, else only the tenant's releases'.
     def resolve
-      scope.all
+      tenant = Current.tenant
+      return scope.all if tenant.nil?
+      return scope.none unless user&.tenant_member?(tenant)
+
+      scope.where(release_id: Release.for_tenant(tenant).select(:id))
     end
   end
 

@@ -39,8 +39,14 @@ class DebugFilePolicy < ApplicationPolicy
   end
 
   class Scope < Scope
+    # Task 37b-iii-s7c-4b: a debug file belongs to a tenant through its app. Default host: all, as
+    # before. A tenant's host: nothing for a non-member, else only the tenant's apps' files.
     def resolve
-      scope.all
+      tenant = Current.tenant
+      return scope.all if tenant.nil?
+      return scope.none unless user&.tenant_member?(tenant)
+
+      scope.where(app_id: App.for_tenant(tenant).select(:id))
     end
   end
 
