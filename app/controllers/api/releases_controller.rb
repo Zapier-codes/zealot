@@ -22,8 +22,11 @@ class Api::ReleasesController < Api::BaseController
   # could edit or delete any release of any app (PUT/DELETE /api/releases/:id).
   # update?/destroy? now go through ReleasePolicy (admin, app owner or a manage
   # collaborator of the release's app).
+  # Task 37b-iii-s7c-5b: the lookup goes through the policy scope, so on a tenant's host another
+  # tenant's (or the default catalog's) release id is a plain 404, never a 403 that would confirm
+  # it exists. On the default host the scope is `Release.all`: unchanged.
   def set_release
-    @release = Release.find(params[:id])
+    @release = policy_scope(Release).find(params[:id])
     authorize @release
   end
 

@@ -18,12 +18,17 @@ class ReleasePolicy < ApplicationPolicy
     any_manage?
   end
 
+  # Task 37b-iii-s7c-5b (deny by default): changing or deleting a release also needs the tenant
+  # rule, so a release of another tenant's app is refused on a tenant's host even if a lookup ever
+  # forgot to scope it. On the default host `tenant_access?` and `in_request_tenant?` are always
+  # true, so both predicates are `any_manage?` exactly as before. `new?`/`create?`/`edit?` are
+  # untouched on purpose: the upload routes authorize them with a channel key and no user.
   def update?
-    any_manage?
+    tenant_access? && in_request_tenant?(app) && any_manage?
   end
 
   def destroy?
-    any_manage?
+    tenant_access? && in_request_tenant?(app) && any_manage?
   end
 
   def auth?
@@ -46,8 +51,16 @@ class ReleasePolicy < ApplicationPolicy
   end
 
   class Scope < Scope
+    # Task 37b-iii-s7c-5b: a release belongs to a tenant through its app (release -> channel ->
+    # scheme -> app). Default host: all, as before. A tenant's host: nothing for a non-member, else
+    # only the releases of the tenant's apps. Read through `Release.for_tenant` (which reads
+    # `App.for_tenant`) so "the tenant's releases" cannot mean something different here.
     def resolve
-      scope.all
+      tenant = Current.tenant
+      return scope.all if tenant.nil?
+      return scope.none unless user&.tenant_member?(tenant)
+
+      scope.where(id: Release.for_tenant(tenant).select(:id))
     end
   end
 

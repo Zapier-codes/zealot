@@ -51,8 +51,10 @@ class Api::DebugFilesController < Api::BaseController
 
   protected
 
+  # Task 37b-iii-s7c-5b: through the policy scope (s7c-4b's `DebugFilePolicy::Scope`), so another
+  # tenant's file id is a 404 on a tenant's host; the default host is `DebugFile.all`, unchanged.
   def set_debug_file
-    @debug_file = DebugFile.find(params[:id])
+    @debug_file = policy_scope(DebugFile).find(params[:id])
     authorize @debug_file
   end
 
