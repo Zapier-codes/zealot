@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_30_130000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_30_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -74,10 +74,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_130000) do
     t.string "play_setup_status", default: "unchecked", null: false
     t.string "publisher_alias"
     t.bigint "publisher_profile_id"
+    t.bigint "tenant_id"
     t.datetime "updated_at", null: false
     t.index ["name"], name: "index_apps_on_name"
     t.index ["play_package_name"], name: "index_apps_on_play_package_name", unique: true, where: "(play_package_name IS NOT NULL)"
     t.index ["publisher_profile_id"], name: "index_apps_on_publisher_profile_id"
+    t.index ["tenant_id"], name: "index_apps_on_tenant_id"
   end
 
   create_table "apps_users", id: false, force: :cascade do |t|
@@ -593,6 +595,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_130000) do
 
   add_foreign_key "apple_teams", "apple_keys", on_delete: :cascade
   add_foreign_key "apps", "publisher_profiles", on_delete: :nullify
+  add_foreign_key "apps", "tenants"
   add_foreign_key "channels", "schemes", on_delete: :cascade
   add_foreign_key "collection_apps", "apps"
   add_foreign_key "collection_apps", "collections"

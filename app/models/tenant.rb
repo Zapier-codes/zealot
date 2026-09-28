@@ -24,6 +24,9 @@ class Tenant < ApplicationRecord
 
   # Key material is never deleted with its tenant; what deleting a tenant means is 37b-iii's call.
   has_many :tenant_signing_keys, dependent: :restrict_with_error
+  # Task 37b-iii-s2: a tenant that still owns apps cannot be destroyed (the database foreign key
+  # backs this up). Apps are never deleted or silently moved to the default catalog with it.
+  has_many :apps, dependent: :restrict_with_error
 
   # Permanent once created, same rule as the catalog index's `slug`.
   attr_readonly :tenant_id

@@ -34,6 +34,26 @@ class App < ApplicationRecord
   scope :archived, -> { where(archived: true) }
   scope :active, -> { where(archived: false).or(where(archived: nil)) }
 
+  # Task 37b-iii-s3: the apps one tenant's catalog may contain. Exclusive ownership (❓1):
+  #   * the DEFAULT tenant (nil, blank, 'default', or anything whose `tenant_id` is 'default')
+  #     -> `tenant_id IS NULL`, i.e. every app that existed before tenants, byte-for-byte the
+  #     same set as before;
+  #   * any other tenant -> ONLY the apps that tenant owns, never the default tenant's and never
+  #     another tenant's.
+  # An unknown tenant matches nothing. It must never fall through to the default catalog, the same
+  # rule `CatalogIndex::KeyResolver` applies to keys. `tenant` may be a `Tenant`, a tenant id
+  # String, or a `Zealot::TenantResolver::Ref` (what `env['zealot.tenant']` holds); "default" is
+  # decided by `CatalogIndex::KeyResolver.default?` so the two can never disagree.
+  scope :for_tenant, ->(tenant) {
+    if CatalogIndex::KeyResolver.default?(tenant)
+      where(tenant_id: nil)
+    elsif tenant.is_a?(::Tenant)
+      where(tenant_id: tenant.id)
+    else
+      where(tenant_id: ::Tenant.where(tenant_id: CatalogIndex::KeyResolver.tenant_id_of(tenant)).select(:id))
+    end
+  }
+
   validates :name, presence: true
 
   # Task 24: front-facing publisher name. Stored tidy (no control characters,
@@ -123,6 +143,11 @@ class App < ApplicationRecord
   # asked to publish, under their PublisherProfile) -> live (paid) ->
   # suspended (later slice: unverified company past its deadline).
   belongs_to :publisher_profile, optional: true
+
+  # Task 37b-iii-s2: exclusive ownership by one tenant (operator's resolved ❓1). NULL means the
+  # DEFAULT tenant's catalog, so every app that existed before this column stays where it was.
+  # Nothing assigns it yet; `App.for_tenant` (s3) is the only reader.
+  belongs_to :tenant, optional: true
 
   enum :listing_status, {
     draft: 'draft',

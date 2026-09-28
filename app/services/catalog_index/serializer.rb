@@ -77,8 +77,11 @@ module CatalogIndex
       new(apps, generated_at: generated_at, sequence: sequence, expires_at: expires_at).call
     end
 
-    def self.for_live_apps(generated_at: Time.now.utc, sequence: 0, expires_at: nil)
-      call(App.listing_live, generated_at: generated_at, sequence: sequence, expires_at: expires_at)
+    # Task 37b-iii-s3: `tenant:` picks whose live apps go in (`App.for_tenant`). With no tenant it
+    # is the default tenant's catalog: the same apps as before tenants existed. `collections` are
+    # not tenant-scoped until s6, so this changes which APPS a tenant's index lists and nothing else.
+    def self.for_live_apps(tenant: nil, generated_at: Time.now.utc, sequence: 0, expires_at: nil)
+      call(App.listing_live.for_tenant(tenant), generated_at: generated_at, sequence: sequence, expires_at: expires_at)
     end
 
     def initialize(apps, generated_at:, sequence:, expires_at:)

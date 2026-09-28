@@ -67,6 +67,18 @@ RSpec.describe CatalogIndex::Signer do
       expect(CatalogIndex::Ed25519.verify(default_key.public_key, result.index_json, result.signature)).to be false
     end
 
+    # Task 37b-iii-s3: `default_apps` (what the default tenant's index is built from when no apps are
+    # passed) must not include an app a tenant owns.
+    it 'builds the default tenant\'s index from apps with no tenant only' do
+      CatalogIndexSigningKey.generate!
+      default_app = create(:app, listing_status: :live, listed_at: Time.current)
+      create(:app, listing_status: :live, listed_at: Time.current, tenant: create(:tenant, tenant_id: 'acme'))
+
+      result = described_class.call(now: Time.utc(2026, 9, 30, 12))
+
+      expect(JSON.parse(result.index_json)['apps'].map { |a| a['id'] }).to eq([ default_app.id ])
+    end
+
     it 'will not sign a non-default tenant over "every live app": apps must be passed explicitly' do
       create(:tenant_signing_key, tenant: create(:tenant, tenant_id: 'acme'))
 

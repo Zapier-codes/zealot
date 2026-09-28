@@ -42,9 +42,11 @@ module CatalogIndex
       [candidate, Time.at(last_signed_at.to_i).utc + 1].max
     end
 
-    # Only live, non-archived apps belong in a public catalog.
+    # Only live, non-archived apps belong in a public catalog. Task 37b-iii-s3: and only the
+    # DEFAULT tenant's (`tenant_id IS NULL`), so an app a tenant owns can never show up in the
+    # default catalog. Identical to before for every existing app, all of which have no tenant.
     def self.default_apps
-      App.listing_live.where(archived: [false, nil])
+      App.listing_live.for_tenant(nil).where(archived: [false, nil])
     end
 
     # `key:` is one key or an array of keys, primary first. It defaults to every key valid for

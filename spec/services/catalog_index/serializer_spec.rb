@@ -265,5 +265,60 @@ RSpec.describe CatalogIndex::Serializer do
 
       expect(result[:apps].map { |a| a[:id] }).to eq([ live_app.id ])
     end
+
+    # Task 37b-iii-s3.
+    describe 'tenant scoping' do
+      let(:generated_at) { Time.utc(2026, 9, 30, 12) }
+      let(:acme) { create(:tenant, tenant_id: 'acme') }
+      let(:globex) { create(:tenant, tenant_id: 'globex') }
+
+      def live_app(**attrs)
+        create(:app, listing_status: :live, listed_at: Time.current, **attrs)
+      end
+
+      def ids(result)
+        result[:apps].map { |a| a[:id] }
+      end
+
+      it 'is byte-identical for the default tenant when no app has a tenant (golden)' do
+        live_app
+        live_app
+        create(:app, listing_status: :draft)
+
+        before_tenants = described_class.call(App.listing_live, generated_at: generated_at)
+
+        [{}, { tenant: nil }, { tenant: 'default' }].each do |args|
+          result = described_class.for_live_apps(generated_at: generated_at, **args)
+          expect(JSON.generate(result)).to eq(JSON.generate(before_tenants)), "differed for #{args.inspect}"
+        end
+      end
+
+      it 'keeps every tenant\'s apps out of the default index' do
+        default_app = live_app
+        live_app(tenant: acme)
+
+        expect(ids(described_class.for_live_apps(generated_at: generated_at))).to eq([ default_app.id ])
+      end
+
+      it 'puts a tenant\'s own live apps in its index and nobody else\'s' do
+        default_app = live_app
+        acme_app = live_app(tenant: acme)
+        globex_app = live_app(tenant: globex)
+        live_app(tenant: acme, listing_status: :draft)
+
+        acme_ids = ids(described_class.for_live_apps(tenant: acme, generated_at: generated_at))
+        globex_ids = ids(described_class.for_live_apps(tenant: 'globex', generated_at: generated_at))
+
+        expect(acme_ids).to eq([ acme_app.id ])
+        expect(globex_ids).to eq([ globex_app.id ])
+        expect(acme_ids + globex_ids).not_to include(default_app.id)
+      end
+
+      it 'gives an unknown tenant an empty app list, not the default catalog' do
+        live_app
+
+        expect(described_class.for_live_apps(tenant: 'no-such-tenant', generated_at: generated_at)[:apps]).to eq([])
+      end
+    end
   end
 end
