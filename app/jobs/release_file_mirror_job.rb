@@ -16,6 +16,10 @@ require 'digest'
 # `ReleaseFileMirrorJob.backfill` (or a re-run) mirrors it. It never blocks or
 # fails an upload. Does nothing on the `local` adapter.
 #
+# Task 27d-a: the release's icon gets the same treatment as the primary file: hashed into
+# `Release#icon_sha256` while it is still on local disk, and mirrored to `icon_storage_key`. A release with
+# no icon is simply skipped.
+#
 # Task 27b-i: also hashes the primary file (SHA-256) and persists it to
 # `Release#file_sha256` while it's still guaranteed to be on local disk --
 # this is the one place in the pipeline that's true for every release,
@@ -37,11 +41,13 @@ class ReleaseFileMirrorJob < ApplicationJob
     return unless release
 
     record_sha256(release)
+    record_icon_sha256(release)
 
     return unless ReleaseStorage.remote?
 
     mirror(release, :file_storage_key, release.file&.path)
     mirror(release, :patched_file_storage_key, release.patched_file_path)
+    mirror(release, :icon_storage_key, release.icon&.path, via: :store_icon)
   rescue ReleaseStorage::ConfigurationError => e
     logger.error("[ReleaseFileMirrorJob] release #{release_id}: #{e.message}")
   end
@@ -64,7 +70,18 @@ class ReleaseFileMirrorJob < ApplicationJob
     logger.warn("[ReleaseFileMirrorJob] release #{release.id}: could not hash #{File.basename(path.to_s)}: #{e.message}")
   end
 
-  def mirror(release, column, local_path)
+  def record_icon_sha256(release)
+    return if release[:icon_sha256].present?
+
+    path = release.icon&.path
+    return unless path && File.file?(path)
+
+    release.update_columns(icon_sha256: Digest::SHA256.file(path).hexdigest)
+  rescue Errno::ENOENT, IOError => e
+    logger.warn("[ReleaseFileMirrorJob] release #{release.id}: could not hash icon: #{e.message}")
+  end
+
+  def mirror(release, column, local_path, via: :store_binary)
     return if local_path.blank?
     return if release[column].present?
 
@@ -73,7 +90,7 @@ class ReleaseFileMirrorJob < ApplicationJob
       return
     end
 
-    key = ReleaseStorage.new(release).store_binary(local_path)
+    key = ReleaseStorage.new(release).public_send(via, local_path)
     release.update_columns(column => key)
   rescue ReleaseStorage::StorageError => e
     logger.error("[ReleaseFileMirrorJob] release #{release.id} #{column}: #{e.message}")

@@ -582,7 +582,7 @@ class Release < ApplicationRecord
   # see the in-memory attributes even though the row is gone), so the keys are
   # captured here and passed to the job rather than re-queried by id.
   def enqueue_storage_cleanup
-    keys = [file_storage_key, patched_file_storage_key, compressed_apks_storage_key].compact
+    keys = [file_storage_key, patched_file_storage_key, compressed_apks_storage_key, icon_storage_key].compact
     return if keys.empty?
 
     ReleaseStorageCleanupJob.perform_later(id, keys)

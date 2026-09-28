@@ -15,6 +15,7 @@
 # Usage:
 #   storage = ReleaseStorage.new(release)
 #   storage.store_binary(local_path)            # => storage key (uploaded file)
+#   storage.store_icon(local_path)              # => storage key (release icon, Task 27d-a)
 #   storage.store_compressed_apks(local_path)   # => storage key
 #   storage.store_delta_patch(local_path, from_release: other_release)
 #   storage.fetch(key, to: local_path)           # download to a local path
@@ -80,6 +81,15 @@ class ReleaseStorage
   # @return [String] the storage key the file was stored under
   def store_binary(local_path)
     key = binary_key(File.basename(local_path))
+    adapter.put(key, local_path)
+    key
+  end
+
+  # Task 27d-a: mirrors the release's icon (CarrierWave's `icons/` directory, next to the binary).
+  #
+  # @return [String] the storage key the icon was stored under
+  def store_icon(local_path)
+    key = icon_key(File.basename(local_path))
     adapter.put(key, local_path)
     key
   end
@@ -160,6 +170,10 @@ class ReleaseStorage
 
   def binary_key(filename)
     "uploads/apps/a#{release.app.id}/r#{release.id}/binary/#{filename}"
+  end
+
+  def icon_key(filename)
+    "uploads/apps/a#{release.app.id}/r#{release.id}/icons/#{filename}"
   end
 
   # Mirrors the directory convention CarrierWave's AppFileUploader already

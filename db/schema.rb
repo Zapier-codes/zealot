@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_30_190000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_30_200000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -431,6 +431,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_190000) do
     t.integer "rollout_percentage", default: 100, null: false
     t.string "rollout_status", default: "active", null: false
     t.string "status", default: "available", null: false
+    t.string "icon_sha256"
+    t.string "icon_storage_key"
     t.check_constraint "rollout_percentage >= 0 AND rollout_percentage <= 100", name: "releases_rollout_percentage_range"
     t.check_constraint "status::text = 'available'::text OR status::text = 'held'::text OR status::text = 'halted'::text OR status::text = 'pulled'::text", name: "releases_status_known"
     t.index ["asset_pack_type"], name: "index_releases_on_asset_pack_type"

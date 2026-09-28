@@ -7,7 +7,7 @@ require 'digest'
 RSpec.describe ReleaseFileMirrorJob do
   let(:release_class) do
     Struct.new(:id, :file, :patched_file_path, :file_storage_key, :patched_file_storage_key, :file_sha256,
-               keyword_init: true) do
+               :icon, :icon_sha256, :icon_storage_key, keyword_init: true) do
       def [](column)
         public_send(column)
       end
@@ -20,6 +20,7 @@ RSpec.describe ReleaseFileMirrorJob do
   let(:tmp) { Dir.mktmpdir }
   let(:primary) { File.join(tmp, 'app.aab').tap { |path| File.write(path, 'clean-aab') } }
   let(:patched) { File.join(tmp, 'app_internal_proxy.apk').tap { |path| File.write(path, 'patched') } }
+  let(:icon_path) { File.join(tmp, 'icon.png').tap { |path| File.write(path, 'icon-bytes') } }
   let(:release) { release_class.new(id: 7, file: double(path: primary)) }
   let(:storage) { instance_double(ReleaseStorage) }
 
@@ -28,6 +29,7 @@ RSpec.describe ReleaseFileMirrorJob do
     allow(ReleaseStorage).to receive(:remote?).and_return(true)
     allow(ReleaseStorage).to receive(:new).with(release).and_return(storage)
     allow(storage).to receive(:store_binary) { |path| "uploads/apps/a1/r7/binary/#{File.basename(path)}" }
+    allow(storage).to receive(:store_icon) { |path| "uploads/apps/a1/r7/icons/#{File.basename(path)}" }
   end
 
   after { FileUtils.remove_entry(tmp) }
@@ -119,6 +121,68 @@ RSpec.describe ReleaseFileMirrorJob do
     allow(ReleaseStorage).to receive(:remote?).and_raise(ReleaseStorage::ConfigurationError, 'adapter unset')
 
     expect { described_class.new.perform(7) }.not_to raise_error
+  end
+
+  describe 'the release icon (Task 27d-a)' do
+    before { release.icon = double(path: icon_path) }
+
+    it "records the icon's sha256" do
+      described_class.new.perform(7)
+
+      expect(release.icon_sha256).to eq(Digest::SHA256.hexdigest('icon-bytes'))
+    end
+
+    it 'mirrors the icon and records its key' do
+      described_class.new.perform(7)
+
+      expect(storage).to have_received(:store_icon).with(icon_path).once
+      expect(release.icon_storage_key).to eq('uploads/apps/a1/r7/icons/icon.png')
+    end
+
+    it 'does not re-hash or re-upload an icon that is already recorded' do
+      release.icon_sha256 = 'already-there'
+      release.icon_storage_key = 'uploads/apps/a1/r7/icons/icon.png'
+
+      described_class.new.perform(7)
+
+      expect(release.icon_sha256).to eq('already-there')
+      expect(storage).not_to have_received(:store_icon)
+    end
+
+    it 'still hashes the icon on the local adapter, and uploads nothing' do
+      allow(ReleaseStorage).to receive(:remote?).and_return(false)
+
+      described_class.new.perform(7)
+
+      expect(release.icon_sha256).to eq(Digest::SHA256.hexdigest('icon-bytes'))
+      expect(storage).not_to have_received(:store_icon)
+    end
+
+    it 'skips an icon that is no longer on disk' do
+      FileUtils.rm_f(icon_path)
+
+      described_class.new.perform(7)
+
+      expect(storage).not_to have_received(:store_icon)
+      expect(release.icon_sha256).to be_nil
+      expect(release.icon_storage_key).to be_nil
+    end
+
+    it 'does not let a failed icon upload stop the job or the primary file' do
+      allow(storage).to receive(:store_icon).and_raise(ReleaseStorage::StorageError, 'boom')
+
+      expect { described_class.new.perform(7) }.not_to raise_error
+
+      expect(release.file_storage_key).to eq('uploads/apps/a1/r7/binary/app.aab')
+      expect(release.icon_storage_key).to be_nil
+    end
+  end
+
+  it 'leaves the icon columns alone for a release with no icon' do
+    described_class.new.perform(7)
+
+    expect(storage).not_to have_received(:store_icon)
+    expect(release.icon_sha256).to be_nil
   end
 
   describe '.backfill' do
