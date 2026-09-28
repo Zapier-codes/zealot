@@ -34,7 +34,13 @@ class Api::AppsController < Api::BaseController
 
   # POST /api/apps
   def create
-    @app = App.create!(app_params)
+    # Task 37b-iii-s7c-6: refuse a non-member on a tenant's host BEFORE anything is saved (the
+    # authorize below runs after the row exists), and stamp the request's tenant (`nil` on the
+    # default host: unchanged). `App.create!` is `new` plus `save!`.
+    authorize App, :console?
+    @app = App.new(app_params)
+    @app.tenant = current_tenant
+    @app.save!
     @app.create_owner(current_user)
     authorize @app
 

@@ -34,7 +34,9 @@ module Types
     end
 
     def app(id:)
-      app = App.find(id)
+      # Task 37b-iii-s7c-6: find through the policy scope, so on a tenant's host another tenant's id
+      # is "not found" like a missing one (rule 2), not "not authorized". Default host: `App.all`.
+      app = Pundit.policy_scope!(context[:current_user], App).find(id)
       authorize!(:show, app)
       app
     end

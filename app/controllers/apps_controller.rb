@@ -45,6 +45,9 @@ class AppsController < ApplicationController
   def create
     @app = App.new(app_params)
     authorize @app
+    # Task 37b-iii-s7c-6: an app made on a tenant's host belongs to that tenant (never from params).
+    # `authorize` above already refused a non-member. `nil` on the default host: unchanged.
+    @app.tenant = current_tenant
     unless @app.save
       # Bug fix (Task 20a): this used to be a bare `render :new,
       # status: :unprocessable_entity` with no format. The "New app" link

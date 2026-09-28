@@ -26,6 +26,7 @@ class AppPolicy < ApplicationPolicy
   # authorize the parent app with `create?`, and the API right after
   # App#create_owner) it is the per-app check instead.
   def create?
+    return false unless tenant_write_access?
     return any_manage? if record.respond_to?(:persisted?) && record.persisted?
 
     manage?
@@ -34,23 +35,23 @@ class AppPolicy < ApplicationPolicy
   # Task 23: changing or deleting an app is limited to its admin/owner/manage
   # collaborators — no longer any developer on the instance.
   def edit?
-    any_manage?
+    tenant_write_access? && (any_manage?)
   end
 
   def update?
-    any_manage?
+    tenant_write_access? && (any_manage?)
   end
 
   def destroy?
-    any_manage?
+    tenant_write_access? && (any_manage?)
   end
 
   def new_owner?
-    admin? || app_owner?
+    tenant_write_access? && (admin? || app_owner?)
   end
 
   def update_owner?
-    admin? || app_owner?
+    tenant_write_access? && (admin? || app_owner?)
   end
 
   # Task 24: who may put a different front-facing publisher name on an app
@@ -75,28 +76,28 @@ class AppPolicy < ApplicationPolicy
   # Task 25: putting an app on our own store is the owner's call (the person
   # who uploaded it); admins can see the listing and record the payment.
   def list_on_store?
-    app_owner?
+    tenant_write_access? && (app_owner?)
   end
 
   def view_store_listing?
-    admin? || app_owner?
+    tenant_write_access? && (admin? || app_owner?)
   end
 
   # Temporary manual stand-in for the payment provider (not chosen yet).
   def mark_paid?
-    admin?
+    tenant_write_access? && (admin?)
   end
 
   def archive?
-    any_manage?
+    tenant_write_access? && (any_manage?)
   end
 
   def archived?
-    any_manage?
+    tenant_write_access? && (any_manage?)
   end
 
   def unarchive?
-    any_manage?
+    tenant_write_access? && (any_manage?)
   end
 
   class Scope < Scope
@@ -107,6 +108,18 @@ class AppPolicy < ApplicationPolicy
   end
 
   private
+
+  # Task 37b-iii-s7c-6 (deny by default): every per-app WRITE rule also needs the tenant rule. On
+  # the default host `tenant_access?` and `in_request_tenant?` are always true, so each predicate
+  # is exactly what it was. On a tenant's host: only a member of that tenant, and (for a saved app)
+  # only an app of that tenant. A class or a brand-new record has no tenant yet, so it only needs
+  # the membership; the controller stamps the tenant before saving.
+  def tenant_write_access?
+    return false unless tenant_access?
+    return true unless record.respond_to?(:persisted?) && record.persisted?
+
+    in_request_tenant?(record)
+  end
 
   # Reading stays as before: any admin/developer, guests in guest mode, and
   # the app's collaborators.
