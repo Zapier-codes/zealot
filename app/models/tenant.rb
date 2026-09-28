@@ -25,6 +25,13 @@ class Tenant < ApplicationRecord
   # hierarchies are a handful deep; the cap exists so a corrupted row can never make a recursive
   # query loop forever, and so a reparent that would exceed it is refused instead.
   MAX_TREE_DEPTH = 32
+  # Task 38e (decision 4): config a child may leave unset and read from its nearest ancestor that
+  # sets it. Only fields that can be NULL qualify; the required ones (display_name, primary_color_hex,
+  # cdn_base) are always set on the tenant itself, so there is nothing to fall back from. A field
+  # listed as a value maps to the field that decides which tenant supplies it: a logo's hash always
+  # comes from the same tenant as its URL, never mixed from two tenants.
+  INHERITABLE_CONFIG = { logo_url: :logo_url, logo_sha256: :logo_url,
+                         catalog_index_base_url: :catalog_index_base_url }.freeze
 
   # Key material is never deleted with its tenant; what deleting a tenant means is 37b-iii's call.
   has_many :tenant_signing_keys, dependent: :restrict_with_error
@@ -143,6 +150,27 @@ class Tenant < ApplicationRecord
 
   def descendants
     self.class.where(id: descendant_ids)
+  end
+
+  # Task 38e (decision 4): fallback-on-read, never copy-on-create. The tenant that supplies `field`:
+  # this tenant if it sets it, else the nearest ancestor that does, else nil. Setting a value on a
+  # child stops the walk at the child. `field` must be one of INHERITABLE_CONFIG.
+  def config_owner(field)
+    decider = INHERITABLE_CONFIG.fetch(field.to_sym) do
+      raise ArgumentError, "#{field.inspect} is not inheritable config"
+    end
+    return self if self[decider].present?
+
+    ids = ancestor_ids
+    return nil if ids.empty?
+
+    by_id = self.class.where(id: ids).index_by(&:id)
+    ids.filter_map { |id| by_id[id] }.find { |tenant| tenant[decider].present? }
+  end
+
+  # The value of `field` as this tenant sees it (its own, else the nearest ancestor's), or nil.
+  def resolve_config(field)
+    config_owner(field)&.public_send(field)
   end
 
   # Levels above this tenant: 0 for a root, 1 for a child of a root, and so on.

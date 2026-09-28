@@ -464,4 +464,118 @@ RSpec.describe Tenant do
       expect(described_class.where(parent_tenant_id: nil)).to contain_exactly(root, other_root)
     end
   end
+
+  # Task 38e: fallback-on-read config. Tree: root -> child -> grandchild (and an unrelated tenant).
+  describe 'inherited config (38e)' do
+    let!(:root) do
+      create(:tenant, tenant_id: 'root-co', catalog_index_base_url: 'https://root.example.com/index',
+                      logo_url: 'https://root.example.com/logo.png', logo_sha256: 'a' * 64)
+    end
+    let!(:child) { create(:tenant, tenant_id: 'child-co', parent: root) }
+    let!(:grandchild) { create(:tenant, tenant_id: 'grandchild-co', parent: child) }
+    let!(:stranger) { create(:tenant, tenant_id: 'stranger-co') }
+
+    it 'returns the tenant\'s own value when it sets one' do
+      expect(root.resolve_config(:catalog_index_base_url)).to eq('https://root.example.com/index')
+      expect(root.config_owner(:catalog_index_base_url)).to eq(root)
+    end
+
+    it 'falls back to the nearest ancestor that sets it, at any depth' do
+      expect(child.resolve_config(:catalog_index_base_url)).to eq('https://root.example.com/index')
+      expect(grandchild.resolve_config(:catalog_index_base_url)).to eq('https://root.example.com/index')
+      expect(grandchild.config_owner(:catalog_index_base_url)).to eq(root)
+    end
+
+    it 'stops at the nearest ancestor, not the farthest' do
+      child.update!(catalog_index_base_url: 'https://child.example.com/index')
+
+      expect(grandchild.resolve_config(:catalog_index_base_url)).to eq('https://child.example.com/index')
+      expect(root.resolve_config(:catalog_index_base_url)).to eq('https://root.example.com/index')
+    end
+
+    it 'stops the walk at a child that sets its own value, and leaves the parent alone' do
+      child.update!(catalog_index_base_url: 'https://child.example.com/index')
+
+      expect(child.resolve_config(:catalog_index_base_url)).to eq('https://child.example.com/index')
+      expect(child.config_owner(:catalog_index_base_url)).to eq(child)
+    end
+
+    it 'never reads downwards or sideways' do
+      child.update!(catalog_index_base_url: 'https://child.example.com/index')
+
+      expect(root.resolve_config(:catalog_index_base_url)).to eq('https://root.example.com/index')
+      expect(stranger.resolve_config(:catalog_index_base_url)).to be_nil
+    end
+
+    it 'is nil when no tenant on the chain sets it' do
+      root.update!(catalog_index_base_url: nil)
+
+      expect(grandchild.resolve_config(:catalog_index_base_url)).to be_nil
+      expect(grandchild.config_owner(:catalog_index_base_url)).to be_nil
+    end
+
+    it 'reads at call time, so a change on the parent shows at once and nothing is copied down' do
+      root.update!(catalog_index_base_url: 'https://moved.example.com/index')
+
+      expect(grandchild.resolve_config(:catalog_index_base_url)).to eq('https://moved.example.com/index')
+      expect(grandchild.reload.catalog_index_base_url).to be_nil
+    end
+
+    it 'treats a blank value as unset, even on a tenant that has not been saved (nothing normalized it yet)' do
+      child.update!(catalog_index_base_url: '  ')
+      expect(child.resolve_config(:catalog_index_base_url)).to eq('https://root.example.com/index')
+
+      unsaved = build(:tenant, parent: child, catalog_index_base_url: '  ')
+      expect(unsaved.resolve_config(:catalog_index_base_url)).to eq('https://root.example.com/index')
+    end
+
+    it 'never reads downwards, even when nothing above sets the value' do
+      root.update!(catalog_index_base_url: nil)
+      grandchild.update!(catalog_index_base_url: 'https://grandchild.example.com/index')
+
+      expect(root.resolve_config(:catalog_index_base_url)).to be_nil
+      expect(child.resolve_config(:catalog_index_base_url)).to be_nil
+      expect(grandchild.resolve_config(:catalog_index_base_url)).to eq('https://grandchild.example.com/index')
+    end
+
+    it 'takes a logo URL and its hash from the same tenant, never mixed' do
+      child.update!(logo_url: 'https://child.example.com/logo.png', logo_sha256: 'b' * 64)
+
+      expect(grandchild.resolve_config(:logo_url)).to eq('https://child.example.com/logo.png')
+      expect(grandchild.resolve_config(:logo_sha256)).to eq('b' * 64)
+      expect(child.reload.config_owner(:logo_sha256)).to eq(child)
+      expect(root.resolve_config(:logo_sha256)).to eq('a' * 64)
+    end
+
+    it 'never pairs a tenant\'s logo URL with an ancestor\'s hash' do
+      # Past the validation (a logo URL needs a hash): the URL comes from the child, so the hash must too.
+      child.update_columns(logo_url: 'https://child.example.com/logo.png', logo_sha256: nil)
+
+      expect(grandchild.resolve_config(:logo_url)).to eq('https://child.example.com/logo.png')
+      expect(grandchild.resolve_config(:logo_sha256)).to be_nil
+    end
+
+    it 'works for an unsaved tenant built with a parent' do
+      expect(build(:tenant, parent: child).resolve_config(:logo_url)).to eq('https://root.example.com/logo.png')
+    end
+
+    it 'refuses a field that is not inheritable, including the required ones' do
+      %i[display_name primary_color_hex cdn_base domains nonsense].each do |field|
+        expect { root.resolve_config(field) }.to raise_error(ArgumentError, /not inheritable/)
+      end
+    end
+
+    it 'accepts the field as a string' do
+      expect(child.resolve_config('catalog_index_base_url')).to eq('https://root.example.com/index')
+    end
+
+    it 'still ends on a corrupted loop instead of running forever' do
+      # Fake bad data past the validation: root -> child -> grandchild -> root.
+      root.update_columns(parent_tenant_id: grandchild.id)
+
+      expect(grandchild.reload.resolve_config(:catalog_index_base_url)).to eq('https://root.example.com/index')
+      root.update_columns(catalog_index_base_url: nil)
+      expect(grandchild.reload.resolve_config(:catalog_index_base_url)).to be_nil
+    end
+  end
 end
