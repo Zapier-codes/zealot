@@ -1,12 +1,15 @@
 # frozen_string_literal: true
 
 class AppPolicy < ApplicationPolicy
+  # Task 37b-iii-s7c-2: on a tenant's host, only a member of that tenant, and only for that tenant's
+  # apps. On the default host `tenant_access?` and `in_request_tenant?` are true, so both methods
+  # are `app_user?` exactly as before. The write rules (edit?, update?, ...) are s7c-6.
   def index?
-    app_user?
+    tenant_access? && app_user?
   end
 
   def show?
-    app_user?
+    tenant_access? && in_request_tenant?(record) && app_user?
   end
 
   # A brand-new app isn't about an existing app, so it keeps the global
@@ -88,8 +91,9 @@ class AppPolicy < ApplicationPolicy
   end
 
   class Scope < Scope
+    # The tenant rule (and, on the default host, the old `scope.all`) lives in the base class.
     def resolve
-      scope.all
+      super
     end
   end
 

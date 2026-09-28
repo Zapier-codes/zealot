@@ -80,6 +80,24 @@ RSpec.describe TenantScoped do
     end
   end
 
+  describe 'Current.tenant (s7c-2)' do
+    after { Current.reset }
+
+    it 'is set to the request tenant row by set_current_tenant, and to nil on the default host' do
+      acme = create(:tenant, tenant_id: 'acme')
+
+      controller_for(key => ref_class.new('acme', [])).send(:set_current_tenant)
+      expect(Current.tenant).to eq(acme)
+
+      controller_for(key => Zealot::TenantResolver::DEFAULT_TENANT).send(:set_current_tenant)
+      expect(Current.tenant).to be_nil
+    end
+
+    it 'runs as a before_action on ApplicationController' do
+      expect(ApplicationController._process_action_callbacks.map(&:filter)).to include(:set_current_tenant)
+    end
+  end
+
   describe 'wiring into ApplicationController' do
     it 'is included, and its readers are private (never routable actions)' do
       expect(ApplicationController.ancestors).to include(described_class)

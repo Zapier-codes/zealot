@@ -22,6 +22,10 @@ module TenantScoped
 
   included do
     helper_method :current_tenant, :default_host? if respond_to?(:helper_method)
+    # Task 37b-iii-s7c-2: policies read the request's tenant from `Current.tenant` (Pundit passes
+    # them only `user` and `record`). Set first, before any authorization runs; a no-op on the
+    # default host, which is the value `Current.tenant` already has.
+    before_action :set_current_tenant if respond_to?(:before_action)
   end
 
   private
@@ -35,6 +39,10 @@ module TenantScoped
 
   def default_host?
     current_tenant.nil?
+  end
+
+  def set_current_tenant
+    Current.tenant = current_tenant
   end
 
   # One `SELECT` per request, and only for a non-default host. A database error is NOT rescued: the

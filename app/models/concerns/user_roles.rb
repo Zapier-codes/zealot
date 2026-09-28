@@ -22,6 +22,24 @@ module UserRoles
     admin? || app_roles?(app, :manage)
   end
 
+  # Task 37b-iii-s7c-2 (❓4b-a): does this user belong to `tenant` (a `Tenant` row)? The default
+  # host has no tenant row and no memberships (nil is never a member), so on the default host this
+  # rule is not consulted; the platform's own `role` rules apply there, unchanged.
+  def tenant_member?(tenant)
+    return false if tenant.nil? || new_record?
+
+    tenant_memberships.exists?(tenant_id: tenant.id)
+  end
+
+  # Task 37b-iii-s7c-2 (❓4b-b): "platform admin" is `role = admin` ON THE DEFAULT HOST ONLY. Pass the
+  # request's tenant (`Current.tenant`, `nil` on the default host). On a tenant's host an admin is
+  # an ordinary user, scoped to that tenant like everyone else; platform-wide power never rides in
+  # on a tenant request. (The card wrote `platform_admin?(request)`; the tenant is what is needed,
+  # and it keeps this method free of Rack.)
+  def platform_admin?(tenant = nil)
+    admin? && tenant.nil?
+  end
+
   def grant_admin!
     update!(role: :admin)
   end
