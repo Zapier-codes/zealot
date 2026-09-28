@@ -8,7 +8,7 @@
 # handover.md Task 19 for why that is a decision, not an oversight.
 class Download::ReleasesController < ApplicationController
   before_action :set_release
-  before_action -> { redirect_to_canonical_host(@release.channel) }, only: :show # Task 37b-iii-s7b
+  before_action -> { redirect_to_canonical_host(@release.channel) }, only: %i[show icon] # Task 37b-iii-s7b, 27d-b
 
   rescue_from ActiveRecord::RecordNotFound, with: :render_not_found_entity_response
 
@@ -34,6 +34,24 @@ class Download::ReleasesController < ApplicationController
       send_file source.path, filename: File.basename(source.path), disposition: 'attachment'
     when :redirect
       # Signed, short-lived storage URL (GitHub Releases / R2); never cache it.
+      response.headers['Cache-Control'] = 'no-store'
+      redirect_to source.url, allow_other_host: true
+    else
+      render_not_found_entity_response
+    end
+  end
+
+  # Task 27d-b: the stable, public icon URL the catalog index will carry (27d-c). Serves the local icon,
+  # else a signed redirect to the mirrored copy (ReleaseIconDownload), so the URL survives a redeploy.
+  # No login or channel-password check: the icon is already a public static file under public/uploads
+  # and is shown on the public install page.
+  def icon
+    source = ReleaseIconDownload.new(@release).resolve
+    case source.kind
+    when :file
+      send_file source.path, type: Rack::Mime.mime_type(File.extname(source.path), 'application/octet-stream'),
+                             disposition: 'inline'
+    when :redirect
       response.headers['Cache-Control'] = 'no-store'
       redirect_to source.url, allow_other_host: true
     else

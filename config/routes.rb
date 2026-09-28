@@ -136,6 +136,8 @@ Rails.application.routes.draw do
   namespace :download do
     resources :releases, only: :show do
       member do
+        # Task 27d-b: must stay above ':filename' (which matches anything) or `icon` is read as a filename.
+        get :icon, action: :icon
         get ':filename', action: :download, filename: /.+/, as: 'filename'
         get :delta, action: :delta
       end
