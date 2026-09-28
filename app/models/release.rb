@@ -12,7 +12,7 @@ class Release < ApplicationRecord
   def publish_catalog_index_if_app_live
     return unless app.listing_live?
 
-    CatalogIndexPublishJob.perform_later
+    CatalogIndexPublishJob.enqueue_for(app.tenant)
   end
 
   # Task 12 emails: "new build published" to the app's members, and a notice

@@ -46,8 +46,16 @@ module CatalogIndex
       "SELECT pg_advisory_#{verb}(#{LOCK_KEY}, hashtext(#{connection.quote(id)}))"
     end
 
-    def self.configured?
-      CatalogIndex::GithubPagesCommit.configured? && !CatalogIndexSigningKey.current.nil?
+    # Task 37b-iii-s5: `tenant` defaults to the default tenant, whose answer is unchanged. Another
+    # tenant is configured when the Pages repo is AND that tenant has an active signing key
+    # (`KeyResolver` raises `NoKeyError` for an unknown tenant or a keyless one; that is "no").
+    def self.configured?(tenant = nil)
+      return false unless CatalogIndex::GithubPagesCommit.configured?
+      return !CatalogIndexSigningKey.current.nil? if CatalogIndex::KeyResolver.default?(tenant)
+
+      !CatalogIndex::KeyResolver.for(tenant).nil?
+    rescue CatalogIndex::KeyResolver::NoKeyError
+      false
     end
 
     def self.call(**opts)

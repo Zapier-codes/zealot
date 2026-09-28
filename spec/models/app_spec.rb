@@ -52,5 +52,67 @@ RSpec.describe App do
     it 'does not enqueue a publish on create' do
       expect { create(:app) }.not_to have_enqueued_job(CatalogIndexPublishJob)
     end
+
+    # Task 37b-iii-s5: the publish goes to the tenant that owns the app, and only that tenant.
+    context 'when the app belongs to a tenant' do
+      let(:tenant) { create(:tenant, tenant_id: 'acme') }
+
+      it "republishes only that tenant when its app's listing changes" do
+        app = create(:app, listing_status: :live, listed_at: Time.current, tenant: tenant)
+
+        expect { app.update!(name: 'Renamed') }
+          .to have_enqueued_job(CatalogIndexPublishJob).with('acme').exactly(:once)
+        expect { app.update!(name: 'Renamed again') }
+          .to have_enqueued_job(CatalogIndexPublishJob).exactly(:once) # that one job, no second publish
+      end
+
+      it 'republishes only that tenant on suspend!' do
+        app = create(:app, listing_status: :live, listed_at: Time.current, tenant: tenant)
+
+        expect { app.suspend! }.to have_enqueued_job(CatalogIndexPublishJob).with('acme').exactly(:once)
+      end
+
+      it 'never republishes the default tenant for a tenant-owned change' do
+        app = create(:app, listing_status: :live, listed_at: Time.current, tenant: tenant)
+
+        expect { app.update!(name: 'Renamed') }.not_to have_enqueued_job(CatalogIndexPublishJob).with(no_args)
+      end
+    end
+
+    it 'republishes only the default tenant (no argument) for a default-tenant app' do
+      app = create(:app, listing_status: :live, listed_at: Time.current)
+
+      expect { app.update!(name: 'Renamed') }
+        .to have_enqueued_job(CatalogIndexPublishJob).with(no_args).exactly(:once)
+    end
+
+    context 'when an app moves between tenants' do
+      let(:acme) { create(:tenant, tenant_id: 'acme') }
+      let(:globex) { create(:tenant, tenant_id: 'globex') }
+
+      it 'republishes both the tenant it left and the tenant it joined' do
+        app = create(:app, listing_status: :live, listed_at: Time.current, tenant: acme)
+
+        expect { app.update!(tenant: globex) }
+          .to have_enqueued_job(CatalogIndexPublishJob).with('globex').exactly(:once)
+          .and have_enqueued_job(CatalogIndexPublishJob).with('acme').exactly(:once)
+      end
+
+      it 'republishes the default tenant too when the app leaves the default catalog' do
+        app = create(:app, listing_status: :live, listed_at: Time.current)
+
+        expect { app.update!(tenant: acme) }
+          .to have_enqueued_job(CatalogIndexPublishJob).with('acme')
+          .and have_enqueued_job(CatalogIndexPublishJob).with(no_args)
+      end
+
+      it 'republishes the tenant it left when the app returns to the default catalog' do
+        app = create(:app, listing_status: :live, listed_at: Time.current, tenant: acme)
+
+        expect { app.update!(tenant: nil) }
+          .to have_enqueued_job(CatalogIndexPublishJob).with('acme')
+          .and have_enqueued_job(CatalogIndexPublishJob).with(no_args)
+      end
+    end
   end
 end

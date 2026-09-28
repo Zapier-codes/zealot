@@ -536,9 +536,23 @@ class App < ApplicationRecord
   # above for what this watches and why.
   def publish_catalog_index_if_needed
     watched_field_changed = CATALOG_INDEX_LISTING_FIELDS.any? { |field| saved_change_to_attribute?(field) }
-    return unless saved_change_to_listing_status? || watched_field_changed
+    return unless saved_change_to_listing_status? || watched_field_changed || saved_change_to_tenant_id?
 
-    CatalogIndexPublishJob.perform_later
+    catalog_index_tenants_to_republish.each { |tenant| CatalogIndexPublishJob.enqueue_for(tenant) }
+  end
+
+  # Task 37b-iii-s5: an app's change republishes the tenant that owns it and no other (NULL = the
+  # default tenant, whose job is enqueued with no argument). An app moved from one tenant to
+  # another changes BOTH catalogs, so the tenant it left is republished too. A tenant row deleted
+  # in the meantime cannot happen (`restrict_with_error`), but a lookup that finds nothing is
+  # skipped rather than guessed at.
+  def catalog_index_tenants_to_republish
+    owners = [tenant]
+    if saved_change_to_tenant_id?
+      previous_id = tenant_id_before_last_save
+      owners << (previous_id ? ::Tenant.find_by(id: previous_id) : nil)
+    end
+    owners.uniq { |owner| CatalogIndex::KeyResolver.tenant_id_of(owner) }
   end
 
   def recently_release_app_id
