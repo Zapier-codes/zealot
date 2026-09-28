@@ -50,6 +50,10 @@ class Tenant < ApplicationRecord
   has_many :apps, dependent: :restrict_with_error
   # Task 37b-iii-s6a: same rule for the tenant's collections (the editorial registry its index carries).
   has_many :collections, dependent: :restrict_with_error
+  # Task 37b-iii-s7c-0: a tenant that still has members cannot be destroyed (deleting a tenant never
+  # silently drops its staff; the database foreign key backs this up). No callers yet.
+  has_many :tenant_memberships, dependent: :restrict_with_error
+  has_many :members, through: :tenant_memberships, source: :user
 
   # Permanent once created, same rule as the catalog index's `slug`.
   attr_readonly :tenant_id

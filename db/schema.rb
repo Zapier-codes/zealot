@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_30_170000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_30_180000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -496,6 +496,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_170000) do
     t.index ["app_id"], name: "index_sponsored_slots_on_app_id"
   end
 
+  create_table "tenant_memberships", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "role", default: "member", null: false
+    t.bigint "tenant_id", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["tenant_id"], name: "index_tenant_memberships_on_tenant_id"
+    t.index ["user_id", "tenant_id"], name: "index_tenant_memberships_on_user_id_and_tenant_id", unique: true
+    t.check_constraint "role::text = 'member'::text OR role::text = 'owner'::text", name: "tenant_memberships_role_known"
+  end
+
   create_table "tenant_signing_keys", force: :cascade do |t|
     t.datetime "activated_at"
     t.datetime "created_at", null: false
@@ -618,6 +629,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_170000) do
   add_foreign_key "releases", "users", column: "play_rejected_by_id"
   add_foreign_key "schemes", "apps", on_delete: :cascade
   add_foreign_key "sponsored_slots", "apps"
+  add_foreign_key "tenant_memberships", "tenants"
+  add_foreign_key "tenant_memberships", "users"
   add_foreign_key "tenant_signing_keys", "tenants"
   add_foreign_key "tenants", "tenants", column: "parent_tenant_id"
   add_foreign_key "user_providers", "users", on_delete: :cascade
