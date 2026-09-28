@@ -48,6 +48,8 @@ class Tenant < ApplicationRecord
   # Task 37b-iii-s2: a tenant that still owns apps cannot be destroyed (the database foreign key
   # backs this up). Apps are never deleted or silently moved to the default catalog with it.
   has_many :apps, dependent: :restrict_with_error
+  # Task 37b-iii-s6a: same rule for the tenant's collections (the editorial registry its index carries).
+  has_many :collections, dependent: :restrict_with_error
 
   # Permanent once created, same rule as the catalog index's `slug`.
   attr_readonly :tenant_id

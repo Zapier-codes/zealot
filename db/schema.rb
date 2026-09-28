@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_30_150000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_30_160000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -157,8 +157,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_150000) do
     t.text "description"
     t.string "name", null: false
     t.string "slug", null: false
+    t.bigint "tenant_id"
     t.datetime "updated_at", null: false
     t.index ["slug"], name: "index_collections_on_slug", unique: true
+    t.index ["tenant_id"], name: "index_collections_on_tenant_id"
   end
 
   create_table "debug_file_metadata", force: :cascade do |t|
@@ -602,6 +604,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_150000) do
   add_foreign_key "channels", "schemes", on_delete: :cascade
   add_foreign_key "collection_apps", "apps"
   add_foreign_key "collection_apps", "collections"
+  add_foreign_key "collections", "tenants"
   add_foreign_key "debug_file_metadata", "debug_files"
   add_foreign_key "debug_files", "apps", on_delete: :cascade
   add_foreign_key "listing_edits", "apps", on_delete: :cascade

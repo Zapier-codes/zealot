@@ -330,6 +330,84 @@ RSpec.describe CatalogIndex::Serializer do
         expect(without[:apps].first).to include(collections: [], sponsored_slots: [])
       end
 
+      describe 'collections (s6a)' do
+        def member(app, collection) = CollectionApp.create!(app: app, collection: collection)
+
+        it 'leaves the default index byte-identical when a tenant owns collections (golden)' do
+          app = live_app
+          picks = Collection.create!(slug: 'staff-picks', name: 'Staff picks')
+          member(app, picks)
+          before = JSON.generate(described_class.for_live_apps(generated_at: generated_at))
+
+          Collection.create!(slug: 'acme-picks', name: 'Acme picks', tenant: acme)
+
+          expect(JSON.generate(described_class.for_live_apps(generated_at: generated_at))).to eq(before)
+        end
+
+        it 'gives a tenant only its own collections, and only those slugs on its apps' do
+          Collection.create!(slug: 'staff-picks', name: 'Staff picks')
+          acme_picks = Collection.create!(slug: 'acme-picks', name: 'Acme picks', description: 'Ours', tenant: acme)
+          Collection.create!(slug: 'globex-picks', name: 'Globex picks', tenant: globex)
+          acme_app = live_app(tenant: acme)
+          member(acme_app, acme_picks)
+
+          result = described_class.for_live_apps(tenant: acme, generated_at: generated_at)
+
+          expect(result[:collections]).to eq([ { slug: 'acme-picks', name: 'Acme picks', description: 'Ours' } ])
+          expect(result[:apps].first[:collections]).to eq(%w[acme-picks])
+        end
+
+        it 'keeps a slug on an app only when it resolves in the same registry' do
+          acme_picks = Collection.create!(slug: 'acme-picks', name: 'Acme picks', tenant: acme)
+          acme_app = live_app(tenant: acme)
+          member(acme_app, acme_picks)
+
+          # Same apps, the default tenant's view of the registry: the slug must not appear.
+          result = described_class.call(App.where(id: acme_app.id), generated_at: generated_at)
+
+          expect(result[:collections]).to eq([])
+          expect(result[:apps].first[:collections]).to eq([])
+        end
+
+        it 'gives an unknown tenant no collections, never the default registry' do
+          Collection.create!(slug: 'staff-picks', name: 'Staff picks')
+
+          result = described_class.for_live_apps(tenant: 'no-such-tenant', generated_at: generated_at)
+
+          expect(result[:collections]).to eq([])
+        end
+
+        it 'still omits sponsored slots for a tenant (s6b), while carrying its collections' do
+          acme_picks = Collection.create!(slug: 'acme-picks', name: 'Acme picks', tenant: acme)
+          acme_app = live_app(tenant: acme)
+          member(acme_app, acme_picks)
+          SponsoredSlot.create!(app: acme_app, starts_at: 1.day.from_now, ends_at: 2.days.from_now)
+
+          result = described_class.for_live_apps(tenant: acme, generated_at: generated_at)
+
+          expect(result[:apps].first).to include(collections: %w[acme-picks], sponsored_slots: [])
+        end
+
+        it 'keeps sponsored slots for the default tenant' do
+          app = live_app
+          SponsoredSlot.create!(app: app, starts_at: 1.day.from_now, ends_at: 2.days.from_now)
+
+          expect(described_class.for_live_apps(generated_at: generated_at)[:apps].first[:sponsored_slots]).not_to be_empty
+        end
+
+        it 'lets editorial: false still switch off everything, whatever the tenant' do
+          acme_picks = Collection.create!(slug: 'acme-picks', name: 'Acme picks', tenant: acme)
+          acme_app = live_app(tenant: acme)
+          member(acme_app, acme_picks)
+
+          result = described_class.call(App.where(id: acme_app.id), generated_at: generated_at, tenant: acme,
+                                                                    editorial: false)
+
+          expect(result[:collections]).to eq([])
+          expect(result[:apps].first).to include(collections: [], sponsored_slots: [])
+        end
+      end
+
       it 'gives an unknown tenant an empty app list, not the default catalog' do
         live_app
 

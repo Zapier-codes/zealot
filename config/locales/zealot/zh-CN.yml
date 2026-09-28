@@ -1357,6 +1357,10 @@ zh-CN:
               invalid: 必须是 https 地址
             catalog_index_base_url:
               invalid: 必须是 https 地址
+        collection_app:
+          attributes:
+            app:
+              different_tenant: 与此合集不属于同一个租户
         tenant_signing_key:
           attributes:
             status:

@@ -36,7 +36,7 @@ class Admin::CollectionsController < ApplicationController
   # GET /admin/collections/:id/edit
   def edit
     authorize @collection
-    @candidate_apps = App.where.not(id: @collection.apps.select(:id)).order(:name)
+    @candidate_apps = candidate_apps
   end
 
   # PUT /admin/collections/:id
@@ -46,7 +46,7 @@ class Admin::CollectionsController < ApplicationController
     if @collection.update(collection_params)
       redirect_to admin_collections_path, notice: t('activerecord.success.update', key: t('admin.collections.title'))
     else
-      @candidate_apps = App.where.not(id: @collection.apps.select(:id)).order(:name)
+      @candidate_apps = candidate_apps
       render :edit, status: :unprocessable_entity
     end
   end
@@ -62,7 +62,9 @@ class Admin::CollectionsController < ApplicationController
   # POST /admin/collections/:id/add_app
   def add_app
     authorize @collection, :update?
-    app = App.find_by(id: params[:app_id])
+    # Task 37b-iii-s6a: only an app of the collection's own tenant can join it (CollectionApp refuses
+    # a cross-tenant membership); an app of another tenant is simply not found here.
+    app = same_tenant_apps.find_by(id: params[:app_id])
     @collection.apps << app if app && !@collection.apps.exists?(app.id)
 
     redirect_to edit_admin_collection_path(@collection)
@@ -77,6 +79,15 @@ class Admin::CollectionsController < ApplicationController
   end
 
   private
+
+  # Task 37b-iii-s6a: apps in the collection's own catalog (default tenant when it has none).
+  def same_tenant_apps
+    App.for_tenant(@collection.tenant)
+  end
+
+  def candidate_apps
+    same_tenant_apps.where.not(id: @collection.apps.select(:id)).order(:name)
+  end
 
   def set_collection
     @collection = Collection.find(params[:id])

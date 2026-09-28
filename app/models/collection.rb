@@ -12,6 +12,10 @@
 # Task 30's App#slug eventually will), so changing it after publish should
 # be treated as renaming, not just editing.
 class Collection < ApplicationRecord
+  # Task 37b-iii-s6a: at most one owning tenant; NULL = the default tenant's registry. Adds
+  # `belongs_to :tenant` and `Collection.for_tenant`. The slug stays globally unique (see below).
+  include TenantOwned
+
   SLUG_FORMAT = /\A[a-z0-9]+(-[a-z0-9]+)*\z/
 
   has_many :collection_apps, dependent: :destroy

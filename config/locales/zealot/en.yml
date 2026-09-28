@@ -1347,6 +1347,10 @@ en:
               invalid: must be an https URL
             catalog_index_base_url:
               invalid: must be an https URL
+        collection_app:
+          attributes:
+            app:
+              different_tenant: belongs to a different tenant than this collection
         tenant_signing_key:
           attributes:
             status:
