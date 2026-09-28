@@ -225,7 +225,7 @@ manual-only as well, it is the same one-line trigger change.)
 - **Phase 2, console parity:** 27c–27f, Task 30, Task 31.
 - **Phase 3, client and feedback:** Task 32, Task 33, Task 34.
 - **Phase 4, scale and trust:** Task 35, Task 36.
-- **Phase 5, multi-tenant:** Task 37 *(added this session — cross-repo operator decision, docs only, nothing built)*.
+- **Phase 5, multi-tenant:** Task 37 *(cross-repo operator decision; 37b-i — host→tenant resolution, Rack layer — built, see below; the tenant model, 37a's doc mirror and 37c are still open)*.
 
 **Catalog sources (operator rule):** first-party = Zealot's signed index; third-party = Aptoide via MCP. First-party is always first on the home page. Third-party apps are labelled as such, download from Aptoide (not Zealot), and never carry Zealot's verified/fingerprint claims. If the same package is in both, the Zealot entry wins. D-store owns the merge (`5.h`).
 
@@ -769,6 +769,14 @@ Companion to D-store's `6.b` track and Storeapp's Track c (both already recorded
 | 37a | Define the tenant-config schema/contract shared with D-store and Storeapp: fields, `schema_version`, additive-only-with-defaults policy (an older client/deployment never breaks on a newer field). Must land before 37b/37c — all three repos need to agree on shape first. | ❓ (spec only, no code) | docs (shared schema doc, mirrored into each repo) | Schema reviewed and referenced by name in all three `HANDOVER.md` files | low |
 | 37b | Tenant/organization model: each white-label operator gets its own signing key, its own catalog index (or a namespaced slice of one), and its own publish-pipeline config, resolved by domain/config within the one deployment — never a second Console instance | 37a | model, migration, admin views | A request for tenant A's domain never surfaces tenant B's apps/keys/config | medium |
 | 37c | Serve the tenant-config record itself (the one 37a/37b define) to Storeapp on request, signed the same way the catalog index is (pinned key, anti-rollback, `expires_at`) — Storeapp's `TenantConfig` fetch-on-launch reads this endpoint | 37a, 37b, 27b-iii (reuses its signing/verification posture) | route, serializer | A tampered or expired tenant-config response is refused, same as a tampered index | medium |
+
+**Task 37b slices (TSF — written before code).** Mirrors Storeapp's `1.c.iii.zo` ("Zealot: same domain-based tenant resolution at the Rack layer").
+
+| ID | Goal | Depends on | Files | Acceptance check | Verify | Risk |
+|---|---|---|---|---|---|---|
+| 37b-i ✅ | Host → tenant resolution at the Rack layer, same rules as D-store's `6.b.ii.zi` (`normalizeHost`/`findTenantForHost`). No DB: records come from a pluggable `registry` callable, default empty ⇒ every request is the default tenant, so behaviour is unchanged until 37b-ii. | 37a's schema (Storeapp `spec/tenant-config-schema.md`) | `lib/zealot/tenant_resolver.rb`, `config/initializers/tenant_host.rb`, `spec/lib/zealot/tenant_resolver_spec.rb` | Unknown/blank host ⇒ default tenant; contested domain ⇒ default; `X-Forwarded-Host`/`X-Tenant-Host` never trusted | `ruby -c` ✅; 12 RSpec examples ✅ (run with a helper-free copy of the spec, see log); `normalizeHost` parity vs D-store's real TS on 20 cases ✅; **not** verified: Rails boot, `rails_helper` run, middleware in the live stack | low |
+| 37b-ii | `Tenant` model + migration (fields per the 37a schema) + set `Zealot::TenantResolver.registry` to a DB-backed, cached lookup; admin views. **❓ Operator decision first:** does a tenant's signing key reuse the `AndroidSigningKey`/upload-key model Task 27 built, or is it a new key type? | 37b-i, the ❓ decision | model, migration, admin views | A request for tenant A's domain never surfaces tenant B's apps/keys/config | Postgres needed | medium |
+| 37b-iii | Scope catalog index / publish pipeline reads and writes by `env['zealot.tenant']`. | 37b-ii | serializers, controllers | Tenant A's index contains none of tenant B's apps | Postgres needed | medium |
 
 **❓ Decisions:** none blocking — the "single deployment, dynamic resolution, no fork" model is the operator's recorded call (see D-store's `HANDOVER.md`, "Resolved — multi-tenant model clarified," and Storeapp's `HANDOVER.md` Track c). Open only on implementation detail: whether 37b's per-tenant signing key sits in the same `AndroidSigningKey`/upload-key model Task 27 already built, or a new key type — decide when 37b starts, not before.
 
@@ -4813,3 +4821,11 @@ them is already modernized.
     session on this task should pick up next.
   - One combined patch, branch `feat/task-31a-serializer-and-schema`, base
     `develop` @ `2071e54f`.
+
+### Session — Task 37b-i: host → tenant resolution (Storeapp `1.c.iii.zo`)
+
+- **Built:** `Zealot::TenantResolver` (`lib/zealot/tenant_resolver.rb`) + a 6-line Rack shim in `config/initializers/tenant_host.rb` that sets `env['zealot.tenant_host']` / `env['zealot.tenant']`. Rules deliberately identical to D-store's `6.b.ii.zi`: `normalize_host` (lowercase, strip port/trailing dot, nil for IPv6/junk), one owner ⇒ that tenant, contested domain ⇒ default tenant, optional `TENANT_BASE_DOMAIN` single-label `<tenant_id>.<base>`, unknown host ⇒ default (never a 404), a registry record claiming `tenant_id == 'default'` is dropped.
+- **Nothing reads the env keys yet and there is no `Tenant` model** (37b-ii), so with the default empty registry every request resolves to the default tenant: behaviour-neutral.
+- **Real decisions, flagged:** (1) reads `HTTP_HOST` only, never `X-Forwarded-Host` (any client can set it unless a trusted proxy overwrites it) — confirm Render's routing before enabling `TENANT_BASE_DOMAIN`; (2) a registry error fails closed to the default tenant; (3) the Rack class is defined inline in the initializer because `config.middleware.use` runs during initialization, where referencing an autoloadable (reloadable) constant is not allowed — all logic stays in the autoloaded resolver; (4) `config.hosts` is not set in `production.rb` today, so custom tenant domains aren't blocked by Rails' HostAuthorization — if it is ever configured, tenant domains must be allowed there.
+- **Verified here:** `ruby -c` on all three files; the 12 examples in `spec/lib/zealot/tenant_resolver_spec.rb` pass under RSpec 3.13 run against a copy with the `rails_helper` require swapped for the resolver file (no Rails/Postgres in this sandbox); Ruby `normalize_host` matches D-store's actual `lib/tenant-host.ts` on 20 edge cases (0 mismatches). **Not verified:** Rails boot with the new initializer, the spec under `rails_helper`, the middleware ordering in the live stack. Treat as code-complete, not boot-checked, per this file's standing convention; a smoke test after deploy is `GET /` still returning normally.
+- One combined patch, branch `feat/task-37b-tenant-host-resolution`, base `develop` @ `74c2afda`.
