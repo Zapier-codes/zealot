@@ -314,6 +314,22 @@ RSpec.describe CatalogIndex::Serializer do
         expect(acme_ids + globex_ids).not_to include(default_app.id)
       end
 
+      it 'omits collections and sponsored slots when editorial is false, and keeps them by default' do
+        Collection.create!(slug: 'staff-picks', name: 'Staff picks')
+        app = live_app
+        SponsoredSlot.create!(app: app, starts_at: 1.day.from_now, ends_at: 2.days.from_now)
+        app.collections << Collection.find_by!(slug: 'staff-picks')
+
+        with = described_class.call(App.listing_live, generated_at: generated_at)
+        without = described_class.call(App.listing_live, generated_at: generated_at, editorial: false)
+
+        expect(with[:collections].map { |c| c[:slug] }).to eq(%w[staff-picks])
+        expect(with[:apps].first).to include(collections: %w[staff-picks])
+        expect(with[:apps].first[:sponsored_slots]).not_to be_empty
+        expect(without[:collections]).to eq([])
+        expect(without[:apps].first).to include(collections: [], sponsored_slots: [])
+      end
+
       it 'gives an unknown tenant an empty app list, not the default catalog' do
         live_app
 

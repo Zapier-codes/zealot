@@ -79,10 +79,28 @@ RSpec.describe CatalogIndex::Signer do
       expect(JSON.parse(result.index_json)['apps'].map { |a| a['id'] }).to eq([ default_app.id ])
     end
 
-    it 'will not sign a non-default tenant over "every live app": apps must be passed explicitly' do
-      create(:tenant_signing_key, tenant: create(:tenant, tenant_id: 'acme'))
+    # Task 37b-iii-s4 (replaces the k4 example that made a tenant pass its apps explicitly).
+    it 'signs a non-default tenant over its own apps only when none are passed' do
+      acme = create(:tenant, tenant_id: 'acme')
+      create(:tenant_signing_key, tenant: acme)
+      default_app = create(:app, listing_status: :live, listed_at: Time.current)
+      acme_app = create(:app, listing_status: :live, listed_at: Time.current, tenant: acme)
+      create(:app, listing_status: :live, listed_at: Time.current, tenant: create(:tenant, tenant_id: 'globex'))
 
-      expect { described_class.call(nil, tenant: 'acme') }.to raise_error(ArgumentError, /explicit apps/)
+      result = described_class.call(nil, now: Time.utc(2026, 9, 30, 12), tenant: 'acme')
+
+      ids = JSON.parse(result.index_json)['apps'].map { |a| a['id'] }
+      expect(ids).to eq([ acme_app.id ])
+      expect(ids).not_to include(default_app.id)
+    end
+
+    it 'signs a tenant with no apps as an empty index, not the default catalog' do
+      create(:tenant_signing_key, tenant: create(:tenant, tenant_id: 'acme'))
+      create(:app, listing_status: :live, listed_at: Time.current)
+
+      result = described_class.call(nil, now: Time.utc(2026, 9, 30, 12), tenant: 'acme')
+
+      expect(JSON.parse(result.index_json)['apps']).to eq([])
     end
 
     it 'raises, naming the tenant, for a tenant without a key' do

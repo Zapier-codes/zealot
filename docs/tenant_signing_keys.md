@@ -87,6 +87,13 @@ publish never takes the default tenant's lock. A tenant's `catalog_index_base_ur
 is where its readers fetch from, so a tenant can point a custom domain or CDN at its
 directory without a separate repo.
 
+**Built in 37b-iii-s4:** `CatalogIndex::Publish` for a non-default tenant writes `index.json`,
+`index.json.sig`, `signing_key.pub` and `.nojekyll` under `tenants/<tenant_id>/`, signed with that
+tenant's own `active` key and containing only that tenant's live apps (`App.for_tenant`). Until
+37b-iii-s6 its index carries `collections: []` and no sponsored slots. Only the `active` key's
+signature is written (the overlap `index.json.<key_id>.sig` files and the key manifest are k8), so
+a rotation overlap is not yet visible to readers.
+
 | Path (relative to the tenant publish root) | Content |
 |---|---|
 | `index.json` | The signed index, exact bytes, never re-serialised (unchanged rule). |

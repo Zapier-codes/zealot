@@ -46,25 +46,29 @@ module CatalogIndex
     # DEFAULT tenant's (`tenant_id IS NULL`), so an app a tenant owns can never show up in the
     # default catalog. Identical to before for every existing app, all of which have no tenant.
     def self.default_apps
-      App.listing_live.for_tenant(nil).where(archived: [false, nil])
+      apps_for(nil)
+    end
+
+    # Task 37b-iii-s4: the same rule for any tenant: live, non-archived, and only that tenant's own
+    # apps (`App.for_tenant`). An unknown tenant gets none, never the default catalog.
+    def self.apps_for(tenant)
+      App.listing_live.for_tenant(tenant).where(archived: [false, nil])
     end
 
     # `key:` is one key or an array of keys, primary first. It defaults to every key valid for
     # `tenant` right now (see the class comment); pass `key:` to override, as before.
     #
-    # A non-default tenant must pass `apps` explicitly: the default app list is EVERY live app,
-    # and scoping apps to a tenant is 37b-iii's job, so signing "all apps" with a tenant's key
-    # would put other tenants' apps in its index.
+    # With no `apps`, the list is `apps_for(tenant)`: that tenant's own live apps (Task 37b-iii-s4
+    # lifted the k4 guard that made a non-default tenant pass them explicitly, now that
+    # `App.for_tenant` exists). A non-default tenant's index carries no collections or sponsored
+    # slots until s6 (see `Serializer.call`'s `editorial:`).
     def self.call(apps = nil, now: Time.now.utc, tenant: nil, key: CatalogIndex::KeyResolver.signing_keys_for(tenant))
-      if apps.nil? && !CatalogIndex::KeyResolver.default?(tenant)
-        raise ArgumentError, "tenant #{tenant.inspect} needs an explicit apps list until apps are tenant-scoped (Task 37b-iii)"
-      end
-
-      new(apps, now: now, key: key).call
+      new(apps, now: now, key: key, tenant: tenant).call
     end
 
-    def initialize(apps, now:, key:)
+    def initialize(apps, now:, key:, tenant: nil)
       @apps = apps
+      @tenant = tenant
       @now = now
       @keys = key.is_a?(Array) ? key.compact : [key].compact
     end
@@ -74,7 +78,8 @@ module CatalogIndex
 
       with_locks(@keys.sort_by(&:id)) do
         generated_at = self.class.next_generated_at(@now, @keys.filter_map(&:last_signed_at).max)
-        index = CatalogIndex::Serializer.call(@apps || self.class.default_apps, generated_at: generated_at)
+        index = CatalogIndex::Serializer.call(@apps || self.class.apps_for(@tenant), generated_at: generated_at,
+                                              editorial: CatalogIndex::KeyResolver.default?(@tenant))
         json = "#{JSON.pretty_generate(index)}\n"
         signatures = @keys.map { |k| { key_id: k.key_id, signature: k.sign(json) } }
         @keys.each { |k| k.update!(last_signed_at: generated_at) }

@@ -48,12 +48,85 @@ RSpec.describe CatalogIndex::Publish do
     expect(files['signing_key.pub'].strip).to eq(key.public_key)
   end
 
-  it 'refuses a non-default tenant before touching GitHub, until 37b-iii gives it its own publish root' do
-    create(:tenant_signing_key, tenant: create(:tenant, tenant_id: 'acme'))
-    expect(client).not_to receive(:publish)
+  # Task 37b-iii-s4 (replaces the k4 example that refused a non-default tenant).
+  describe 'for a non-default tenant' do
+    let(:acme) { create(:tenant, tenant_id: 'acme') }
+    let!(:acme_key) { create(:tenant_signing_key, tenant: acme) }
 
-    expect { described_class.call(apps: [], client: client, tenant: 'acme', hook_url: '') }
-      .to raise_error(described_class::TenantNotScopedError, /acme/)
+    def live_app(**attrs)
+      create(:app, listing_status: :live, listed_at: Time.current, **attrs)
+    end
+
+    it 'writes the same four files under tenants/<id>, signed with the tenant\'s own key' do
+      files = root = message = nil
+      allow(client).to receive(:publish) { |f, **opts| files = f; root = opts[:root]; message = opts[:message]; landed }
+
+      result = described_class.call(client: client, tenant: 'acme', hook_url: '')
+
+      expect(result.status).to eq(:published)
+      expect(root).to eq('tenants/acme')
+      expect(message).to include('[acme]')
+      expect(files.keys).to contain_exactly('index.json', 'index.json.sig', 'signing_key.pub', '.nojekyll')
+      expect(files['signing_key.pub'].strip).to eq(acme_key.public_key)
+      expect(CatalogIndex::Ed25519.verify(acme_key.public_key, files['index.json'], files['index.json.sig'].strip)).to be true
+    end
+
+    it 'never signs with the default tenant\'s key' do
+      default_key = CatalogIndexSigningKey.generate!
+      files = nil
+      allow(client).to receive(:publish) { |f, **| files = f; landed }
+
+      described_class.call(client: client, tenant: acme, hook_url: '')
+
+      expect(CatalogIndex::Ed25519.verify(default_key.public_key, files['index.json'], files['index.json.sig'].strip)).to be false
+    end
+
+    it 'publishes only that tenant\'s own live apps, and none of the default tenant\'s or another tenant\'s' do
+      default_app = live_app
+      acme_app = live_app(tenant: acme)
+      live_app(tenant: create(:tenant, tenant_id: 'globex'))
+      files = nil
+      allow(client).to receive(:publish) { |f, **| files = f; landed }
+
+      described_class.call(client: client, tenant: 'acme', hook_url: '')
+
+      ids = JSON.parse(files['index.json'])['apps'].map { |a| a['id'] }
+      expect(ids).to eq([ acme_app.id ])
+      expect(ids).not_to include(default_app.id)
+    end
+
+    it 'publishes no collections or sponsored slots until s6, even when the default tenant has them' do
+      Collection.create!(slug: 'staff-picks', name: 'Staff picks')
+      acme_app = live_app(tenant: acme)
+      files = nil
+      allow(client).to receive(:publish) { |f, **| files = f; landed }
+
+      described_class.call(client: client, tenant: 'acme', hook_url: '')
+
+      index = JSON.parse(files['index.json'])
+      expect(index['collections']).to eq([])
+      expect(index['apps'].first).to include('id' => acme_app.id, 'sponsored_slots' => [], 'collections' => [])
+    end
+
+    it 'still fails with a NoKeyError naming the tenant when it has no active key' do
+      create(:tenant, tenant_id: 'nokey')
+      expect(client).not_to receive(:publish)
+
+      expect { described_class.call(client: client, tenant: 'nokey', hook_url: '') }
+        .to raise_error(CatalogIndex::KeyResolver::NoKeyError, /nokey/)
+    end
+
+    it 'leaves the default tenant at the repo root with an unchanged commit message' do
+      key
+      root = :unset
+      message = nil
+      allow(client).to receive(:publish) { |_f, **opts| root = opts[:root]; message = opts[:message]; landed }
+
+      described_class.call(apps: [], client: client, hook_url: '')
+
+      expect(root).to be_nil
+      expect(message).to match(/\Acatalog index \d{4}-/)
+    end
   end
 
   it 'raises NoKeyError before touching GitHub when there is no signing key' do

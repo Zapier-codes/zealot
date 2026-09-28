@@ -73,18 +73,26 @@ module CatalogIndex
     # this slice's scope. A caller that doesn't pass them gets a schema-valid
     # but not-yet-meaningful sequence (always 0) and a DEFAULT_TTL-out
     # expires_at, same "reserved, not invented" spirit as the per-app fields.
-    def self.call(apps, generated_at: Time.now.utc, sequence: 0, expires_at: nil)
-      new(apps, generated_at: generated_at, sequence: sequence, expires_at: expires_at).call
+    #
+    # editorial: Task 37b-iii-s4. Collections and sponsored slots are not tenant-scoped until s6, so
+    # a NON-default tenant's index is built with `editorial: false`: top-level `collections: []`, and
+    # every app's `sponsored_slots` and `collections` empty. Otherwise it would publish the default
+    # tenant's collection registry. Defaults to true, so the default tenant's bytes are unchanged.
+    def self.call(apps, generated_at: Time.now.utc, sequence: 0, expires_at: nil, editorial: true)
+      new(apps, generated_at: generated_at, sequence: sequence, expires_at: expires_at, editorial: editorial).call
     end
 
     # Task 37b-iii-s3: `tenant:` picks whose live apps go in (`App.for_tenant`). With no tenant it
-    # is the default tenant's catalog: the same apps as before tenants existed. `collections` are
-    # not tenant-scoped until s6, so this changes which APPS a tenant's index lists and nothing else.
+    # is the default tenant's catalog: the same apps as before tenants existed. Collections and
+    # sponsored slots are not tenant-scoped until s6, so a non-default tenant gets `editorial: false`
+    # (s4), the same rule `Signer` applies.
     def self.for_live_apps(tenant: nil, generated_at: Time.now.utc, sequence: 0, expires_at: nil)
-      call(App.listing_live.for_tenant(tenant), generated_at: generated_at, sequence: sequence, expires_at: expires_at)
+      call(App.listing_live.for_tenant(tenant), generated_at: generated_at, sequence: sequence, expires_at: expires_at,
+                                                editorial: CatalogIndex::KeyResolver.default?(tenant))
     end
 
-    def initialize(apps, generated_at:, sequence:, expires_at:)
+    def initialize(apps, generated_at:, sequence:, expires_at:, editorial: true)
+      @editorial = editorial
       # NOT `Array(apps)`: a single duck-typed "app" can itself be
       # Enumerable (a Struct fixture is, as of modern Ruby) and `Array()`
       # would then explode it into its member values instead of wrapping
@@ -103,7 +111,7 @@ module CatalogIndex
         sequence: @sequence,
         expires_at: @expires_at.utc.iso8601,
         apps: @apps.map { |app| serialize_app(app) },
-        collections: serialize_collections,
+        collections: @editorial ? serialize_collections : [],
       }
     end
 
@@ -148,8 +156,8 @@ module CatalogIndex
         created_at: iso(app.created_at),
         updated_at: iso(app.updated_at),
         editorial: editorial_for(app),
-        sponsored_slots: sponsored_slots_for(app),
-        collections: collection_slugs_for(app),
+        sponsored_slots: @editorial ? sponsored_slots_for(app) : [],
+        collections: @editorial ? collection_slugs_for(app) : [],
         versions: releases_for(app).map { |release| serialize_version(release) },
       }
     end

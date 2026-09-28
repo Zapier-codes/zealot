@@ -24,9 +24,10 @@ module CatalogIndex
   class Publish
     LOCK_KEY = 2_027_003 # arbitrary, fixed: "task 27b-iii"
 
-    # Task 37b-ii-k4: `Publish` still writes the four FIXED root paths under one global lock, so
-    # a non-default tenant's index would overwrite the default tenant's files. Refused until
-    # 37b-iii gives each tenant its own publish root (and k8 its own lock and key manifest).
+    # Task 37b-ii-k4 added this guard because `Publish` wrote the four FIXED root paths, so a
+    # non-default tenant's index would have overwritten the default tenant's files. Task 37b-iii-s4
+    # lifted it (each tenant now has its own root, lock and app list), but the class stays so
+    # anything still rescuing it keeps loading; nothing raises it any more.
     class TenantNotScopedError < StandardError; end
 
     Result = Struct.new(:status, :commit_sha, :generated_at, :key_id, :hook, keyword_init: true)
@@ -55,10 +56,6 @@ module CatalogIndex
 
     def initialize(apps: nil, client: nil, tenant: nil, key: CatalogIndex::KeyResolver.for(tenant), now: Time.now.utc,
                    hook_url: ENV['DSTORE_DEPLOY_HOOK_URL'], hook_transport: nil, logger: Rails.logger)
-      unless CatalogIndex::KeyResolver.default?(tenant)
-        raise TenantNotScopedError, "publishing for tenant #{tenant.inspect} is not built yet (Task 37b-iii)"
-      end
-
       @apps = apps
       @client = client
       @tenant = tenant
@@ -81,17 +78,30 @@ module CatalogIndex
     private
 
     def sign_and_commit(client)
-      signed = CatalogIndex::Signer.call(@apps, now: @now, key: @key)
+      signed = CatalogIndex::Signer.call(@apps, now: @now, tenant: @tenant, key: @key)
       files = {
         'index.json' => signed.index_json,
         'index.json.sig' => "#{signed.signature}\n",
         'signing_key.pub' => "#{@key.public_key}\n",
         '.nojekyll' => ''
       }
-      commit = client.publish(files, message: "catalog index #{signed.generated_at.utc.iso8601} (#{signed.key_id})")
+      commit = client.publish(files, message: "catalog index#{message_scope} #{signed.generated_at.utc.iso8601} (#{signed.key_id})",
+                                     root: publish_root)
 
       Result.new(status: commit.status, commit_sha: commit.commit_sha,
                  generated_at: signed.generated_at, key_id: signed.key_id)
+    end
+
+    # nil (the repo root, exactly as before) for the default tenant, `tenants/<id>` for any other.
+    def publish_root
+      return nil if CatalogIndex::KeyResolver.default?(@tenant)
+
+      CatalogIndex::GithubPagesCommit.root_for(CatalogIndex::KeyResolver.tenant_id_of(@tenant))
+    end
+
+    # The default tenant's commit message is unchanged; another tenant's names it.
+    def message_scope
+      CatalogIndex::KeyResolver.default?(@tenant) ? '' : " [#{CatalogIndex::KeyResolver.tenant_id_of(@tenant)}]"
     end
 
     def with_publish_lock
