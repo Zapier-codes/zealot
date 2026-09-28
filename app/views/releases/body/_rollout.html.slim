@@ -3,6 +3,8 @@
 / per-release decision at the same ownership level as play_store_target,
 / not an org-wide editorial toggle, so it lives here rather than under a
 / separate Admin:: namespace.
+/ Task 27f-b2: the form PATCHes the nested resource route (`channel_release_path`); the friendly
+/ `/:channel/:id` route is GET-only, so a PATCH there fell into the not-found catch-all.
 - if policy(release).update?
   .card
     .card-header
@@ -13,7 +15,7 @@
         span.badge class="text-bg-#{badge_class}" = t("releases.show.rollout_status_badges.#{release.rollout_status}")
         span.opacity-60 = t('releases.show.rollout_percentage', percentage: release.rollout_percentage)
 
-      = simple_form_for release, url: friendly_channel_release_path(release.channel, release), method: :patch, html: { class: 'flex flex-wrap items-end gap-2' } do |f|
+      = simple_form_for release, url: channel_release_path(release.channel, release), method: :patch, html: { class: 'flex flex-wrap items-end gap-2' } do |f|
         = f.input :rollout_percentage, as: :integer, input_html: { min: 0, max: 100, style: 'width: 6rem' }, label: t('releases.show.rollout_percentage_label'), wrapper_html: { class: 'mb-0' }
         = f.input :rollout_status, collection: Release.rollout_statuses.keys, include_blank: false, label: t('releases.show.rollout_status_label'), wrapper_html: { class: 'mb-0' }
         = f.button :submit, t('releases.show.rollout_update'), class: 'd-btn d-btn-sm'
