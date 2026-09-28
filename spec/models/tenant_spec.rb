@@ -133,6 +133,98 @@ RSpec.describe Tenant do
     end
   end
 
+  # Task 37b-ii-t3: flagged questions resolved before the admin views exist.
+  describe 'reserved tenant ids' do
+    it 'refuses labels the deployment uses for itself' do
+      %w[www api admin app cdn console mail static assets].each do |label|
+        expect(build(:tenant, tenant_id: label)).not_to be_valid, "expected #{label} to be reserved"
+      end
+    end
+
+    it 'still accepts an ordinary label' do
+      expect(build(:tenant, tenant_id: 'acme')).to be_valid
+    end
+  end
+
+  describe 'the deployment\'s own hosts' do
+    around do |example|
+      keep = ENV.to_h.slice('ZEALOT_DOMAIN', 'TENANT_BASE_DOMAIN')
+      ENV.delete('ZEALOT_DOMAIN')
+      ENV.delete('TENANT_BASE_DOMAIN')
+      example.run
+    ensure
+      ENV.delete('ZEALOT_DOMAIN')
+      ENV.delete('TENANT_BASE_DOMAIN')
+      keep.each { |k, v| ENV[k] = v }
+    end
+
+    it 'refuses the primary host from ZEALOT_DOMAIN, however it is typed' do
+      ENV['ZEALOT_DOMAIN'] = 'console.example.com:443'
+      tenant = build(:tenant, domains: ['Console.Example.com.'])
+
+      expect(tenant).not_to be_valid
+      expect(tenant.errors[:domains].join).to include('console.example.com')
+    end
+
+    it 'refuses the TENANT_BASE_DOMAIN itself but allows a host beneath it' do
+      ENV['TENANT_BASE_DOMAIN'] = 'stores.example.com'
+
+      expect(build(:tenant, domains: ['stores.example.com'])).not_to be_valid
+      expect(build(:tenant, domains: ['acme.stores.example.com'])).to be_valid
+    end
+
+    it 'refuses localhost' do
+      expect(build(:tenant, domains: ['localhost'])).not_to be_valid
+    end
+
+    it 'leaves an unrelated host alone' do
+      ENV['ZEALOT_DOMAIN'] = 'console.example.com'
+      expect(build(:tenant, domains: ['store.acme.example.com'])).to be_valid
+    end
+
+    it 'does not block an unrelated edit of a tenant saved before the host was reserved' do
+      tenant = create(:tenant, domains: ['store.acme.example.com'])
+      ENV['ZEALOT_DOMAIN'] = 'store.acme.example.com'
+
+      expect(tenant.update(display_name: 'Renamed')).to be(true)
+    end
+
+    it 'still refuses it when the domains are edited' do
+      tenant = create(:tenant, domains: ['store.acme.example.com'])
+      ENV['ZEALOT_DOMAIN'] = 'store.acme.example.com'
+
+      expect(tenant.update(domains: ['store.acme.example.com', 'shop.acme.example.com'])).to be(false)
+    end
+  end
+
+  describe 'domains_text (the admin form field)' do
+    it 'splits on new lines, commas and spaces, and drops blanks' do
+      tenant = build(:tenant, domains_text: "Store.Acme.example.com\r\n shop.acme.example.com, \n\n")
+      expect(tenant).to be_valid
+      expect(tenant.domains).to eq(%w[store.acme.example.com shop.acme.example.com])
+    end
+
+    it 'round-trips one host per line' do
+      expect(build(:tenant, domains: %w[a.example.com b.example.com]).domains_text).to eq("a.example.com\nb.example.com")
+    end
+
+    it 'keeps a pasted URL as one entry so validation refuses it' do
+      tenant = build(:tenant, domains_text: 'https://store.acme.example.com/')
+      expect(tenant).not_to be_valid
+    end
+  end
+
+  describe 'registry cache' do
+    it 'is dropped after a committed create and update, so an edit shows in this process at once' do
+      allow(Zealot::TenantRegistry).to receive(:reset!)
+
+      tenant = create(:tenant)
+      tenant.update!(display_name: 'Renamed')
+
+      expect(Zealot::TenantRegistry).to have_received(:reset!).at_least(:twice)
+    end
+  end
+
   describe 'Zealot::TenantResolver contract' do
     it 'is resolved by its domain through the resolver' do
       tenant = create(:tenant, domains: ['store.acme.example.com'])

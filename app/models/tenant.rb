@@ -10,7 +10,13 @@
 # The DEFAULT tenant is never a row: it is compiled into the resolver (a row claiming
 # `tenant_id == 'default'` is dropped there), so it is refused here too.
 class Tenant < ApplicationRecord
-  RESERVED_TENANT_IDS = [Zealot::TenantResolver::DEFAULT_TENANT_ID].freeze
+  # `tenant_id` is permanent and, once TENANT_BASE_DOMAIN is set, is also a hostname label
+  # (`<tenant_id>.<base>`), so the labels a deployment uses for its own infrastructure are
+  # refused up front (Task 37b-ii-t3; standard practice for any user-chosen subdomain).
+  RESERVED_TENANT_IDS = ([Zealot::TenantResolver::DEFAULT_TENANT_ID] +
+                         %w[www api admin app cdn console mail static assets]).freeze
+  # Names that always mean "this machine", never a tenant's public domain.
+  LOOPBACK_HOSTS = %w[localhost].freeze
   TENANT_ID_FORMAT = /\A[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\z/
   COLOR_FORMAT = /\A#[0-9a-fA-F]{6}\z/
   SHA256_FORMAT = /\A[a-f0-9]{64}\z/
@@ -34,6 +40,40 @@ class Tenant < ApplicationRecord
   validates :logo_sha256, presence: true, if: -> { logo_url.present? }
   validate :urls_are_https
   validate :domains_are_valid_and_unclaimed
+  validate :domains_avoid_reserved_hosts, if: :domains_changed?
+
+  # The registry caches per process (t2); dropping this process's snapshot on every committed
+  # write makes an admin's edit visible here at once. Other processes catch up within the TTL.
+  after_commit { Zealot::TenantRegistry.reset! }
+
+  class << self
+    # Hosts that belong to the deployment itself and can never be a tenant's domain: a tenant
+    # claiming one would make the resolver move the default tenant's own site to that tenant
+    # (Task 37b-ii-t3). Read at validation time so a changed ZEALOT_DOMAIN applies at once.
+    def reserved_hosts
+      hosts = [ENV['ZEALOT_DOMAIN'], Zealot::TenantResolver.base_domain, *LOOPBACK_HOSTS, site_domain_setting]
+      hosts.filter_map { |h| Zealot::TenantResolver.normalize_host(h) }.uniq
+    end
+
+    private
+
+    # The admin-editable `site_domain` setting. A missing table or cache must not make a tenant
+    # unsaveable, so any read error just leaves the env-derived hosts in force.
+    def site_domain_setting
+      defined?(::Setting) ? ::Setting.site_domain : nil
+    rescue StandardError
+      nil
+    end
+  end
+
+  # One domain per line in the admin form; commas and any whitespace also separate entries.
+  def domains_text
+    Array(domains).join("\n")
+  end
+
+  def domains_text=(value)
+    self.domains = value.to_s.split(/[\s,]+/).reject(&:blank?)
+  end
 
   private
 
@@ -83,5 +123,10 @@ class Tenant < ApplicationRecord
                   .where('jsonb_exists_any(domains, ARRAY[?]::text[])', domains)
                   .flat_map(&:domains) & domains
     errors.add(:domains, :taken) if taken.any?
+  end
+
+  def domains_avoid_reserved_hosts
+    clash = domains & self.class.reserved_hosts
+    errors.add(:domains, :reserved, hosts: clash.to_sentence) if clash.any?
   end
 end

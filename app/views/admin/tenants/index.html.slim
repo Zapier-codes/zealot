@@ -1,0 +1,26 @@
+- content_for :title do
+  = t('.title')
+
+- content_for :section_title do
+  = t('.title')
+  = link_to t('.new_tenant'), new_admin_tenant_path, class: 'd-btn d-btn-primary d-btn-sm'
+
+- if @tenants.any?
+  .card
+    .card-body.p-0
+      table.d-table
+        thead
+          tr
+            th = t('.tenant_id')
+            th = t('.display_name')
+            th = t('.domains')
+        tbody
+          - @tenants.each do |tenant|
+            tr
+              td = link_to tenant.tenant_id, edit_admin_tenant_path(tenant)
+              td = tenant.display_name
+              td = tenant.domains.join(', ')
+- else
+  .card.card-outline.card-warning
+    .card-header.card-border
+      h3.card-title = t('.not_found')

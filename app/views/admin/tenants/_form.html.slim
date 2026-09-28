@@ -1,0 +1,16 @@
+= simple_form_for [:admin, tenant] do |f|
+  = f.error_notification
+  = f.input :tenant_id, required: true, disabled: tenant.persisted?, hint: t('.tenant_id_hint')
+  = f.input :display_name, required: true
+  = f.input :primary_color_hex, required: true, hint: t('.primary_color_hex_hint')
+  = f.input :domains_text, as: :text, input_html: { rows: 4 }, label: Tenant.human_attribute_name(:domains), \
+    hint: t('.domains_hint')
+  - tenant.errors.full_messages_for(:domains).each do |message|
+    .text-error.text-sm.mb-2 = message
+  = f.input :cdn_base, required: true
+  = f.input :catalog_index_base_url
+  = f.input :logo_url
+  = f.input :logo_sha256, hint: t('.logo_sha256_hint')
+
+  .mt-4
+    = f.button :submit

@@ -227,6 +227,10 @@ Rails.application.routes.draw do
 
       # Task 31a (item 4): the `collections[]` top-level registry
       # CatalogIndex::Serializer#serialize_collections already publishes.
+      # Task 37b-ii-t3: white-label tenants. No destroy until 37b-iii defines what deleting a
+      # tenant does to its apps and keys; no show (the edit page is the detail page).
+      resources :tenants, only: %i[ index new create edit update ]
+
       resources :collections do
         member do
           post :add_app

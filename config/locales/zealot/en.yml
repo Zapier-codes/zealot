@@ -225,6 +225,25 @@ en:
         remove: Remove
         pick_an_app: Pick an app
         add: Add
+    tenants:
+      title: Tenants
+      index:
+        title: :admin.tenants.title
+        new_tenant: New tenant
+        tenant_id: Tenant ID
+        display_name: Display name
+        domains: Domains
+        not_found:
+          title: No tenants yet. Every request is served as the default tenant.
+      new:
+        title: New tenant
+      edit:
+        title: Edit tenant
+      form:
+        tenant_id_hint: "Lowercase letters, digits and hyphens. Permanent: it cannot be changed once the tenant exists."
+        primary_color_hex_hint: "For example #FF6600."
+        domains_hint: "One host per line, such as store.example.com. Not a URL, and not a host this deployment already uses."
+        logo_sha256_hint: "Required whenever a logo URL is set (64 hex characters)."
     sponsored_slots:
       title: Sponsored Slots
       index:
@@ -1246,6 +1265,15 @@ en:
         name: Device name
       collaborator:
         owner: Owner
+      tenant:
+        tenant_id: Tenant ID
+        display_name: Display name
+        primary_color_hex: Primary colour
+        cdn_base: CDN base URL
+        catalog_index_base_url: Catalog index base URL
+        logo_url: Logo URL
+        logo_sha256: Logo SHA-256
+        domains: Domains
     success:
       create: "Created %{key} successfully"
       invite: "Created %{key} successfully. An email was sent so they can set their own password."
@@ -1276,6 +1304,7 @@ en:
             domains:
               invalid: must be plain hostnames such as store.example.com
               taken: includes a domain another tenant already uses
+              reserved: "includes a host this deployment uses itself (%{hosts}), which a tenant cannot claim"
             cdn_base:
               invalid: must be an https URL
             logo_url:

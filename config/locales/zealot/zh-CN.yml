@@ -223,6 +223,25 @@ zh-CN:
         remove: 移除
         pick_an_app: 选择应用
         add: 添加
+    tenants:
+      title: 租户
+      index:
+        title: :'admin.tenants.title'
+        new_tenant: 新建租户
+        tenant_id: 租户 ID
+        display_name: 显示名称
+        domains: 域名
+        not_found:
+          title: 暂无租户，所有请求都按默认租户处理
+      new:
+        title: 新建租户
+      edit:
+        title: 编辑租户
+      form:
+        tenant_id_hint: 小写字母、数字和连字符。创建后不可修改。
+        primary_color_hex_hint: 例如 #FF6600。
+        domains_hint: 每行一个主机名，例如 store.example.com。不能是网址，也不能是本部署已在使用的主机。
+        logo_sha256_hint: 设置标志地址时必填（64 位十六进制字符）。
     sponsored_slots:
       title: 赞助位
       index:
@@ -1254,6 +1273,15 @@ zh-CN:
         name: 设备名称
       collaborator:
         owner: 拥有者
+      tenant:
+        tenant_id: 租户 ID
+        display_name: 显示名称
+        primary_color_hex: 主色
+        cdn_base: CDN 基础地址
+        catalog_index_base_url: 目录索引基础地址
+        logo_url: 标志地址
+        logo_sha256: 标志 SHA-256
+        domains: 域名
       release:
         file: 应用文件
     success:
@@ -1286,6 +1314,7 @@ zh-CN:
             domains:
               invalid: 必须是普通主机名，例如 store.example.com
               taken: 包含已被其他租户使用的域名
+              reserved: "包含本部署自身使用的主机（%{hosts}），租户不能占用"
             cdn_base:
               invalid: 必须是 https 地址
             logo_url:
