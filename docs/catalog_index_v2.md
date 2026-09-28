@@ -52,7 +52,7 @@ full rationale and the phase this sits in (Phase 1, trust core).
       "listing": {
         "title": "Example App",
         "description": null,
-        "icon": { "url": null, "sha256": null },
+        "icon": { "url": null, "sha256": null },  // 27d-c: /download/releases/:id/icon + hash of the newest release that has an icon
         "screenshots": [],
         // --- v2 additions to listing ---
         "content_rating": null,            // NEW, reserved -- e.g. "everyone", "teen"; vocabulary not decided yet

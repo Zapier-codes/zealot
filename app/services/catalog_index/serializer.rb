@@ -126,6 +126,7 @@ module CatalogIndex
     private
 
     def serialize_app(app)
+      releases = releases_for(app)
       {
         id: app.id,
         package_name: app.play_package_name,
@@ -142,8 +143,8 @@ module CatalogIndex
         listing: {
           title: app.name,
           description: nil,                # reserved for 27e (store-listing editor)
-          icon: { url: nil, sha256: nil },  # reserved for 27d (icon/screenshot pipeline)
-          screenshots: [],                  # reserved for 27d
+          icon: icon_for(releases),         # Task 27d-c
+          screenshots: [],                  # reserved for 27d-d/e
           content_rating: nil,              # reserved -- vocabulary not decided
           data_safety: {
             collects_data: nil,
@@ -166,7 +167,7 @@ module CatalogIndex
         editorial: editorial_for(app),
         sponsored_slots: @editorial ? sponsored_slots_for(app) : [],
         collections: @editorial ? collection_slugs_for(app) : [],
-        versions: releases_for(app).map { |release| serialize_version(release) },
+        versions: releases.map { |release| serialize_version(release) },
       }
     end
 
@@ -268,6 +269,38 @@ module CatalogIndex
       else
         []
       end
+    end
+
+    # Task 27d-c: `listing.icon` is `{url, sha256}` of the newest catalog release that still has an
+    # icon (releases arrive newest first), so a newer upload without one does not blank the listing.
+    # `{url: nil, sha256: nil}` when none has. The URL is Zealot's stable endpoint (Task 27d-b), never
+    # a signed storage URL. Duck-typed like the rest of the class: a fixture without the icon members
+    # gets the empty value.
+    def icon_for(releases)
+      release = releases.find { |candidate| icon_available?(candidate) }
+      return { url: nil, sha256: nil } unless release
+
+      { url: release.icon_download_url, sha256: icon_sha256_for(release) }
+    end
+
+    # Served from the mirrored copy (`icon_storage_key`) or, failing that, the file still on disk --
+    # the same two tiers `ReleaseIconDownload` answers from, so the URL is only advertised when it works.
+    def icon_available?(release)
+      return false unless release.respond_to?(:icon_download_url)
+      return true if release.respond_to?(:icon_storage_key) && release.icon_storage_key.present?
+
+      path = release.respond_to?(:icon) ? release.icon&.path : nil
+      path.present? && File.exist?(path)
+    end
+
+    # The recorded hash (27d-a), else hashed from the local file, else nil -- the same fallback as
+    # `sha256_for`. It matters here: the index publishes when the release is created, before the
+    # mirror job has recorded `icon_sha256` (the job uses `update_columns`, which republishes nothing).
+    def icon_sha256_for(release)
+      return release.icon_sha256 if release.respond_to?(:icon_sha256) && release.icon_sha256.present?
+
+      path = release.respond_to?(:icon) ? release.icon&.path : nil
+      path.present? && File.exist?(path) ? Digest::SHA256.file(path).hexdigest : nil
     end
 
     def serialize_version(release)

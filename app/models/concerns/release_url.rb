@@ -11,6 +11,11 @@ module ReleaseUrl
     download_release_url(id)
   end
 
+  # Task 27d-c: the stable icon endpoint (Task 27d-b), built on the same host as `download_url`.
+  def icon_download_url
+    icon_download_release_url(id)
+  end
+
   def install_url
     return download_url unless platform == 'iOS'
 

@@ -119,6 +119,83 @@ RSpec.describe CatalogIndex::Serializer do
         .to eq("- Fixed login crash\n- Improved battery usage")
     end
 
+    describe 'listing.icon (Task 27d-c)' do
+      let(:sha) { 'a' * 64 }
+
+      def icon_of(app)
+        described_class.call(app)[:apps].first[:listing][:icon]
+      end
+
+      it 'stays empty for a release with no icon anywhere' do
+        app, = build_app_with_release
+
+        expect(icon_of(app)).to eq(url: nil, sha256: nil)
+      end
+
+      it 'points at the stable icon endpoint with the recorded hash once the icon is mirrored' do
+        app, release = build_app_with_release
+        release.update_columns(icon_storage_key: 'uploads/apps/a1/r1/icons/icon.png', icon_sha256: sha)
+
+        expect(icon_of(app)).to eq(url: release.icon_download_url, sha256: sha)
+        expect(release.icon_download_url).to end_with("/download/releases/#{release.id}/icon")
+      end
+
+      it 'hashes the local icon when the mirror job has not recorded a hash yet' do
+        app, release = build_app_with_release
+        Tempfile.create([ 'icon', '.png' ]) do |tmp|
+          tmp.write('png bytes')
+          tmp.flush
+          allow_any_instance_of(Release).to receive(:icon).and_return(double(path: tmp.path))
+
+          expect(icon_of(app)).to eq(url: release.icon_download_url, sha256: Digest::SHA256.hexdigest('png bytes'))
+        end
+      end
+
+      it 'advertises the URL with a null hash when only a storage key exists' do
+        app, release = build_app_with_release
+        release.update_columns(icon_storage_key: 'uploads/apps/a1/r1/icons/icon.png')
+
+        expect(icon_of(app)).to eq(url: release.icon_download_url, sha256: nil)
+      end
+
+      it 'falls back to the newest older release that has an icon' do
+        app, older = build_app_with_release
+        older.update_columns(icon_storage_key: 'k', icon_sha256: sha, created_at: 2.days.ago)
+        newer = Release.new(channel: older.channel, version: 2, changelog: [], release_version: '1.2.4',
+                            build_version: '43')
+        newer.save!(validate: false)
+
+        expect(icon_of(app)).to eq(url: older.icon_download_url, sha256: sha)
+      end
+
+      it 'prefers the newest release when it has an icon' do
+        app, older = build_app_with_release
+        older.update_columns(icon_storage_key: 'k1', icon_sha256: sha, created_at: 2.days.ago)
+        newer = Release.new(channel: older.channel, version: 2, changelog: [], release_version: '1.2.4',
+                            build_version: '43')
+        newer.save!(validate: false)
+        newer.update_columns(icon_storage_key: 'k2', icon_sha256: 'b' * 64)
+
+        expect(icon_of(app)).to eq(url: newer.icon_download_url, sha256: 'b' * 64)
+      end
+
+      it 'ignores the icon of a held release (it is not in versions[] at all)' do
+        app, release = build_app_with_release
+        release.update_columns(icon_storage_key: 'k', icon_sha256: sha, status: 'held')
+
+        expect(icon_of(app)).to eq(url: nil, sha256: nil)
+      end
+
+      it 'gives a fixture that knows nothing about icons the empty value' do
+        struct = Struct.new(:id, :play_package_name, :listing_status, :name, :created_at, :updated_at,
+                            :publisher_display_name, :recently_release, keyword_init: true)
+        fixture = struct.new(id: 1, play_package_name: 'x.y', listing_status: 'live', name: 'X',
+                             created_at: Time.utc(2026, 1, 1), updated_at: Time.utc(2026, 1, 1))
+
+        expect(icon_of(fixture)).to eq(url: nil, sha256: nil)
+      end
+    end
+
     it 'reads real compatibility columns once Task 29c has populated them at upload time' do
       app, release = build_app_with_release
       release.update_columns(
