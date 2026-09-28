@@ -154,6 +154,13 @@ class Tenant < ApplicationRecord
     self.class.where(id: descendant_ids)
   end
 
+  # Task 38c. This tenant's own apps plus every descendant's, at any depth (visibility flows toward
+  # the root only, never down or sideways). Nothing else changes: `apps` is still the exclusive
+  # ownership association. An unsaved tenant has no apps, and never falls back to the default catalog.
+  def apps_in_subtree
+    persisted? ? App.for_tenant_subtree(self) : App.none
+  end
+
   # Task 38e (decision 4): fallback-on-read, never copy-on-create. The tenant that supplies `field`:
   # this tenant if it sets it, else the nearest ancestor that does, else nil. Setting a value on a
   # child stops the walk at the child. `field` must be one of INHERITABLE_CONFIG.

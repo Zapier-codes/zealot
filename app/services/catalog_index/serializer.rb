@@ -89,12 +89,13 @@ module CatalogIndex
                  tenant: tenant).call
     end
 
-    # Task 37b-iii-s3: `tenant:` picks whose live apps go in (`App.for_tenant`). With no tenant it
+    # Task 37b-iii-s3: `tenant:` picks whose live apps go in (`App.for_tenant`; Task 38c widened that
+    # to the tenant's subtree, `App.for_tenant_subtree`). With no tenant it
     # is the default tenant's catalog: the same apps as before tenants existed. Task 37b-iii-s6a: the
     # same tenant picks the collection registry, and the apps' own slots (s6b) come along with the apps.
     def self.for_live_apps(tenant: nil, generated_at: Time.now.utc, sequence: 0, expires_at: nil)
-      call(App.listing_live.for_tenant(tenant), generated_at: generated_at, sequence: sequence, expires_at: expires_at,
-                                                tenant: tenant)
+      call(App.listing_live.for_tenant_subtree(tenant), generated_at: generated_at, sequence: sequence,
+                                                        expires_at: expires_at, tenant: tenant)
     end
 
     def initialize(apps, generated_at:, sequence:, expires_at:, editorial: true, tenant: nil)

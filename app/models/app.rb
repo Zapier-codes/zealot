@@ -54,6 +54,21 @@ class App < ApplicationRecord
     end
   }
 
+  # Task 38c (operator-confirmed, upward-only visibility): a tenant's OWN apps plus those of every
+  # tenant beneath it in the tree. Used only where a tenant's storefront is built (the catalog
+  # index); the console lists keep `for_tenant`. The default tenant is not a row and never
+  # cascades (operator-confirmed): it stays exactly `for_tenant(nil)`. A tenant with no children
+  # gets the same apps as `for_tenant`, and an unknown tenant gets none, never the default catalog.
+  scope :for_tenant_subtree, ->(tenant) {
+    if CatalogIndex::KeyResolver.default?(tenant)
+      where(tenant_id: nil)
+    else
+      row = tenant.is_a?(::Tenant) ? tenant : nil
+      row ||= ::Tenant.find_by(tenant_id: CatalogIndex::KeyResolver.tenant_id_of(tenant))
+      row&.persisted? ? where(tenant_id: [ row.id, *row.descendant_ids ]) : none
+    end
+  }
+
   validates :name, presence: true
 
   # Task 24: front-facing publisher name. Stored tidy (no control characters,

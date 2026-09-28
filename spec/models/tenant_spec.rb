@@ -466,6 +466,29 @@ RSpec.describe Tenant do
   end
 
   # Task 38e: fallback-on-read config. Tree: root -> child -> grandchild (and an unrelated tenant).
+  describe '#apps_in_subtree (38c)' do
+    let!(:root) { create(:tenant, tenant_id: 'root-co') }
+    let!(:child) { create(:tenant, tenant_id: 'child-co', parent: root) }
+    let!(:sibling) { create(:tenant, tenant_id: 'sibling-co', parent: root) }
+    let!(:default_app) { create(:app) }
+    let!(:root_app) { create(:app, tenant: root) }
+    let!(:child_app) { create(:app, tenant: child) }
+    let!(:sibling_app) { create(:app, tenant: sibling) }
+
+    it 'lists this tenant\'s apps and every descendant\'s, and only those' do
+      expect(root.apps_in_subtree).to contain_exactly(root_app, child_app, sibling_app)
+      expect(child.apps_in_subtree).to contain_exactly(child_app)
+    end
+
+    it 'leaves the exclusive association untouched: apps is still only the tenant\'s own' do
+      expect(root.apps).to contain_exactly(root_app)
+    end
+
+    it 'gives an unsaved tenant no apps, never the default catalog' do
+      expect(build(:tenant, tenant_id: 'unsaved').apps_in_subtree).to be_empty
+    end
+  end
+
   describe 'inherited config (38e)' do
     let!(:root) do
       create(:tenant, tenant_id: 'root-co', catalog_index_base_url: 'https://root.example.com/index',

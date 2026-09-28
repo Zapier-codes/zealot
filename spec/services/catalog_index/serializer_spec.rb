@@ -435,6 +435,55 @@ RSpec.describe CatalogIndex::Serializer do
         end
       end
 
+      describe 'a parent tenant\'s index (38c)' do
+        let!(:child_co) { create(:tenant, tenant_id: 'child-co', parent: acme) }
+
+        it 'lists its own live apps and its descendants\', and never the default tenant\'s or a stranger\'s' do
+          default_app = live_app
+          acme_app = live_app(tenant: acme)
+          child_app = live_app(tenant: child_co)
+          globex_app = live_app(tenant: globex)
+          live_app(tenant: child_co, listing_status: :draft)
+
+          acme_ids = ids(described_class.for_live_apps(tenant: acme, generated_at: generated_at))
+
+          expect(acme_ids).to contain_exactly(acme_app.id, child_app.id)
+          expect(acme_ids).not_to include(default_app.id, globex_app.id)
+        end
+
+        it 'keeps the child\'s index to the child\'s own apps' do
+          live_app(tenant: acme)
+          child_app = live_app(tenant: child_co)
+
+          result = described_class.for_live_apps(tenant: child_co, generated_at: generated_at)
+
+          expect(ids(result)).to eq([ child_app.id ])
+        end
+
+        it 'leaves the default index byte-identical when a tenant tree owns apps (golden, 38c)' do
+          live_app
+          before = JSON.generate(described_class.for_live_apps(generated_at: generated_at))
+
+          live_app(tenant: acme)
+          live_app(tenant: child_co)
+
+          expect(JSON.generate(described_class.for_live_apps(generated_at: generated_at))).to eq(before)
+        end
+
+        it 'carries a descendant app\'s own slots, but not its collection slugs (registry is per tenant)' do
+          child_picks = Collection.create!(slug: 'child-picks', name: 'Child picks', tenant: child_co)
+          child_app = live_app(tenant: child_co)
+          CollectionApp.create!(app: child_app, collection: child_picks)
+          SponsoredSlot.create!(app: child_app, starts_at: 1.day.from_now, ends_at: 2.days.from_now)
+
+          result = described_class.for_live_apps(tenant: acme, generated_at: generated_at)
+
+          expect(result[:collections]).to eq([])
+          expect(result[:apps].first).to include(id: child_app.id, collections: [])
+          expect(result[:apps].first[:sponsored_slots].size).to eq(1)
+        end
+      end
+
       it 'gives an unknown tenant an empty app list, not the default catalog' do
         live_app
 

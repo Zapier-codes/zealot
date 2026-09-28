@@ -50,9 +50,10 @@ module CatalogIndex
     end
 
     # Task 37b-iii-s4: the same rule for any tenant: live, non-archived, and only that tenant's own
-    # apps (`App.for_tenant`). An unknown tenant gets none, never the default catalog.
+    # apps. Task 38c: plus every descendant tenant's (`App.for_tenant_subtree`); the default tenant
+    # never cascades. An unknown tenant gets none, never the default catalog.
     def self.apps_for(tenant)
-      App.listing_live.for_tenant(tenant).where(archived: [false, nil])
+      App.listing_live.for_tenant_subtree(tenant).where(archived: [false, nil])
     end
 
     # `key:` is one key or an array of keys, primary first. It defaults to every key valid for

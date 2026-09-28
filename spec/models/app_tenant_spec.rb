@@ -87,4 +87,59 @@ RSpec.describe App, 'tenant ownership' do
       expect(App.for_tenant(acme).active).to contain_exactly(acme_app)
     end
   end
+
+  describe '.for_tenant_subtree (38c)' do
+    let!(:default_app) { create(:app) }
+    let!(:root) { create(:tenant, tenant_id: 'root-co') }
+    let!(:child) { create(:tenant, tenant_id: 'child-co', parent: root) }
+    let!(:grandchild) { create(:tenant, tenant_id: 'grandchild-co', parent: child) }
+    let!(:sibling) { create(:tenant, tenant_id: 'sibling-co', parent: root) }
+    let!(:root_app) { create(:app, tenant: root) }
+    let!(:child_app) { create(:app, tenant: child) }
+    let!(:grandchild_app) { create(:app, tenant: grandchild) }
+    let!(:sibling_app) { create(:app, tenant: sibling) }
+
+    it 'gives a parent its own apps and every descendant\'s, at any depth' do
+      expect(App.for_tenant_subtree(root)).to contain_exactly(root_app, child_app, grandchild_app, sibling_app)
+      expect(App.for_tenant_subtree(child)).to contain_exactly(child_app, grandchild_app)
+    end
+
+    it 'never shows a child its parent\'s or its siblings\' apps' do
+      expect(App.for_tenant_subtree(grandchild)).to contain_exactly(grandchild_app)
+      expect(App.for_tenant_subtree(sibling)).to contain_exactly(sibling_app)
+    end
+
+    it 'gives a tenant with no children exactly what for_tenant gives' do
+      expect(App.for_tenant_subtree(sibling)).to match_array(App.for_tenant(sibling))
+    end
+
+    it 'never cascades the default tenant: it stays the apps with no tenant' do
+      [ nil, '', 'default' ].each do |default|
+        expect(App.for_tenant_subtree(default)).to contain_exactly(default_app)
+      end
+    end
+
+    it 'never lets a tenant\'s subtree include the default tenant\'s apps' do
+      expect(App.for_tenant_subtree(root)).not_to include(default_app)
+    end
+
+    it 'accepts a tenant id string (any case) and a resolver Ref, not only the record' do
+      ref = Zealot::TenantResolver::Ref.new('child-co', [].freeze)
+
+      expect(App.for_tenant_subtree('CHILD-CO')).to contain_exactly(child_app, grandchild_app)
+      expect(App.for_tenant_subtree(ref)).to contain_exactly(child_app, grandchild_app)
+    end
+
+    it 'gives an unknown tenant, and an unsaved one, NOTHING' do
+      expect(App.for_tenant_subtree('no-such-tenant')).to be_empty
+      expect(App.for_tenant_subtree(build(:tenant, tenant_id: 'unsaved'))).to be_empty
+    end
+
+    it 'follows a reparent at once, with nothing copied' do
+      grandchild.update!(parent: root)
+
+      expect(App.for_tenant_subtree(child)).to contain_exactly(child_app)
+      expect(App.for_tenant_subtree(root)).to contain_exactly(root_app, child_app, grandchild_app, sibling_app)
+    end
+  end
 end
