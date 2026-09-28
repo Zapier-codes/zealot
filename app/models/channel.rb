@@ -44,6 +44,13 @@ class Channel < ApplicationRecord
   delegate :count, to: :available_web_hooks, prefix: true
   delegate :app, to: :scheme
 
+  # Task 37b-iii-s7b: the host this channel's public pages belong on, from the owning app's tenant
+  # (the default tenant's is `ZEALOT_DOMAIN`). nil when there is none.
+  def canonical_host
+    tenant = app&.tenant
+    tenant ? tenant.canonical_host : Tenant.default_canonical_host
+  end
+
   before_create :generate_default_values
   before_save :generate_default_values, if: -> { slug.blank? }
   after_destroy :delete_app_recently_releases_cache

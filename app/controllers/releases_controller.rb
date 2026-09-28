@@ -6,6 +6,8 @@ class ReleasesController < ApplicationController
   before_action :authenticate_login!, except: %i[index show auth]
   before_action :set_channel
   before_action :set_release, only: %i[show update auth destroy]
+  # Task 37b-iii-s7b: the shared install page (`/:channel`) and a release page live on the owner's host.
+  before_action -> { redirect_to_canonical_host(@channel) }, only: %i[index show]
   before_action :authenticate_app!, only: :show
   before_action -> { set_app_breadcrumbs(channel: @channel) }
 

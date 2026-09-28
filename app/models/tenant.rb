@@ -134,6 +134,25 @@ class Tenant < ApplicationRecord
       hosts.filter_map { |h| Zealot::TenantResolver.normalize_host(h) }.uniq
     end
 
+    # Task 37b-iii-s7b: the default tenant's canonical host (`ZEALOT_DOMAIN`, else the admin's
+    # `site_domain` setting), or nil when there is none or the host does not itself resolve to the
+    # default tenant (a redirect there would loop). Port stripped, like every host here.
+    def default_canonical_host
+      raw = ENV['ZEALOT_DOMAIN'].presence || site_domain_setting
+      host = Zealot::TenantResolver.normalize_host(raw)
+      return nil unless host
+
+      resolves_to?(host, Zealot::TenantResolver::DEFAULT_TENANT_ID) ? host : nil
+    rescue StandardError
+      nil
+    end
+
+    # Whether the resolver puts `host` on the tenant `tenant_id`. The guard that keeps every
+    # canonical-host redirect from pointing at a host that would send the request back.
+    def resolves_to?(host, tenant_id)
+      Zealot::TenantResolver.resolve(host).tenant_id == tenant_id
+    end
+
     private
 
     # The admin-editable `site_domain` setting. A missing table or cache must not make a tenant
@@ -204,6 +223,17 @@ class Tenant < ApplicationRecord
   # The value of `field` as this tenant sees it (its own, else the nearest ancestor's), or nil.
   def resolve_config(field)
     config_owner(field)&.public_send(field)
+  end
+
+  # Task 37b-iii-s7b: the host this tenant's pages live on: its first claimed domain, else
+  # `<tenant_id>.<TENANT_BASE_DOMAIN>`. Only a host the resolver really maps back to this tenant is
+  # returned, so a redirect to it can never loop; nil when there is none (callers then do not
+  # redirect, i.e. today's behaviour).
+  def canonical_host
+    base = Zealot::TenantResolver.normalize_host(Zealot::TenantResolver.base_domain)
+    candidates = Array(domains)
+    candidates += ["#{tenant_id}.#{base}"] if base
+    candidates.find { |host| self.class.resolves_to?(host, tenant_id) }
   end
 
   # Levels above this tenant: 0 for a root, 1 for a child of a root, and so on.

@@ -7,6 +7,7 @@ class ApplicationController < ActionController::Base
   include Customize
   include Breadcrumbable
   include TenantScoped
+  include CanonicalHost
 
   # Prevent CSRF attacks by raising an exception.
   # For APIs, you may want to use :null_session instead.

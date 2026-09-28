@@ -8,6 +8,7 @@
 # handover.md Task 19 for why that is a decision, not an oversight.
 class Download::ReleasesController < ApplicationController
   before_action :set_release
+  before_action -> { redirect_to_canonical_host(@release.channel) }, only: :show # Task 37b-iii-s7b
 
   rescue_from ActiveRecord::RecordNotFound, with: :render_not_found_entity_response
 

@@ -6,6 +6,7 @@ class ChannelsController < ApplicationController
   before_action :authenticate_user! unless Setting.guest_mode
   before_action :set_scheme, except: %i[show destroy_releases]
   before_action :set_channel, only: %i[show edit update destroy]
+  before_action -> { redirect_to_canonical_host(@channel) }, only: :show # Task 37b-iii-s7b
   before_action -> { set_app_breadcrumbs(app: @app, scheme: @scheme, channel: @channel) },
                 only: %i[show edit update destroy]
 
