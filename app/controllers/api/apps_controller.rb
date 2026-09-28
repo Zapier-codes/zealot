@@ -8,6 +8,7 @@ class Api::AppsController < Api::BaseController
 
   # GET /api/apps
   def index
+    authorize App, :console?
     @apps = app_scopes
     authorize @apps.first if @apps.present?
 
@@ -16,7 +17,8 @@ class Api::AppsController < Api::BaseController
 
   # GET /api/apps/arquived
   def archived
-    @apps = manage_user? ? App.archived : current_user.apps.archived
+    authorize App, :console?
+    @apps = (manage_user? ? App.archived : current_user.apps.archived).merge(scoped_apps)
     authorize @apps.first if @apps.present?
 
     render json: @apps, each_serializer: Api::AppSerializer, include: 'schemes.channels'
@@ -56,18 +58,19 @@ class Api::AppsController < Api::BaseController
   protected
 
   def app_scopes
-    case params[:scope]
-    when 'archived'
-      manage_user? ? App.archived : current_user.apps.archived
-    when 'active'
-      manage_user? ? App.active : current_user.apps.active
-    else
-      manage_user? ? App.all : current_user.apps.all
-    end
+    apps = case params[:scope]
+           when 'archived'
+             manage_user? ? App.archived : current_user.apps.archived
+           when 'active'
+             manage_user? ? App.active : current_user.apps.active
+           else
+             manage_user? ? App.all : current_user.apps.all
+           end
+    apps.merge(scoped_apps)
   end
 
   def set_app
-    @app = App.find(params[:id])
+    @app = scoped_apps.find(params[:id])
     authorize @app
   end
 

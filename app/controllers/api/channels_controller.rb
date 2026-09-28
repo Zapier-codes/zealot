@@ -46,12 +46,12 @@ class Api::ChannelsController < Api::BaseController
   protected
 
   def set_scheme
-    @scheme = Scheme.find(params[:scheme_id])
+    @scheme = scoped_schemes.find(params[:scheme_id])
     authorize @scheme
   end
 
   def set_channel
-    @channel = Channel.find(params[:id])
+    @channel = scoped_channels.find(params[:id])
     authorize @channel
   end
 

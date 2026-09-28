@@ -6,6 +6,9 @@ class Api::BaseController < ActionController::API
   include ExceptionHandler
   include UserRole
   include Customize
+  # Task 37b-iii-s7c-5: sets `Current.tenant` (before the token check in each subclass) so the
+  # policies and the scoped lookups below know which host the request came in on.
+  include TenantScoped
 
   respond_to :json
 
@@ -94,6 +97,22 @@ class Api::BaseController < ActionController::API
   end
 
   private
+
+  # Task 37b-iii-s7c-5: the choke point for `/api` lookups by id (cross-cutting rules 2 and 4).
+  # Default host: the same unscoped relations as before (no extra subquery). A tenant's host:
+  # only that tenant's apps, and the schemes and channels beneath them, so another tenant's id
+  # is a plain 404 (`RecordNotFound`) and never a 403 that would confirm it exists.
+  def scoped_apps
+    policy_scope(App)
+  end
+
+  def scoped_schemes
+    default_host? ? Scheme.all : Scheme.where(app_id: scoped_apps.select(:id))
+  end
+
+  def scoped_channels
+    default_host? ? Channel.all : Channel.where(scheme_id: scoped_schemes.select(:id))
+  end
 
   # overwrite
   def respond_with_error(code, e, **body)

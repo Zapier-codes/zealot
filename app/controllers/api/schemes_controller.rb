@@ -50,12 +50,12 @@ class Api::SchemesController < Api::BaseController
   protected
 
   def set_app
-    @app = App.find(params[:app_id])
+    @app = scoped_apps.find(params[:app_id])
     authorize @app
   end
 
   def set_scheme
-    @scheme = Scheme.find(params[:id])
+    @scheme = scoped_schemes.find(params[:id])
     authorize @scheme
   end
 

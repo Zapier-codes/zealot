@@ -41,7 +41,7 @@ class Api::CollaboratorsController < Api::BaseController
   protected
 
   def set_app
-    @app = App.find(params[:app_id])
+    @app = scoped_apps.find(params[:app_id])
     raise_if_app_archived!(@app)
   end
 
