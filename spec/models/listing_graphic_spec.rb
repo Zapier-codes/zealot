@@ -72,4 +72,31 @@ RSpec.describe ListingGraphic do
 
     expect { app.destroy! }.to change(described_class, :count).by(-1)
   end
+
+  describe 'stored-bytes cleanup (27d-d2-b)' do
+    include ActiveJob::TestHelper
+
+    it 'enqueues one cleanup with the stored key when a graphic is destroyed' do
+      graphic = build_screenshot(storage_key: 'uploads/apps/1/graphics/g1/graphic.png')
+      graphic.save!(validate: false)
+
+      expect { graphic.destroy! }
+        .to have_enqueued_job(ListingGraphicStorageCleanupJob)
+        .with(graphic.id, ['uploads/apps/1/graphics/g1/graphic.png']).exactly(:once)
+    end
+
+    it 'enqueues nothing for a graphic that was never stored' do
+      graphic = build_screenshot
+      graphic.save!(validate: false)
+
+      expect { graphic.destroy! }.not_to have_enqueued_job(ListingGraphicStorageCleanupJob)
+    end
+
+    it 'enqueues a cleanup for each stored graphic when the owning app is destroyed' do
+      build_screenshot(position: 0, storage_key: 'k0').save!(validate: false)
+      build_screenshot(position: 1, storage_key: 'k1').save!(validate: false)
+
+      expect { app.destroy! }.to have_enqueued_job(ListingGraphicStorageCleanupJob).exactly(:twice)
+    end
+  end
 end

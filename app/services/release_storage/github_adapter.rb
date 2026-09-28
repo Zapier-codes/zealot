@@ -28,8 +28,10 @@ require 'fileutils'
 # cannot contain "/"). The uploaded file itself, key .../binary/app.apk, drops
 # the "binary/" prefix and becomes asset "app.apk", because the download's file
 # name is the asset name and users should get "app.apk", not "binary__app.apk".
-# Keys that don't follow the uploads/apps/a<id>/r<id>/...
-# convention are rejected rather than piled into one shared release, because a
+# An app's store-listing graphics (Task 27d-d2-b), key uploads/apps/a12/graphics/g7/graphic.png,
+# live in one GitHub release per app tagged "a12-graphics" (asset "g7__graphic.png").
+# Keys that don't follow the uploads/apps/a<id>/r<id>/... or
+# uploads/apps/a<id>/graphics/... convention are rejected rather than piled into one shared release, because a
 # release holds at most 1000 assets.
 #
 # Limits and behaviour worth knowing:
@@ -49,7 +51,9 @@ class ReleaseStorage::GithubAdapter
   MAX_ASSET_BYTES = (2 * 1024**3) - 1
   MAX_ATTEMPTS = 3
   RETRY_STATUSES = [429, 500, 502, 503, 504].freeze
-  KEY_PATTERN = %r{\A(?:uploads/)?apps/(a\d+)/(r\d+)/(.+)\z}
+  # Task 27d-d2-b: the second path segment is a release (`r<id>`) or, for an app's store-listing graphics,
+  # the word `graphics` (tag `a<app>-graphics`). Anything else is still rejected.
+  KEY_PATTERN = %r{\A(?:uploads/)?apps/(a\d+)/(r\d+|graphics)/(.+)\z}
   REPO_PATTERN = %r{\A[\w.-]+/[\w.-]+\z}
   VERIFY_TTL = 600
 
@@ -215,7 +219,8 @@ class ReleaseStorage::GithubAdapter
     match = KEY_PATTERN.match(key.to_s)
     unless match
       raise ReleaseStorage::StorageError,
-            "GitHub storage cannot store key #{key.inspect}: expected uploads/apps/a<id>/r<id>/<file>"
+            "GitHub storage cannot store key #{key.inspect}: expected uploads/apps/a<id>/r<id>/<file> " \
+            'or uploads/apps/a<id>/graphics/<file>'
     end
 
     ["#{match[1]}-#{match[2]}", sanitize_asset_name(match[3].delete_prefix('binary/').gsub('/', '__'))]

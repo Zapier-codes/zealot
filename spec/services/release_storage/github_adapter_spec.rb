@@ -260,6 +260,37 @@ RSpec.describe ReleaseStorage::GithubAdapter do
       expect(github.release_tags).to be_empty
     end
 
+    it "stores an app's graphics in one per-app release, tagged a<app>-graphics (27d-d2-b)" do
+      graphics_key = 'uploads/apps/a12/graphics/g7/graphic.png'
+
+      expect(adapter.put(graphics_key, source)).to eq(graphics_key)
+
+      expect(github.release_tags).to eq(['a12-graphics'])
+      expect(github.assets_of('a12-graphics')).to eq(['g7__graphic.png'])
+      dest = File.join(tmp, 'out', 'graphic.png')
+      expect(adapter.get(graphics_key, dest)).to eq(dest)
+      expect(File.binread(dest)).to eq('apk-bytes')
+    end
+
+    it 'keeps two graphics of one app apart and deletes one without the other' do
+      first = 'uploads/apps/a12/graphics/g7/graphic.png'
+      second = 'uploads/apps/a12/graphics/g8/graphic.jpg'
+      adapter.put(first, source)
+      adapter.put(second, source)
+
+      adapter.delete(first)
+
+      expect(adapter.exist?(first)).to be(false)
+      expect(adapter.exist?(second)).to be(true)
+    end
+
+    it 'still rejects a graphics-looking key with no app or file' do
+      expect { adapter.put('uploads/apps/graphics/g7/graphic.png', source) }
+        .to raise_error(ReleaseStorage::StorageError, /cannot store key/)
+      expect { adapter.put('uploads/apps/a12/graphics/', source) }
+        .to raise_error(ReleaseStorage::StorageError, /cannot store key/)
+    end
+
     it 'rejects keys outside the uploads/apps/a<id>/r<id>/ convention' do
       expect { adapter.put('uploads/debug_files/a1/d2/x.zip', source) }
         .to raise_error(ReleaseStorage::StorageError, /cannot store key/)
