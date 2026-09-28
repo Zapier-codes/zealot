@@ -31,6 +31,14 @@ class ReleasePolicy < ApplicationPolicy
     tenant_access? && in_request_tenant?(app) && any_manage?
   end
 
+  # Task 27f-b: hold, release, halt, resume, pull or restore a release. The same rule as `update?`
+  # (the app's admin, owner or a manage collaborator, plus the tenant rule), kept as its own
+  # predicate so a later change to who may rewrite rollout does not silently change who may pull a
+  # release from the store.
+  def update_status?
+    tenant_access? && in_request_tenant?(app) && any_manage?
+  end
+
   def auth?
     true
   end

@@ -117,4 +117,46 @@ RSpec.describe Release, 'status (Task 27f-a)' do
       expect { release.update!(status: :held) }.not_to have_enqueued_job(CatalogIndexPublishJob)
     end
   end
+
+  # Task 27f-b: the transition table that drives the release-page buttons and the controller check.
+  describe 'STATUS_TRANSITIONS (Task 27f-b)' do
+    it 'knows every status, and only moves to statuses the enum has' do
+      expect(Release::STATUS_TRANSITIONS.keys).to match_array(Release.statuses.keys)
+      Release::STATUS_TRANSITIONS.each_value do |moves|
+        expect(moves.keys - Release.statuses.keys).to be_empty
+      end
+    end
+
+    it 'names every action with a translation in both locales' do
+      names = Release::STATUS_TRANSITIONS.values.flat_map(&:values).uniq
+      %i[en zh-CN].each do |locale|
+        names.each do |name|
+          expect(I18n.exists?("releases.show.status_actions.#{name}", locale)).to be(true), "#{locale} #{name}"
+        end
+        Release.statuses.each_key do |state|
+          expect(I18n.exists?("releases.show.status_badges.#{state}", locale)).to be(true), "#{locale} #{state}"
+          expect(I18n.exists?("releases.show.status_hint.#{state}", locale)).to be(true), "#{locale} #{state}"
+        end
+      end
+    end
+
+    it 'offers hold, halt and pull from available, and nothing to itself' do
+      release = make_release
+
+      expect(release.status_actions).to eq('held' => 'hold', 'halted' => 'halt', 'pulled' => 'pull')
+      expect(release.status_change_allowed?('available')).to be(false)
+      expect(release.status_change_allowed?('deleted')).to be(false)
+      expect(release.status_change_allowed?(nil)).to be(false)
+    end
+
+    it 'only enters held from available, and only leaves pulled for available' do
+      release = make_release
+
+      release.update!(status: 'halted')
+      expect(release.status_change_allowed?('held')).to be(false)
+
+      release.update!(status: 'pulled')
+      expect(release.status_actions).to eq('available' => 'restore')
+    end
+  end
 end

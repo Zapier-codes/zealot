@@ -744,6 +744,24 @@ en:
         active: Active
         halted: Halted
         complete: Complete
+      status: Release status
+      status_hint:
+        available: Offered to everyone on our stores.
+        held: Not published. It stays out of the store index until you release it.
+        halted: Still listed, marked halted so store clients stop offering it. Resume to offer it again.
+        pulled: Still listed, marked pulled so store clients stop offering it and can roll back.
+      status_badges:
+        available: Available
+        held: Held
+        halted: Halted
+        pulled: Pulled
+      status_actions:
+        hold: Hold
+        release: Release
+        halt: Halt
+        resume: Resume
+        pull: Pull
+        restore: Restore
       install: Install
       download: Download
       installing: Installing ...
@@ -779,6 +797,7 @@ en:
 
         - The developer is lazy without leaving anything 😂
         - Error occurred 👽
+      status_changed: "Release status is now %{status}."
       errors:
         not_found_release_and_redirect_to_channel: Not found release or had been destroyed, redirect to channel page
         not_found_release_and_redirect_to_latest_release: Not found release or had been destroyed, redirect to the latest release page
@@ -795,6 +814,7 @@ en:
         play_target_unsupported: "Not supported for Google Play: only Android App Bundles (.aab) can be published there. .apk and other file types are not supported. The build was uploaded and is available on our stores."
         play_package_name_taken: "applicationId %{got} already belongs to another app in Zealot. Upload this bundle to that app instead."
         upload_to_archived_app: "App %{app} is archived, so new releases can not be uploaded."
+        status_change_not_allowed: "A %{from} release can not be changed to %{to}."
         play_package_name_mismatch: "applicationId %{got} in this bundle does not match this app's Play applicationId %{expect}. Upload the matching bundle, or correct the app's Play applicationId if it was entered wrongly."
         play_version_code_not_newer: "This bundle's versionCode (%{got}) is not higher than %{latest}, which was already approved for Google Play. Google only accepts an update whose versionCode is higher — raise it (android.defaultConfig.versionCode) and upload again."
   debug_files:

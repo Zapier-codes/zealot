@@ -738,6 +738,24 @@ zh-CN:
         active: 进行中
         halted: 已暂停
         complete: 已完成
+      status: 版本状态
+      status_hint:
+        available: 在我们的商店中向所有人提供。
+        held: 未发布。在你放行之前，它不会出现在商店索引中。
+        halted: 仍在列表中，标记为已暂停，商店客户端将不再提供。恢复后会重新提供。
+        pulled: 仍在列表中，标记为已下架，商店客户端将不再提供，并可回滚。
+      status_badges:
+        available: 可用
+        held: 已扣留
+        halted: 已暂停
+        pulled: 已下架
+      status_actions:
+        hold: 扣留
+        release: 放行
+        halt: 暂停
+        resume: 恢复
+        pull: 下架
+        restore: 重新上架
       install: 安装
       download: 下载
       installing: 安装中 ...
@@ -771,6 +789,7 @@ zh-CN:
 
         - 开发者很懒没有留下更新日志😂
         - 有不可抗拒的因素造成日志丢失👽
+      status_changed: "版本状态已变更为%{status}。"
       errors:
         not_found_release_and_redirect_to_channel: 应用版本不存在或已经被移除，页面跳转至应用渠道详情
         not_found_release_and_redirect_to_latest_release: 版本不存在或已经被移除，跳转至最新版本
@@ -789,6 +808,7 @@ zh-CN:
         play_package_name_mismatch: "该安装包的 applicationId %{got} 与此应用的 Play applicationId %{expect} 不一致。请上传匹配的安装包；如果应用的 Play applicationId 填写有误，请先更正。"
         play_version_code_not_newer: "该安装包的 versionCode（%{got}）不高于已通过审批并提交到 Google Play 的 %{latest}。Google 只接受 versionCode 更高的更新——请调高（android.defaultConfig.versionCode）后重新上传。"
         upload_to_archived_app: "应用 %{app} 已归档，无法上传新的版本。"
+        status_change_not_allowed: "状态为%{from}的版本不能变更为%{to}。"
   debug_files:
     title: 调试文件
     index:

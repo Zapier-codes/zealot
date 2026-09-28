@@ -150,6 +150,28 @@ class Release < ApplicationRecord
     pulled: 'pulled'
   }, prefix: true
 
+  # Task 27f-b: which status a release may move to from each status, and the name of the console
+  # action for that move (`releases.show.status_actions.<name>`). One table drives both the buttons
+  # on the release page and the server-side check in `ReleasesController#update_status`, so a
+  # crafted request cannot make a move the page would not offer. `held` can only be entered from
+  # `available` (Play's managed publishing holds a release before it goes out) and `pulled` can
+  # only go back to `available`; a halt is "pause, don't undo", so it resumes to `available`.
+  STATUS_TRANSITIONS = {
+    'available' => { 'held' => 'hold', 'halted' => 'halt', 'pulled' => 'pull' },
+    'held' => { 'available' => 'release', 'pulled' => 'pull' },
+    'halted' => { 'available' => 'resume', 'pulled' => 'pull' },
+    'pulled' => { 'available' => 'restore' }
+  }.freeze
+
+  # The moves offered from the current status, as `{ target_status => action_name }`.
+  def status_actions
+    STATUS_TRANSITIONS.fetch(status.to_s, {})
+  end
+
+  def status_change_allowed?(target)
+    status_actions.key?(target.to_s)
+  end
+
   belongs_to :channel
   belongs_to :play_approved_by, class_name: 'User', optional: true
   belongs_to :play_rejected_by, class_name: 'User', optional: true

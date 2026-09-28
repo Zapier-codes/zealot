@@ -30,6 +30,9 @@ RSpec.describe 'Release write rules and tenants' do
   let!(:acme_release) { make_release(acme_app) }
   let!(:globex_release) { make_release(globex_app) }
 
+  # Task 27f-b: `update_status?` follows the same rule as `update?` and `destroy?`.
+  let(:write_queries) { %i[update? destroy? update_status?] }
+
   def allowed?(user, record, query)
     Pundit.policy!(user, record).public_send(query)
   end
@@ -40,7 +43,7 @@ RSpec.describe 'Release write rules and tenants' do
   describe 'on the default host' do
     it 'changes nothing: an admin may still edit and delete every release, and the scope is all' do
       [default_release, acme_release, globex_release].each do |release|
-        %i[update? destroy?].each { |query| expect(allowed?(admin, release, query)).to be(true), query.to_s }
+        write_queries.each { |query| expect(allowed?(admin, release, query)).to be(true), query.to_s }
       end
       expect(Pundit.policy_scope!(admin, Release)).to match_array([default_release, acme_release, globex_release])
     end
@@ -50,7 +53,7 @@ RSpec.describe 'Release write rules and tenants' do
     before { Current.tenant = acme }
 
     it 'refuses a non-member update and destroy, and an empty scope' do
-      %i[update? destroy?].each { |query| expect(allowed?(admin, acme_release, query)).to be(false), query.to_s }
+      write_queries.each { |query| expect(allowed?(admin, acme_release, query)).to be(false), query.to_s }
       expect(Pundit.policy_scope!(admin, Release)).to be_empty
       expect(Pundit.policy_scope!(nil, Release)).to be_empty
     end
@@ -58,9 +61,9 @@ RSpec.describe 'Release write rules and tenants' do
     it 'lets a member admin change the tenant\'s own releases only' do
       TenantMembership.create!(user: admin, tenant: acme, role: 'owner')
 
-      %i[update? destroy?].each { |query| expect(allowed?(admin, acme_release, query)).to be(true), query.to_s }
+      write_queries.each { |query| expect(allowed?(admin, acme_release, query)).to be(true), query.to_s }
       [default_release, globex_release].each do |other|
-        %i[update? destroy?].each { |query| expect(allowed?(admin, other, query)).to be(false), query.to_s }
+        write_queries.each { |query| expect(allowed?(admin, other, query)).to be(false), query.to_s }
       end
       expect(Pundit.policy_scope!(admin, Release)).to contain_exactly(acme_release)
     end

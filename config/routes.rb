@@ -87,6 +87,11 @@ Rails.application.routes.draw do
     end
 
     resources :releases, path_names: { new: 'upload' } do
+      # Task 27f-b: PATCH /channels/:channel_id/releases/:id/status (hold, release, halt, pull ...).
+      member do
+        patch :status, action: :update_status
+      end
+
       scope module: :releases do
         get :install, to: 'install#show'
       end

@@ -5,7 +5,7 @@ class ReleasesController < ApplicationController
 
   before_action :authenticate_login!, except: %i[index show auth]
   before_action :set_channel
-  before_action :set_release, only: %i[show update auth destroy]
+  before_action :set_release, only: %i[show update update_status auth destroy]
   # Task 37b-iii-s7b: the shared install page (`/:channel`) and a release page live on the owner's host.
   before_action -> { redirect_to_canonical_host(@channel) }, only: %i[index show]
   before_action :authenticate_app!, only: :show
@@ -94,6 +94,32 @@ class ReleasesController < ApplicationController
     end
   end
 
+  # Task 27f-b: hold, release, halt, resume, pull or restore a release in our own store. A separate
+  # action from #update (rollout) with its own one-column allowlist, so neither form can write the
+  # other's column. The move must be one `Release::STATUS_TRANSITIONS` offers from the current
+  # status; anything else (an unknown value, a repeat click, a crafted request) is refused with a
+  # message and changes nothing. Saving a changed status republishes the owning tenant's catalog
+  # index (27f-a's `after_update_commit`), so no publish call is needed here.
+  def update_status
+    authorize @release
+    raise_if_app_archived!(@channel.app)
+
+    target = status_params[:status].to_s
+    unless @release.status_change_allowed?(target)
+      alert = t('releases.messages.errors.status_change_not_allowed',
+        from: status_label(@release.status), to: status_label(target))
+      return redirect_to friendly_channel_release_path(@channel, @release), alert: alert
+    end
+
+    if @release.update(status: target)
+      notice = t('releases.messages.status_changed', status: status_label(target))
+      redirect_to friendly_channel_release_path(@channel, @release), notice: notice
+    else
+      redirect_to friendly_channel_release_path(@channel, @release),
+        alert: @release.errors.full_messages.to_sentence
+    end
+  end
+
   def auth
     raise_if_app_archived!(@channel.app)
 
@@ -145,6 +171,19 @@ class ReleasesController < ApplicationController
   # enforced in code, not just by which view happens to render which form.
   def rollout_params
     params.require(:release).permit(:rollout_percentage, :rollout_status)
+  end
+
+  # Task 27f-b: its own one-column allowlist, apart from `rollout_params` and `release_params`.
+  def status_params
+    params.require(:release).permit(:status)
+  end
+
+  # The translated name of a status, or the raw value for one the enum does not know (so a crafted
+  # request never reaches a missing-translation lookup).
+  def status_label(value)
+    return value.presence || '-' unless Release.statuses.key?(value.to_s)
+
+    t("releases.show.status_badges.#{value}")
   end
 
   def not_found(e)

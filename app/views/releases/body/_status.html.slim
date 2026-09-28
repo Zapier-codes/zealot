@@ -1,0 +1,22 @@
+/ Task 27f-b: release status control (hold, release, halt, resume, pull, restore). Only rendered for
+/ someone who can already manage this release, next to the staged-rollout card. Separate from
+/ rollout on purpose: this is the release's lifecycle in our own store index (27f-a), that one is the
+/ ramp percentage (30f). The buttons come from `Release::STATUS_TRANSITIONS`, the same table
+/ ReleasesController#update_status enforces. Not shown when nothing can change from this status.
+- if policy(release).update_status?
+  .card
+    .card-header
+      h3.card-title = t('releases.show.status')
+    .card-body.space-y-2
+      div class="flex items-center gap-2"
+        - badge_class = { 'available' => 'success', 'held' => 'info', 'halted' => 'warning', 'pulled' => 'error' }[release.status] || 'secondary'
+        span.badge class="text-bg-#{badge_class}" = t("releases.show.status_badges.#{release.status}")
+        span.opacity-60 = t("releases.show.status_hint.#{release.status}")
+
+      div class="flex flex-wrap items-center gap-2"
+        - release.status_actions.each do |target, action|
+          / Turbo reads data-turbo-confirm from the form, so it goes in the form's data, not the button's.
+          - form_data = { turbo_frame: '_top' }
+          - form_data[:turbo_confirm] = t('modals.confirm.body') if %w[held halted pulled].include?(target)
+          = button_to t("releases.show.status_actions.#{action}"), status_channel_release_path(release.channel, release), \
+            method: :patch, params: { 'release[status]' => target }, class: 'd-btn d-btn-sm', form: { data: form_data }
