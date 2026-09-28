@@ -61,7 +61,7 @@ module CatalogIndex
     # With no `apps`, the list is `apps_for(tenant)`: that tenant's own live apps (Task 37b-iii-s4
     # lifted the k4 guard that made a non-default tenant pass them explicitly, now that
     # `App.for_tenant` exists). Task 37b-iii-s6a: a non-default tenant's index carries its own
-    # collections; it still carries no sponsored slots until s6b (see `Serializer.call`).
+    # collections and, since s6b, its own apps' sponsored slots (see `Serializer.call`).
     def self.call(apps = nil, now: Time.now.utc, tenant: nil, key: CatalogIndex::KeyResolver.signing_keys_for(tenant))
       new(apps, now: now, key: key, tenant: tenant).call
     end
@@ -79,8 +79,7 @@ module CatalogIndex
       with_locks(@keys.sort_by(&:id)) do
         generated_at = self.class.next_generated_at(@now, @keys.filter_map(&:last_signed_at).max)
         index = CatalogIndex::Serializer.call(@apps || self.class.apps_for(@tenant), generated_at: generated_at,
-                                              tenant: @tenant,
-                                              sponsored_slots: CatalogIndex::KeyResolver.default?(@tenant))
+                                              tenant: @tenant)
         json = "#{JSON.pretty_generate(index)}\n"
         signatures = @keys.map { |k| { key_id: k.key_id, signature: k.sign(json) } }
         @keys.each { |k| k.update!(last_signed_at: generated_at) }

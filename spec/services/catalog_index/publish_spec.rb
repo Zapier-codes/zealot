@@ -95,7 +95,7 @@ RSpec.describe CatalogIndex::Publish do
       expect(ids).not_to include(default_app.id)
     end
 
-    it 'publishes the tenant\'s own collections, never the default tenant\'s, and no sponsored slots until s6b' do
+    it 'publishes the tenant\'s own collections and its own apps\' sponsored slots, never the default tenant\'s' do
       Collection.create!(slug: 'staff-picks', name: 'Staff picks')
       acme_picks = Collection.create!(slug: 'acme-picks', name: 'Acme picks', tenant: acme)
       acme_app = live_app(tenant: acme)
@@ -108,8 +108,8 @@ RSpec.describe CatalogIndex::Publish do
 
       index = JSON.parse(files['index.json'])
       expect(index['collections'].map { |c| c['slug'] }).to eq(%w[acme-picks])
-      expect(index['apps'].first).to include('id' => acme_app.id, 'sponsored_slots' => [],
-                                             'collections' => %w[acme-picks])
+      expect(index['apps'].first).to include('id' => acme_app.id, 'collections' => %w[acme-picks])
+      expect(index['apps'].first['sponsored_slots'].size).to eq(1)
     end
 
     it 'publishes an empty collection registry for a tenant that has none, even when the default has some' do

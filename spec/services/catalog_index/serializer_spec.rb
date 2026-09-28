@@ -377,7 +377,7 @@ RSpec.describe CatalogIndex::Serializer do
           expect(result[:collections]).to eq([])
         end
 
-        it 'still omits sponsored slots for a tenant (s6b), while carrying its collections' do
+        it 'carries a tenant\'s own apps\' sponsored slots next to its collections (s6b)' do
           acme_picks = Collection.create!(slug: 'acme-picks', name: 'Acme picks', tenant: acme)
           acme_app = live_app(tenant: acme)
           member(acme_app, acme_picks)
@@ -385,7 +385,34 @@ RSpec.describe CatalogIndex::Serializer do
 
           result = described_class.for_live_apps(tenant: acme, generated_at: generated_at)
 
-          expect(result[:apps].first).to include(collections: %w[acme-picks], sponsored_slots: [])
+          expect(result[:apps].first).to include(collections: %w[acme-picks])
+          expect(result[:apps].first[:sponsored_slots].size).to eq(1)
+        end
+
+        it 'never puts one tenant\'s slots in another tenant\'s or the default index (s6b)' do
+          default_app = live_app
+          acme_app = live_app(tenant: acme)
+          globex_app = live_app(tenant: globex)
+          [ default_app, acme_app, globex_app ].each do |a|
+            SponsoredSlot.create!(app: a, starts_at: 1.day.from_now, ends_at: 2.days.from_now)
+          end
+
+          [ nil, acme, globex ].each do |t|
+            result = described_class.for_live_apps(tenant: t, generated_at: generated_at)
+
+            expect(result[:apps].size).to eq(1)
+            expect(result[:apps].first[:sponsored_slots].size).to eq(1)
+          end
+        end
+
+        it 'leaves the default index byte-identical when a tenant\'s app has slots (golden, s6b)' do
+          app = live_app
+          SponsoredSlot.create!(app: app, starts_at: 1.day.from_now, ends_at: 2.days.from_now)
+          before = JSON.generate(described_class.for_live_apps(generated_at: generated_at))
+
+          SponsoredSlot.create!(app: live_app(tenant: acme), starts_at: 1.day.from_now, ends_at: 2.days.from_now)
+
+          expect(JSON.generate(described_class.for_live_apps(generated_at: generated_at))).to eq(before)
         end
 
         it 'keeps sponsored slots for the default tenant' do

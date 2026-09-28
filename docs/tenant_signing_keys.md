@@ -90,7 +90,7 @@ directory without a separate repo.
 **Built in 37b-iii-s4:** `CatalogIndex::Publish` for a non-default tenant writes `index.json`,
 `index.json.sig`, `signing_key.pub` and `.nojekyll` under `tenants/<tenant_id>/`, signed with that
 tenant's own `active` key and containing only that tenant's live apps (`App.for_tenant`). Its
-index carries that tenant's own collections (37b-iii-s6a) and, until 37b-iii-s6b, no sponsored slots. Only the `active` key's
+index carries that tenant's own collections (37b-iii-s6a) and its own apps' sponsored slots (37b-iii-s6b, derived through the app). Only the `active` key's
 signature is written (the overlap `index.json.<key_id>.sig` files and the key manifest are k8), so
 a rotation overlap is not yet visible to readers.
 

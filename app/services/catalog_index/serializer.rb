@@ -80,30 +80,26 @@ module CatalogIndex
     # nil is the default tenant's, exactly as before, and another tenant gets only its own collections,
     # with each app's `collections[]` slugs limited to that same registry so they always resolve.
     #
-    # sponsored_slots: Task 37b-iii-s6a. Defaults to `editorial`. Sponsored slots are not tenant-scoped
-    # until s6b, so `Signer` and `.for_live_apps` pass `false` for a NON-default tenant (its apps get
-    # `sponsored_slots: []`) while it now carries its own collections. s6b removes this override.
-    def self.call(apps, generated_at: Time.now.utc, sequence: 0, expires_at: nil, editorial: true, tenant: nil,
-                  sponsored_slots: editorial)
+    # Sponsored slots (Task 37b-iii-s6b, operator-confirmed 3a): a slot has no tenant of its own. It
+    # belongs to its app, the app belongs to one tenant, and this index only ever serializes that
+    # tenant's apps, so each tenant's index carries exactly its own apps' slots with no extra scoping.
+    # (s6a's `sponsored_slots:` override, which switched them off for a non-default tenant, is gone.)
+    def self.call(apps, generated_at: Time.now.utc, sequence: 0, expires_at: nil, editorial: true, tenant: nil)
       new(apps, generated_at: generated_at, sequence: sequence, expires_at: expires_at, editorial: editorial,
-                 tenant: tenant, sponsored_slots: sponsored_slots).call
+                 tenant: tenant).call
     end
 
     # Task 37b-iii-s3: `tenant:` picks whose live apps go in (`App.for_tenant`). With no tenant it
     # is the default tenant's catalog: the same apps as before tenants existed. Task 37b-iii-s6a: the
-    # same tenant picks the collection registry. Sponsored slots are not tenant-scoped until s6b, so a
-    # non-default tenant still gets none (`Signer` applies the same rule).
+    # same tenant picks the collection registry, and the apps' own slots (s6b) come along with the apps.
     def self.for_live_apps(tenant: nil, generated_at: Time.now.utc, sequence: 0, expires_at: nil)
       call(App.listing_live.for_tenant(tenant), generated_at: generated_at, sequence: sequence, expires_at: expires_at,
-                                                tenant: tenant,
-                                                sponsored_slots: CatalogIndex::KeyResolver.default?(tenant))
+                                                tenant: tenant)
     end
 
-    def initialize(apps, generated_at:, sequence:, expires_at:, editorial: true, tenant: nil,
-                   sponsored_slots: editorial)
+    def initialize(apps, generated_at:, sequence:, expires_at:, editorial: true, tenant: nil)
       @editorial = editorial
       @tenant = tenant
-      @sponsored_slots = editorial && sponsored_slots
       # NOT `Array(apps)`: a single duck-typed "app" can itself be
       # Enumerable (a Struct fixture is, as of modern Ruby) and `Array()`
       # would then explode it into its member values instead of wrapping
@@ -167,7 +163,7 @@ module CatalogIndex
         created_at: iso(app.created_at),
         updated_at: iso(app.updated_at),
         editorial: editorial_for(app),
-        sponsored_slots: @sponsored_slots ? sponsored_slots_for(app) : [],
+        sponsored_slots: @editorial ? sponsored_slots_for(app) : [],
         collections: @editorial ? collection_slugs_for(app) : [],
         versions: releases_for(app).map { |release| serialize_version(release) },
       }
