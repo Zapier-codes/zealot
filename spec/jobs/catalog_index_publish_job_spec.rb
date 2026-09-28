@@ -81,6 +81,24 @@ RSpec.describe CatalogIndexPublishJob do
       expect { described_class.enqueue_for('acme') }.to have_enqueued_job(described_class).with('acme')
       expect { described_class.enqueue_for(tenant) }.to have_enqueued_job(described_class).with('acme')
     end
+
+    # Task 38d
+    it 'schedules no ancestor republish for the default tenant, or for a tenant with no parent' do
+      create(:tenant, tenant_id: 'acme')
+
+      expect { described_class.enqueue_for(nil) }.not_to have_enqueued_job(TenantIndexRepublishJob)
+      expect { described_class.enqueue_for('acme') }.not_to have_enqueued_job(TenantIndexRepublishJob)
+    end
+
+    it 'marks the tenants above dirty and schedules one republish for a tenant with a parent (38d)' do
+      root = create(:tenant, tenant_id: 'root-co')
+      create(:tenant, tenant_id: 'child-co', parent: root)
+
+      expect { described_class.enqueue_for('child-co') }
+        .to have_enqueued_job(described_class).with('child-co').and have_enqueued_job(TenantIndexRepublishJob).once
+
+      expect(root.reload.dirty_at).not_to be_nil
+    end
   end
 
   describe 'Publish.configured? for a tenant' do

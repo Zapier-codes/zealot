@@ -27,10 +27,15 @@ class CatalogIndexPublishJob < ApplicationJob
 
   # Enqueue a publish for whichever tenant owns the change. `tenant` may be nil (default), a tenant
   # id String, a `Tenant`, or anything answering `tenant_id`.
+  #
+  # Task 38d: a non-default tenant's change also marks the tenants above it dirty and schedules one
+  # debounced `TenantIndexRepublishJob`, because their indexes list this tenant's apps (38c). The
+  # default tenant has no ancestors, so its path is untouched.
   def self.enqueue_for(tenant = nil)
     return perform_later if CatalogIndex::KeyResolver.default?(tenant)
 
     perform_later(CatalogIndex::KeyResolver.tenant_id_of(tenant))
+    TenantIndexRepublishJob.schedule_for(tenant)
   end
 
   def perform(tenant_id = nil)

@@ -113,6 +113,15 @@ class Tenant < ApplicationRecord
       rows.map { |id, depth| [id.to_i, depth.to_i] }
     end
 
+    # Task 38d. Atomically clears every dirty marker and returns the `tenant_id` strings that had
+    # one. One statement, so a mark that lands afterwards sees a clean tenant and schedules the next
+    # republish instead of being lost. `RETURNING` is PostgreSQL, the only database this app runs on.
+    def claim_dirty_tenant_ids
+      connection.select_values(
+        'UPDATE tenants SET dirty_at = NULL WHERE dirty_at IS NOT NULL RETURNING tenant_id'
+      ).sort
+    end
+
     # Hosts that belong to the deployment itself and can never be a tenant's domain: a tenant
     # claiming one would make the resolver move the default tenant's own site to that tenant
     # (Task 37b-ii-t3). Read at validation time so a changed ZEALOT_DOMAIN applies at once.
@@ -152,6 +161,17 @@ class Tenant < ApplicationRecord
 
   def descendants
     self.class.where(id: descendant_ids)
+  end
+
+  # Task 38d. Marks every tenant above this one as out of date (its index lists this tenant's apps,
+  # 38c). Only a CLEAN ancestor is touched, so an already-dirty one keeps its original `dirty_at`.
+  # Returns how many ancestors turned dirty just now; the caller schedules a republish only when it
+  # is positive. `update_all` on purpose: no callbacks, so no registry reset for a debounce flag.
+  def mark_ancestors_dirty!
+    ids = ancestor_ids
+    return 0 if ids.empty?
+
+    self.class.where(id: ids, dirty_at: nil).update_all(dirty_at: Time.current)
   end
 
   # Task 38c. This tenant's own apps plus every descendant's, at any depth (visibility flows toward

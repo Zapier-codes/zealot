@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_30_160000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_30_170000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -523,6 +523,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_160000) do
     t.string "catalog_index_base_url"
     t.string "cdn_base", null: false
     t.datetime "created_at", null: false
+    t.datetime "dirty_at"
     t.string "display_name", null: false
     t.jsonb "domains", default: [], null: false
     t.string "logo_sha256"

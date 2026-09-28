@@ -466,6 +466,53 @@ RSpec.describe Tenant do
   end
 
   # Task 38e: fallback-on-read config. Tree: root -> child -> grandchild (and an unrelated tenant).
+  describe 'ancestor dirty marker (38d)' do
+    let!(:root) { create(:tenant, tenant_id: 'root-co') }
+    let!(:child) { create(:tenant, tenant_id: 'child-co', parent: root) }
+    let!(:grandchild) { create(:tenant, tenant_id: 'grandchild-co', parent: child) }
+    let!(:sibling) { create(:tenant, tenant_id: 'sibling-co', parent: root) }
+    let!(:other_root) { create(:tenant, tenant_id: 'other-root') }
+
+    it 'starts clean for every tenant' do
+      expect(described_class.where.not(dirty_at: nil)).to be_empty
+    end
+
+    it 'marks every ancestor and nothing else, returning how many turned dirty' do
+      expect(grandchild.mark_ancestors_dirty!).to eq(2)
+
+      expect(described_class.where.not(dirty_at: nil)).to contain_exactly(root, child)
+    end
+
+    it 'marks nothing for a root, and does not touch siblings, descendants or other trees' do
+      expect(root.mark_ancestors_dirty!).to eq(0)
+      child.mark_ancestors_dirty!
+
+      expect(described_class.where.not(dirty_at: nil)).to contain_exactly(root)
+    end
+
+    it 'keeps the original time and returns 0 when an ancestor is already dirty' do
+      grandchild.mark_ancestors_dirty!
+      first = root.reload.dirty_at
+
+      expect(grandchild.mark_ancestors_dirty!).to eq(0)
+      expect(root.reload.dirty_at).to eq(first)
+    end
+
+    it 'does not reset the tenant registry cache (a debounce flag is not registry data)' do
+      expect(Zealot::TenantRegistry).not_to receive(:reset!)
+
+      grandchild.mark_ancestors_dirty!
+    end
+
+    it 'claims every dirty tenant at once, clears the markers, and returns their ids sorted' do
+      grandchild.mark_ancestors_dirty!
+
+      expect(described_class.claim_dirty_tenant_ids).to eq(%w[child-co root-co])
+      expect(described_class.where.not(dirty_at: nil)).to be_empty
+      expect(described_class.claim_dirty_tenant_ids).to eq([])
+    end
+  end
+
   describe '#apps_in_subtree (38c)' do
     let!(:root) { create(:tenant, tenant_id: 'root-co') }
     let!(:child) { create(:tenant, tenant_id: 'child-co', parent: root) }
