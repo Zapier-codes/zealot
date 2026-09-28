@@ -1,0 +1,72 @@
+/ Task 37b-ii-k7: the tenant's catalog-index signing keys and the four lifecycle buttons. Shows the
+/ PUBLIC half only (status, key_id, public key, times); the private key is never rendered. The
+/ buttons offered mirror what TenantKeys::Lifecycle will accept, and the service still refuses
+/ anything else.
+ruby:
+  keys = TenantSigningKey.for_tenant(tenant).order(id: :desc).to_a
+  active = keys.find(&:active?)
+  pending = keys.find(&:pending?)
+  retiring = keys.find(&:retiring?)
+  overlap_ends_at = active&.activated_at && (active.activated_at + TenantKeys::Lifecycle::OVERLAP)
+
+.card.mt-4
+  .card-header
+    h3.card-title = t('.title')
+  .card-body
+    p.opacity-65.text-sm = t('.intro')
+
+    - if keys.empty?
+      p.text-sm = t('.no_keys')
+    - else
+      .overflow-x-auto
+        table.d-table
+          thead
+            tr
+              th = t('.status')
+              th = t('.key_id')
+              th = t('.public_key')
+              th = t('.last_signed_at')
+              th = t('.activated_at')
+              th = t('.retired_at')
+          tbody
+            - keys.each do |key|
+              tr
+                td
+                  .d-badge.d-badge-sm.d-badge-ghost = t(".statuses.#{key.status}")
+                td.font-mono.text-xs = key.key_id
+                td
+                  .d-join data-controller="clipboard-center"
+                    input.d-join-item.d-input.d-input-sm.font-mono.text-xs[
+                      type="text"
+                      readonly=true
+                      value="#{key.public_key}"
+                      data-clipboard-center-target="source"
+                    ]
+                    button.d-join-item.d-btn.d-btn-sm[
+                      type="button"
+                      data-action="clipboard-center#copy"
+                      data-clipboard-text="#{key.public_key}"
+                    ]
+                      i.fa-regular.fa-clipboard
+                td = key.last_signed_at ? l(key.last_signed_at, format: :nice) : '-'
+                td = key.activated_at ? l(key.activated_at, format: :nice) : '-'
+                td = key.retired_at ? l(key.retired_at, format: :nice) : '-'
+
+    - if retiring && overlap_ends_at
+      p.text-sm.mt-3 = t('.overlap_ends', at: l(overlap_ends_at, format: :nice))
+
+    .flex.flex-wrap.gap-2.mt-4
+      - if keys.empty?
+        = link_to t('.generate'), generate_admin_tenant_key_path(tenant), class: 'd-btn d-btn-primary d-btn-sm', \
+          data: { turbo_method: :post, turbo_confirm: t('.confirm_generate') }
+      - if active && pending.nil?
+        = link_to t('.stage_next'), stage_next_admin_tenant_key_path(tenant), class: 'd-btn d-btn-sm', \
+          data: { turbo_method: :post, turbo_confirm: t('.confirm_stage_next') }
+      - if pending && active && retiring.nil?
+        = link_to t('.promote'), promote_admin_tenant_key_path(tenant), class: 'd-btn d-btn-warning d-btn-sm', \
+          data: { turbo_method: :post, turbo_confirm: t('.confirm_promote') }
+      - if retiring
+        = link_to t('.retire'), retire_admin_tenant_key_path(tenant), class: 'd-btn d-btn-sm', \
+          data: { turbo_method: :post, turbo_confirm: t('.confirm_retire') }
+        = link_to t('.retire_now'), retire_admin_tenant_key_path(tenant, force: 1), class: 'd-btn d-btn-error d-btn-sm', \
+          data: { turbo_method: :post, turbo_confirm: t('.confirm_retire_now') }

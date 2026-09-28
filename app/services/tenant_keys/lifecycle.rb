@@ -2,8 +2,8 @@
 
 module TenantKeys
   # Task 37b-ii-k3: the four lifecycle steps for one tenant's signing key (docs/tenant_signing_keys.md
-  # sections 2-3): `generate!`, `stage_next!`, `promote!`, `retire!`. NO callers yet: the admin
-  # actions that call it are k6/k7.
+  # sections 2-3): `generate!`, `stage_next!`, `promote!`, `retire!`. Called by
+  # `Admin::TenantKeysController` (k6); nothing else calls it yet.
   #
   # Every step is ONE transaction. It first locks the tenant's row (so two steps for the same
   # tenant serialize, including `generate!` when there are no key rows to lock yet), then the

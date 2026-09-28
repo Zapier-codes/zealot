@@ -11,3 +11,6 @@
         h3.card-title = t('.title')
       .card-body
         == render 'form', tenant: @tenant
+
+    / Task 37b-ii-k7: key lifecycle panel (public half only), edit page only.
+    == render 'keys', tenant: @tenant

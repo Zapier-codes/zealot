@@ -244,6 +244,39 @@ en:
         primary_color_hex_hint: "For example #FF6600."
         domains_hint: "One host per line, such as store.example.com. Not a URL, and not a host this deployment already uses."
         logo_sha256_hint: "Required whenever a logo URL is set (64 hex characters)."
+      keys:
+        title: Signing keys (catalog index)
+        intro: "The public key of the active key is what D-store and Storeapp pin. Stage the next key first so it can be pinned before it is used; the private key is never shown."
+        no_keys: This tenant has no signing key yet.
+        status: Status
+        key_id: Key ID
+        public_key: Public key
+        last_signed_at: Last signed
+        activated_at: Activated
+        retired_at: Retired
+        statuses:
+          pending: Pending
+          active: Active
+          retiring: Retiring
+          retired: Retired
+        overlap_ends: "Both keys sign until %{at}. Retiring the old key before then cuts off clients that have not yet picked up the new one."
+        generate: Generate first key
+        stage_next: Stage next key
+        promote: Promote pending key
+        retire: Retire old key
+        retire_now: Retire now (skip overlap)
+        confirm_generate: Generate this tenant's first signing key?
+        confirm_stage_next: Stage a new pending key? It signs nothing until it is promoted.
+        confirm_promote: Promote the pending key? The current key keeps signing through the overlap window.
+        confirm_retire: Retire the old key? Its private key is destroyed and cannot be recovered.
+        confirm_retire_now: Retire the old key NOW, before the overlap window ends? Clients that have not yet picked up the new key will stop verifying this tenant's index. The private key is destroyed and cannot be recovered.
+        success:
+          generate: "Generated the first signing key (%{key_id})."
+          stage_next: "Staged the next signing key (%{key_id})."
+          promote: "Promoted key %{key_id}; the previous key is now retiring."
+          retire: "Retired key %{key_id}; its private key was destroyed."
+        errors:
+          overlap_not_elapsed: "The overlap window has not ended yet (it ends at %{ends_at}). Use Retire now to skip it."
     sponsored_slots:
       title: Sponsored Slots
       index:

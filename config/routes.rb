@@ -229,7 +229,17 @@ Rails.application.routes.draw do
       # CatalogIndex::Serializer#serialize_collections already publishes.
       # Task 37b-ii-t3: white-label tenants. No destroy until 37b-iii defines what deleting a
       # tenant does to its apps and keys; no show (the edit page is the detail page).
-      resources :tenants, only: %i[ index new create edit update ]
+      resources :tenants, only: %i[ index new create edit update ] do
+        # Task 37b-ii-k6: the tenant signing-key lifecycle (generate, stage_next, promote,
+        # retire), POST only. There is no index/show/destroy: the panel on the tenant's edit page
+        # is the only view, and a key leaves the system by being retired.
+        resource :key, only: [], controller: 'tenant_keys' do
+          post :generate
+          post :stage_next
+          post :promote
+          post :retire
+        end
+      end
 
       resources :collections do
         member do

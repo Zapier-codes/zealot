@@ -1,7 +1,8 @@
 # frozen_string_literal: true
 
 # Task 37b-ii-t3: admin authoring for Tenant (one white-label operator on this single
-# deployment). No key material here (that is 37b-ii-k6/k7) and no destroy: what deleting a
+# deployment). No key material here (the key lifecycle is Admin::TenantKeysController, k6, shown by
+# the k7 panel on the edit page) and no destroy: what deleting a
 # tenant does to its apps and keys is 37b-iii's decision, so the route does not exist.
 # Every committed write drops the registry cache through Tenant's after_commit.
 class Admin::TenantsController < ApplicationController

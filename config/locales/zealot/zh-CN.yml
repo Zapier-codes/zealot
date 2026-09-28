@@ -242,6 +242,39 @@ zh-CN:
         primary_color_hex_hint: 例如 #FF6600。
         domains_hint: 每行一个主机名，例如 store.example.com。不能是网址，也不能是本部署已在使用的主机。
         logo_sha256_hint: 设置标志地址时必填（64 位十六进制字符）。
+      keys:
+        title: 签名密钥（目录索引）
+        intro: 当前生效密钥的公钥就是 D-store 和 Storeapp 固定（pin）的公钥。请先暂存下一个密钥，以便在使用前完成固定；私钥永远不会显示。
+        no_keys: 该租户还没有签名密钥。
+        status: 状态
+        key_id: 密钥 ID
+        public_key: 公钥
+        last_signed_at: 最近签名
+        activated_at: 生效时间
+        retired_at: 退役时间
+        statuses:
+          pending: 待生效
+          active: 生效中
+          retiring: 退役中
+          retired: 已退役
+        overlap_ends: 在 %{at} 之前两个密钥同时签名。在此之前退役旧密钥，会使尚未更新到新密钥的客户端无法验证。
+        generate: 生成首个密钥
+        stage_next: 暂存下一个密钥
+        promote: 启用待生效密钥
+        retire: 退役旧密钥
+        retire_now: 立即退役（跳过重叠期）
+        confirm_generate: 为该租户生成首个签名密钥？
+        confirm_stage_next: 暂存一个新的待生效密钥？在启用之前它不会签名。
+        confirm_promote: 启用待生效密钥？当前密钥在重叠期内仍会继续签名。
+        confirm_retire: 退役旧密钥？其私钥将被销毁且无法恢复。
+        confirm_retire_now: 现在就退役旧密钥，而不等重叠期结束？尚未更新到新密钥的客户端将无法验证该租户的索引。私钥将被销毁且无法恢复。
+        success:
+          generate: "已生成首个签名密钥（%{key_id}）。"
+          stage_next: "已暂存下一个签名密钥（%{key_id}）。"
+          promote: "已启用密钥 %{key_id}；之前的密钥进入退役中状态。"
+          retire: "已退役密钥 %{key_id}；其私钥已销毁。"
+        errors:
+          overlap_not_elapsed: "重叠期尚未结束（结束时间：%{ends_at}）。如需跳过，请使用“立即退役”。"
     sponsored_slots:
       title: 赞助位
       index:
