@@ -1338,6 +1338,9 @@ en:
               invalid: must be plain hostnames such as store.example.com
               taken: includes a domain another tenant already uses
               reserved: "includes a host this deployment uses itself (%{hosts}), which a tenant cannot claim"
+            parent_tenant_id:
+              cycle: cannot be the tenant itself or one of its own descendants
+              too_deep: "would make the tenant tree deeper than %{max} levels"
             cdn_base:
               invalid: must be an https URL
             logo_url:

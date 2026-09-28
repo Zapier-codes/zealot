@@ -1348,6 +1348,9 @@ zh-CN:
               invalid: 必须是普通主机名，例如 store.example.com
               taken: 包含已被其他租户使用的域名
               reserved: "包含本部署自身使用的主机（%{hosts}），租户不能占用"
+            parent_tenant_id:
+              cycle: 不能是租户自身或其下级租户
+              too_deep: "会使租户树超过 %{max} 层"
             cdn_base:
               invalid: 必须是 https 地址
             logo_url:

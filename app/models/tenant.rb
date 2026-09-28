@@ -21,6 +21,10 @@ class Tenant < ApplicationRecord
   COLOR_FORMAT = /\A#[0-9a-fA-F]{6}\z/
   SHA256_FORMAT = /\A[a-f0-9]{64}\z/
   DOMAIN_INPUT_FORMAT = /\A[^\s\/:@]+(:\d{1,5})?\.?\z/
+  # Task 38b: safety cap on how many levels the tenant tree may have (a root is level 1). Real
+  # hierarchies are a handful deep; the cap exists so a corrupted row can never make a recursive
+  # query loop forever, and so a reparent that would exceed it is refused instead.
+  MAX_TREE_DEPTH = 32
 
   # Key material is never deleted with its tenant; what deleting a tenant means is 37b-iii's call.
   has_many :tenant_signing_keys, dependent: :restrict_with_error
@@ -28,7 +32,8 @@ class Tenant < ApplicationRecord
   # to any depth; no `parent` means a root tenant. The DEFAULT tenant is not a row, so it can never
   # be a parent and stays outside the tree. A tenant with children cannot be destroyed (decision 5);
   # reparenting them away first is a separate, explicit admin action, never automatic. NO callers
-  # yet: cycle prevention and the tree queries are 38b, so until then nothing may set a parent.
+  # yet: 38b adds the tree queries and the cycle check below, but nothing sets a parent until a
+  # later slice (the admin form does not permit it).
   belongs_to :parent, class_name: 'Tenant', foreign_key: :parent_tenant_id, inverse_of: :children, optional: true
   has_many :children, class_name: 'Tenant', foreign_key: :parent_tenant_id, inverse_of: :parent,
                       dependent: :restrict_with_error
@@ -53,12 +58,52 @@ class Tenant < ApplicationRecord
   validate :urls_are_https
   validate :domains_are_valid_and_unclaimed
   validate :domains_avoid_reserved_hosts, if: :domains_changed?
+  validate :parent_keeps_tree_valid, if: :parent_tenant_id_changed?
 
   # The registry caches per process (t2); dropping this process's snapshot on every committed
   # write makes an admin's edit visible here at once. Other processes catch up within the TTL.
   after_commit { Zealot::TenantRegistry.reset! }
 
   class << self
+    # Task 38b (decision 2, revised): the tree is walked with plain recursive SQL over
+    # `parent_tenant_id`; there is no closure table and no gem. Both queries stop one level past
+    # MAX_TREE_DEPTH, so bad data (a loop) ends the walk instead of running forever.
+    #
+    # `[start_id, its parent, its grandparent, ...]`, nearest first. `[]` for nil or an unknown id.
+    def chain_up(start_id)
+      return [] if start_id.nil?
+
+      binds = { start: start_id, cap: MAX_TREE_DEPTH }
+      connection.select_values(sanitize_sql_array([<<~SQL.squish, binds])).map(&:to_i)
+        WITH RECURSIVE chain(id, parent_tenant_id, depth) AS (
+          SELECT id, parent_tenant_id, 1 FROM tenants WHERE id = :start
+          UNION ALL
+          SELECT t.id, t.parent_tenant_id, chain.depth + 1
+          FROM tenants t JOIN chain ON t.id = chain.parent_tenant_id
+          WHERE chain.depth <= :cap
+        )
+        SELECT id FROM chain ORDER BY depth
+      SQL
+    end
+
+    # `[[id, level], ...]` for `start_id` (level 1) and everything beneath it, shallowest first.
+    def subtree(start_id)
+      return [] if start_id.nil?
+
+      binds = { start: start_id, cap: MAX_TREE_DEPTH }
+      rows = connection.select_rows(sanitize_sql_array([<<~SQL.squish, binds]))
+        WITH RECURSIVE tree(id, depth) AS (
+          SELECT id, 1 FROM tenants WHERE id = :start
+          UNION ALL
+          SELECT t.id, tree.depth + 1
+          FROM tenants t JOIN tree ON t.parent_tenant_id = tree.id
+          WHERE tree.depth <= :cap
+        )
+        SELECT id, depth FROM tree ORDER BY depth, id
+      SQL
+      rows.map { |id, depth| [id.to_i, depth.to_i] }
+    end
+
     # Hosts that belong to the deployment itself and can never be a tenant's domain: a tenant
     # claiming one would make the resolver move the default tenant's own site to that tenant
     # (Task 37b-ii-t3). Read at validation time so a changed ZEALOT_DOMAIN applies at once.
@@ -76,6 +121,33 @@ class Tenant < ApplicationRecord
     rescue StandardError
       nil
     end
+  end
+
+  # Task 38b. Ids of every tenant above this one, nearest parent first. A root has none. Reads the
+  # parent currently assigned on this object, so it also works for an unsaved tenant built with a parent.
+  def ancestor_ids
+    self.class.chain_up(parent_tenant_id)
+  end
+
+  def ancestors
+    self.class.where(id: ancestor_ids)
+  end
+
+  # Ids of every tenant beneath this one, at any depth (children first). Empty for an unsaved tenant
+  # or a leaf. Reads the tree as stored, not this object's unsaved changes.
+  def descendant_ids
+    return [] unless persisted?
+
+    self.class.subtree(id).reject { |tenant_id, _| tenant_id == id }.map(&:first).uniq
+  end
+
+  def descendants
+    self.class.where(id: descendant_ids)
+  end
+
+  # Levels above this tenant: 0 for a root, 1 for a child of a root, and so on.
+  def depth
+    ancestor_ids.size
   end
 
   # One domain per line in the admin form; commas and any whitespace also separate entries.
@@ -140,5 +212,21 @@ class Tenant < ApplicationRecord
   def domains_avoid_reserved_hosts
     clash = domains & self.class.reserved_hosts
     errors.add(:domains, :reserved, hosts: clash.to_sentence) if clash.any?
+  end
+
+  # Task 38b (decision 2): refuse a parent that would make the tree loop, and a tree deeper than
+  # MAX_TREE_DEPTH. Runs only when the parent changes. A tenant may not be its own parent or sit
+  # beneath one of its own descendants (direct or indirect). Plain ActiveRecord, no hierarchy gem.
+  def parent_keeps_tree_valid
+    return if parent_tenant_id.nil?
+
+    if persisted? && (parent_tenant_id == id || descendant_ids.include?(parent_tenant_id))
+      errors.add(:parent_tenant_id, :cycle)
+      return
+    end
+
+    above = self.class.chain_up(parent_tenant_id).size
+    below = persisted? ? self.class.subtree(id).map(&:last).max.to_i : 1
+    errors.add(:parent_tenant_id, :too_deep, max: MAX_TREE_DEPTH) if above + below > MAX_TREE_DEPTH
   end
 end

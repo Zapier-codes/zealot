@@ -316,4 +316,152 @@ RSpec.describe Tenant do
       expect(build(:tenant, tenant_id: 'child-co', parent: parent, domains: ['child.example.com'])).to be_valid
     end
   end
+
+  # Task 38b: tree queries (plain recursive SQL) and the cycle / depth check. Fixture tree:
+  #
+  #   root ─┬─ child ─── grandchild
+  #         └─ sibling
+  #   other-root (a separate tree)
+  describe 'tree queries and cycle check (38b)' do
+    let!(:root) { create(:tenant, tenant_id: 'root-co') }
+    let!(:child) { create(:tenant, tenant_id: 'child-co', parent: root) }
+    let!(:grandchild) { create(:tenant, tenant_id: 'grandchild-co', parent: child) }
+    let!(:sibling) { create(:tenant, tenant_id: 'sibling-co', parent: root) }
+    let!(:other_root) { create(:tenant, tenant_id: 'other-root') }
+
+    describe '#ancestors / #ancestor_ids' do
+      it 'lists every tenant above, nearest parent first' do
+        expect(grandchild.ancestor_ids).to eq([child.id, root.id])
+        expect(grandchild.ancestors).to contain_exactly(child, root)
+      end
+
+      it 'is empty for a root tenant' do
+        expect(root.ancestor_ids).to eq([])
+        expect(root.ancestors).to be_empty
+      end
+
+      it 'never includes siblings, cousins or the tenant itself' do
+        expect(child.ancestors).to contain_exactly(root)
+        expect(sibling.ancestors).to contain_exactly(root)
+      end
+
+      it 'works for an unsaved tenant built with a parent' do
+        expect(build(:tenant, parent: grandchild).ancestor_ids).to eq([grandchild.id, child.id, root.id])
+      end
+    end
+
+    describe '#descendants / #descendant_ids' do
+      it 'lists every tenant beneath, at any depth' do
+        expect(root.descendants).to contain_exactly(child, grandchild, sibling)
+        expect(child.descendants).to contain_exactly(grandchild)
+      end
+
+      it 'lists children before deeper tenants' do
+        expect(root.descendant_ids.last).to eq(grandchild.id)
+      end
+
+      it 'is empty for a leaf, and for an unsaved tenant' do
+        expect(grandchild.descendants).to be_empty
+        expect(build(:tenant).descendant_ids).to eq([])
+      end
+
+      it 'never includes ancestors, siblings, other trees or the tenant itself' do
+        expect(child.descendants).not_to include(root, sibling, other_root, child)
+        expect(other_root.descendants).to be_empty
+      end
+    end
+
+    describe '#depth' do
+      it 'counts the levels above' do
+        expect([root.depth, child.depth, grandchild.depth]).to eq([0, 1, 2])
+      end
+    end
+
+    describe 'cycle prevention' do
+      it 'refuses to make a tenant its own parent' do
+        root.parent = root
+
+        expect(root).not_to be_valid
+        expect(root.errors[:parent_tenant_id]).to be_present
+      end
+
+      it 'refuses a direct cycle (the parent moves under its own child)' do
+        root.parent = child
+
+        expect(root).not_to be_valid
+        expect(root.errors.details[:parent_tenant_id]).to include(error: :cycle)
+      end
+
+      it 'refuses an indirect cycle (the parent moves under its own grandchild)' do
+        root.parent = grandchild
+
+        expect(root).not_to be_valid
+        expect(root.errors.details[:parent_tenant_id]).to include(error: :cycle)
+      end
+
+      it 'refuses it on update and leaves the stored tree untouched' do
+        expect(root.update(parent: grandchild)).to be(false)
+        expect(root.reload.parent_tenant_id).to be_nil
+        expect(grandchild.reload.ancestor_ids).to eq([child.id, root.id])
+      end
+
+      it 'allows moving a subtree under a tenant that is not in it' do
+        expect(child.update(parent: other_root)).to be(true)
+        expect(grandchild.reload.ancestor_ids).to eq([child.id, other_root.id])
+        expect(root.reload.descendants).to contain_exactly(sibling)
+      end
+
+      it 'allows moving a tenant to a sibling and back to a root' do
+        expect(grandchild.update(parent: sibling)).to be(true)
+        expect(grandchild.update(parent: nil)).to be(true)
+        expect(grandchild.reload.ancestors).to be_empty
+      end
+
+      it 'does not re-check the tree when something other than the parent changes' do
+        expect(root.update(display_name: 'Renamed')).to be(true)
+      end
+    end
+
+    describe 'the depth cap' do
+      let(:cap) { described_class::MAX_TREE_DEPTH }
+
+      def chain_of(length)
+        length.times.inject(nil) { |parent, i| create(:tenant, tenant_id: "deep-#{i}", parent: parent) }
+      end
+
+      it 'accepts a tree exactly at the cap' do
+        expect(chain_of(cap).depth).to eq(cap - 1)
+      end
+
+      it 'refuses a child that would exceed the cap' do
+        bottom = chain_of(cap)
+        too_deep = build(:tenant, tenant_id: 'one-too-many', parent: bottom)
+
+        expect(too_deep).not_to be_valid
+        expect(too_deep.errors.details[:parent_tenant_id]).to include(error: :too_deep, max: cap)
+      end
+
+      it 'counts the moved tenant\'s own subtree, not just where it lands' do
+        bottom = chain_of(cap - 1)
+
+        # root -> child -> grandchild is three levels; under a chain of cap - 1 that makes cap + 2.
+        expect(root.update(parent: bottom)).to be(false)
+        expect(root.errors.details[:parent_tenant_id]).to include(error: :too_deep, max: cap)
+      end
+
+      it 'stops walking a corrupted loop instead of running forever' do
+        # Bypass validations to fake bad data: two tenants that are each other's parent.
+        other_root.update_columns(parent_tenant_id: root.id)
+        root.update_columns(parent_tenant_id: other_root.id)
+
+        expect(described_class.chain_up(root.id).size).to be <= cap + 1
+        expect(root.reload.descendant_ids).to include(other_root.id)
+        expect(build(:tenant, parent: root)).not_to be_valid
+      end
+    end
+
+    it 'leaves the default tenant out of the tree (it is not a row)' do
+      expect(described_class.where(parent_tenant_id: nil)).to contain_exactly(root, other_root)
+    end
+  end
 end
