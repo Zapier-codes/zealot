@@ -243,4 +243,77 @@ RSpec.describe Tenant do
       expect(resolved.tenant_id).to eq(Zealot::TenantResolver::DEFAULT_TENANT_ID)
     end
   end
+
+  # Task 38a: the parent link only. Cycle prevention and the tree queries are 38b, so nothing here
+  # exercises a cycle longer than a tenant naming itself (the one thing the database enforces).
+  describe 'parent and children (38a)' do
+    it 'is a root tenant by default' do
+      tenant = create(:tenant)
+
+      expect(tenant.parent).to be_nil
+      expect(tenant.parent_tenant_id).to be_nil
+      expect(tenant.children).to be_empty
+    end
+
+    it 'can be given a parent, and the parent lists it as a child' do
+      parent = create(:tenant, tenant_id: 'parent-co')
+      child = create(:tenant, tenant_id: 'child-co', parent: parent)
+
+      expect(child.reload.parent).to eq(parent)
+      expect(parent.children).to contain_exactly(child)
+    end
+
+    it 'allows any depth (a grandchild has a grandparent two hops away)' do
+      root = create(:tenant, tenant_id: 'root-co')
+      mid = create(:tenant, tenant_id: 'mid-co', parent: root)
+      leaf = create(:tenant, tenant_id: 'leaf-co', parent: mid)
+
+      expect(leaf.reload.parent.parent).to eq(root)
+    end
+
+    it 'refuses destroy while it has children, and leaves the children alone' do
+      parent = create(:tenant, tenant_id: 'parent-co')
+      child = create(:tenant, tenant_id: 'child-co', parent: parent)
+
+      expect(parent.destroy).to be(false)
+      expect(parent.errors[:base]).to be_present
+      expect(Tenant.exists?(parent.id)).to be(true)
+      expect(child.reload.parent).to eq(parent)
+    end
+
+    it 'can be destroyed once its children are gone or moved away' do
+      parent = create(:tenant, tenant_id: 'parent-co')
+      child = create(:tenant, tenant_id: 'child-co', parent: parent)
+
+      child.update!(parent: nil)
+
+      expect(parent.reload.destroy).to be_truthy
+    end
+
+    it 'destroys a child without touching its parent' do
+      parent = create(:tenant, tenant_id: 'parent-co')
+      child = create(:tenant, tenant_id: 'child-co', parent: parent)
+
+      expect(child.destroy).to be_truthy
+      expect(Tenant.exists?(parent.id)).to be(true)
+    end
+
+    it 'refuses to point at a tenant row that does not exist (foreign key)' do
+      tenant = create(:tenant)
+
+      expect { tenant.update_columns(parent_tenant_id: 0) }.to raise_error(ActiveRecord::InvalidForeignKey)
+    end
+
+    it 'refuses to be its own parent at the database level' do
+      tenant = create(:tenant)
+
+      expect { tenant.update_columns(parent_tenant_id: tenant.id) }.to raise_error(ActiveRecord::StatementInvalid, /tenants_parent_not_self/)
+    end
+
+    it 'leaves every existing tenant behaviour alone: a tenant with a parent still resolves and validates as before' do
+      parent = create(:tenant, tenant_id: 'parent-co')
+
+      expect(build(:tenant, tenant_id: 'child-co', parent: parent, domains: ['child.example.com'])).to be_valid
+    end
+  end
 end

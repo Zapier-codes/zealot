@@ -24,6 +24,15 @@ class Tenant < ApplicationRecord
 
   # Key material is never deleted with its tenant; what deleting a tenant means is 37b-iii's call.
   has_many :tenant_signing_keys, dependent: :restrict_with_error
+  # Task 38a: the "tree house" hierarchy. A tenant may have one parent and any number of children,
+  # to any depth; no `parent` means a root tenant. The DEFAULT tenant is not a row, so it can never
+  # be a parent and stays outside the tree. A tenant with children cannot be destroyed (decision 5);
+  # reparenting them away first is a separate, explicit admin action, never automatic. NO callers
+  # yet: cycle prevention and the tree queries are 38b, so until then nothing may set a parent.
+  belongs_to :parent, class_name: 'Tenant', foreign_key: :parent_tenant_id, inverse_of: :children, optional: true
+  has_many :children, class_name: 'Tenant', foreign_key: :parent_tenant_id, inverse_of: :parent,
+                      dependent: :restrict_with_error
+
   # Task 37b-iii-s2: a tenant that still owns apps cannot be destroyed (the database foreign key
   # backs this up). Apps are never deleted or silently moved to the default catalog with it.
   has_many :apps, dependent: :restrict_with_error

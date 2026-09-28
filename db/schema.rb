@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_30_140000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_30_150000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -525,11 +525,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_140000) do
     t.jsonb "domains", default: [], null: false
     t.string "logo_sha256"
     t.string "logo_url"
+    t.bigint "parent_tenant_id"
     t.string "primary_color_hex", null: false
     t.string "tenant_id", limit: 63, null: false
     t.datetime "updated_at", null: false
+    t.index ["parent_tenant_id"], name: "index_tenants_on_parent_tenant_id"
     t.index ["tenant_id"], name: "index_tenants_on_tenant_id", unique: true
     t.check_constraint "jsonb_typeof(domains) = 'array'::text", name: "tenants_domains_is_array"
+    t.check_constraint "parent_tenant_id IS NULL OR parent_tenant_id <> id", name: "tenants_parent_not_self"
     t.check_constraint "tenant_id::text ~ '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'::text AND tenant_id::text <> 'default'::text", name: "tenants_tenant_id_format"
   end
 
@@ -612,6 +615,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_140000) do
   add_foreign_key "schemes", "apps", on_delete: :cascade
   add_foreign_key "sponsored_slots", "apps"
   add_foreign_key "tenant_signing_keys", "tenants"
+  add_foreign_key "tenants", "tenants", column: "parent_tenant_id"
   add_foreign_key "user_providers", "users", on_delete: :cascade
   add_foreign_key "web_hooks", "channels", on_delete: :cascade
 end
