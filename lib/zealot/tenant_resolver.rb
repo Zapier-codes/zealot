@@ -17,10 +17,10 @@ module Zealot
   #   * a registry record claiming `tenant_id == 'default'` is dropped: the default tenant is
   #     compiled in and can't be overridden by data.
   #
-  # Deliberately NO database access here: the `Tenant` model is 37b's own (still unbuilt, and
-  # blocked on its open signing-key-model decision). Records are anything responding to
-  # `tenant_id` and `domains`; `registry` is a callable returning them and defaults to none, so
-  # until 37b lands every request resolves to the default tenant and behaviour is unchanged.
+  # Deliberately NO database access here. Records are anything responding to `tenant_id` and
+  # `domains`; `registry` is a callable returning them. It defaults to none, and the app sets it
+  # to the DB-backed, cached `Zealot::TenantRegistry` (37b-ii-t2, `config/initializers/
+  # tenant_host.rb`), so the rules stay testable without a database.
   module TenantResolver
     DEFAULT_TENANT_ID = 'default'
     Ref = Struct.new(:tenant_id, :domains)
@@ -34,7 +34,8 @@ module Zealot
     CLIENT_HEADER_KEY = 'HTTP_X_TENANT_HOST'
 
     class << self
-      # 37b replaces this with a DB-backed lookup. Must be callable and return an Enumerable.
+      # The app points this at `Zealot::TenantRegistry` (37b-ii-t2). Must be callable and return
+      # an Enumerable.
       attr_writer :registry
 
       def registry

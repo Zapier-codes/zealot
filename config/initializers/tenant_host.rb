@@ -6,8 +6,11 @@
 # `Zealot::TenantResolver`, which is only referenced at request time, when autoloading is fine.
 #
 # Sets `env['zealot.tenant_host']` and `env['zealot.tenant']` (see TenantResolver). Nothing reads
-# them yet: with no `Tenant` model every request resolves to the default tenant, so this is
-# behaviour-neutral until 37b lands.
+# them yet (37b-iii), so this changes no response.
+#
+# Task 37b-ii-t2: the resolver's registry is the DB-backed, cached `Zealot::TenantRegistry`.
+# With no `tenants` rows -- or any error reading them, including the table not existing yet
+# because migrations run at container start -- every request resolves to the default tenant.
 class TenantHostMiddleware
   def initialize(app)
     @app = app
@@ -20,3 +23,10 @@ class TenantHostMiddleware
 end
 
 Rails.application.config.middleware.use TenantHostMiddleware
+
+# `to_prepare` (not a bare assignment) because it runs after autoloading is available and again
+# on every code reload, when `Zealot::TenantResolver` is re-defined with its default empty
+# registry. The lambda defers the `TenantRegistry` lookup to request time.
+Rails.application.config.to_prepare do
+  Zealot::TenantResolver.registry = -> { Zealot::TenantRegistry.call }
+end
