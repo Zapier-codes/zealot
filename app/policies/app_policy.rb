@@ -12,6 +12,15 @@ class AppPolicy < ApplicationPolicy
     tenant_access? && in_request_tenant?(record) && app_user?
   end
 
+  # Task 37b-iii-s7c-4a (deny by default, cross-cutting rule 1): may this user open the console
+  # pages that LIST apps (the apps list, the dashboard) on this host at all? Always true on the
+  # default host; on a tenant's host only for a member of that tenant. It is a question about the
+  # host, not about a record, so it is asked of the `App` class and does not look at `record`.
+  # Without it, a non-member would be shown an empty list (the scope is `none`) instead of a refusal.
+  def console?
+    tenant_access?
+  end
+
   # A brand-new app isn't about an existing app, so it keeps the global
   # admin/developer check. For an already-saved app (nested creates that
   # authorize the parent app with `create?`, and the API right after

@@ -1,4 +1,4 @@
-- admin_role = current_user&.admin?
+- admin_role = current_user&.platform_admin?(current_tenant)
 - grid_rule = admin_role ? 'grid-cols-4 lg:grid-cols-8' : 'grid-cols-4'
 
 div class="d-stats w-full rounded-lg border border-base-300 bg-base-100 shadow-sm shadow-black/5"

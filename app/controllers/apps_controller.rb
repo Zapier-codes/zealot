@@ -13,7 +13,12 @@ class AppsController < ApplicationController
 
   def index
     @title = t('.title')
-    base_scope = manage_user_or_guest_mode? ? App.active : current_user.apps.active 
+    # Task 37b-iii-s7c-4a: on a tenant's host, refuse a non-member outright, and read the list
+    # through the policy scope (the one choke point): every app on the default host (`App.all`
+    # merges to nothing there), only the tenant's own apps on a tenant's host.
+    authorize App, :console?
+    base_scope = manage_user_or_guest_mode? ? App.active : current_user.apps.active
+    base_scope = base_scope.merge(policy_scope(App))
     base_scope = params[:search].present? ? base_scope.search_by_name(params[:search]) : base_scope
     @apps = params[:sort].present? ? base_scope.sort_by_name(params[:sort]) : base_scope
     authorize @apps if @apps.present?
@@ -193,7 +198,10 @@ class AppsController < ApplicationController
   end
 
   def set_app
-    @app = App.find(params[:id])
+    # Task 37b-iii-s7c-4a: find through the policy scope, so on a tenant's host another tenant's
+    # (or the default catalog's) id is "not found", the same as a missing id (rule 2: no
+    # existence oracle). On the default host the scope is `App.all`: exactly the old `App.find`.
+    @app = policy_scope(App).find(params[:id])
     authorize @app
   end
 
