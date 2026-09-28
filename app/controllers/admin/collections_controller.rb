@@ -11,7 +11,8 @@ class Admin::CollectionsController < ApplicationController
 
   # GET /admin/collections
   def index
-    @collections = Collection.ordered
+    # Task 37b-iii-s7c-3: through the policy scope (default host: all; tenant host: its own).
+    @collections = policy_scope(Collection).ordered
     authorize @collections
   end
 
@@ -24,6 +25,9 @@ class Admin::CollectionsController < ApplicationController
   # POST /admin/collections
   def create
     @collection = Collection.new(collection_params)
+    # A collection made on a tenant's host belongs to that tenant; on the default host it stays
+    # the default catalog's (`nil`), exactly as before. Never taken from the request params.
+    @collection.tenant = current_tenant
     authorize @collection
 
     if @collection.save
@@ -90,7 +94,8 @@ class Admin::CollectionsController < ApplicationController
   end
 
   def set_collection
-    @collection = Collection.find(params[:id])
+    # A cross-tenant id is simply not found (404), never a 403.
+    @collection = policy_scope(Collection).find(params[:id])
   end
 
   def collection_params

@@ -12,7 +12,9 @@ class Admin::AppsController < ApplicationController
 
   # GET /admin/apps
   def index
-    @apps = App.order(:name)
+    # Task 37b-iii-s7c-3: read through the policy scope (the one choke point): every app on the
+    # default host, only the tenant's own apps on a tenant's host.
+    @apps = policy_scope(App).order(:name)
     authorize @apps
   end
 
@@ -31,7 +33,8 @@ class Admin::AppsController < ApplicationController
   private
 
   def set_app
-    @app = App.find(params[:id])
+    # A cross-tenant id is simply not found (404), never a 403.
+    @app = policy_scope(App).find(params[:id])
     authorize @app, :set_editorial_flags?
   end
 end

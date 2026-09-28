@@ -16,24 +16,28 @@ class ApplicationPolicy
     tenant_access? && (scope.where(id: record.id).exists? || user_signed_in_or_guest_mode?)
   end
 
+  # Task 37b-iii-s7c-3 (deny by default): the base write rules also need `tenant_access?`, so a
+  # policy that inherits them (`CollectionPolicy`, `SponsoredSlotPolicy`, ...) refuses a non-member
+  # on a tenant's host. On the default host `tenant_access?` is true: unchanged. Policies that
+  # override these (`AppPolicy`, `ReleasePolicy`, ...) are gated by their own surface slice.
   def create?
-    manage?
+    tenant_access? && manage?
   end
 
   def new?
-    manage?
+    tenant_access? && manage?
   end
 
   def update?
-    manage?
+    tenant_access? && manage?
   end
 
   def edit?
-    manage?
+    tenant_access? && manage?
   end
 
   def destroy?
-    manage?
+    tenant_access? && manage?
   end
 
   def scope
