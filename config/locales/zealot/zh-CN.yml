@@ -1279,6 +1279,19 @@ zh-CN:
           attributes:
             owner:
               unique: 应用只能设置一个拥有者
+        tenant:
+          attributes:
+            tenant_id:
+              readonly: 租户创建后不可修改
+            domains:
+              invalid: 必须是普通主机名，例如 store.example.com
+              taken: 包含已被其他租户使用的域名
+            cdn_base:
+              invalid: 必须是 https 地址
+            logo_url:
+              invalid: 必须是 https 地址
+            catalog_index_base_url:
+              invalid: 必须是 https 地址
         setting:
           default_message: "请检查 '%{key}' 的如下问题："
         apple_key:

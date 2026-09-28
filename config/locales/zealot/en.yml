@@ -1269,6 +1269,19 @@ en:
           attributes:
             owner:
               unique: Owner only one user
+        tenant:
+          attributes:
+            tenant_id:
+              readonly: cannot be changed once the tenant exists
+            domains:
+              invalid: must be plain hostnames such as store.example.com
+              taken: includes a domain another tenant already uses
+            cdn_base:
+              invalid: must be an https URL
+            logo_url:
+              invalid: must be an https URL
+            catalog_index_base_url:
+              invalid: must be an https URL
         apple_key:
           attributes:
             issuer_id:

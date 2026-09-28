@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_30_110000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_30_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -490,6 +490,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_110000) do
     t.datetime "updated_at", null: false
     t.index ["app_id", "starts_at"], name: "index_sponsored_slots_on_app_id_and_starts_at"
     t.index ["app_id"], name: "index_sponsored_slots_on_app_id"
+  end
+
+  create_table "tenants", force: :cascade do |t|
+    t.string "catalog_index_base_url"
+    t.string "cdn_base", null: false
+    t.datetime "created_at", null: false
+    t.string "display_name", null: false
+    t.jsonb "domains", default: [], null: false
+    t.string "logo_sha256"
+    t.string "logo_url"
+    t.string "primary_color_hex", null: false
+    t.string "tenant_id", limit: 63, null: false
+    t.datetime "updated_at", null: false
+    t.index ["tenant_id"], name: "index_tenants_on_tenant_id", unique: true
+    t.check_constraint "(jsonb_typeof(domains) = 'array'::text)", name: "tenants_domains_is_array"
+    t.check_constraint "(((tenant_id)::text ~ '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'::text) AND ((tenant_id)::text <> 'default'::text))", name: "tenants_tenant_id_format"
   end
 
   create_table "user_providers", force: :cascade do |t|
