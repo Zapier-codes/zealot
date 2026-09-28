@@ -2,6 +2,7 @@
 
 class Channels::BranchesController < ApplicationController
   before_action :set_channel
+  before_action -> { redirect_to_canonical_host(@channel) } # Task 37b-iii-s7b-iii
   before_action :set_releases
 
   def index

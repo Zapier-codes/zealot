@@ -54,6 +54,20 @@ RSpec.describe 'Canonical host redirect', type: :request do
     expect(response.location).to start_with('http://store.acme.example.com/')
   end
 
+  it 'redirects the versions, release-type and branch pages of a channel' do
+    {
+      friendly_channel_versions_path(acme_channel) => '/acme-android/versions',
+      friendly_channel_version_path(acme_channel, '1.0.1') => '/acme-android/versions/1.0.1',
+      friendly_channel_release_types_path(acme_channel, 'adhoc') => '/acme-android/release_types/adhoc',
+      friendly_channel_branches_path(acme_channel, 'main') => '/acme-android/branches/main'
+    }.each do |path, expected|
+      get path
+
+      expect(response).to have_http_status(:found)
+      expect(response.location).to eq("http://store.acme.example.com#{expected}")
+    end
+  end
+
   it 'redirects a release download asked for on the wrong host' do
     release = make_release(acme_channel)
 
