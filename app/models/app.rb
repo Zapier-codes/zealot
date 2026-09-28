@@ -258,7 +258,8 @@ class App < ApplicationRecord
   def catalog_releases
     return Release.none unless (ids = production_channel_ids).present?
 
-    Release.where(channel_id: ids).order(created_at: :desc)
+    # Task 27f-a: a held release is not published until it is released.
+    Release.where(channel_id: ids).where.not(status: 'held').order(created_at: :desc)
   end
 
   def production_channel_ids

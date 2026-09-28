@@ -139,6 +139,17 @@ class Release < ApplicationRecord
     complete: 'complete'
   }, prefix: :rollout
 
+  # Task 27f-a: the release's lifecycle in our own store (see AddStatusToReleases). `held` is kept
+  # out of the signed index until it is released; `halted` and `pulled` stay in it so a store
+  # client can stop offering them. Separate from `rollout_status` (the staged-rollout ramp) and
+  # from the Play publish states above.
+  enum :status, {
+    available: 'available',
+    held: 'held',
+    halted: 'halted',
+    pulled: 'pulled'
+  }, prefix: true
+
   belongs_to :channel
   belongs_to :play_approved_by, class_name: 'User', optional: true
   belongs_to :play_rejected_by, class_name: 'User', optional: true
@@ -212,6 +223,10 @@ class Release < ApplicationRecord
   # app doesn't change anything the index currently shows and would just be
   # a wasted publish.
   after_create  :publish_catalog_index_if_app_live
+  # Task 27f-a: holding, releasing, halting or pulling a release changes what the index shows, so
+  # it republishes the owning tenant's catalog like a new release does. Only `status`: see the
+  # 27f-a session entry for why a rollout change is not added here.
+  after_update_commit :publish_catalog_index_if_app_live, if: :saved_change_to_status?
 
   delegate :scheme, to: :channel
   delegate :app, to: :scheme

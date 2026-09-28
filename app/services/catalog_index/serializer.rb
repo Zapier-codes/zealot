@@ -286,15 +286,21 @@ module CatalogIndex
         signing_fingerprint: release.signing_key_checksum,
         changelog: text_changelog_for(release),
         released_at: iso(release.created_at),
-        # No `status` column exists yet (27f owns halt/pull transitions) --
-        # "available" is the honest current state of every release that
-        # exists today, not an invented value: nothing can currently mark
-        # one halted or pulled, so every release the serializer sees is, by
-        # definition, available. 27f replaces this with the real column.
-        status: 'available',
+        # Task 27f-a: the real column (`available`, `halted` or `pulled`). A held release never
+        # reaches here (`App#catalog_releases` leaves it out); a fixture without the column, or a
+        # value the schema does not know, reads as `available` rather than raising.
+        status: version_status_for(release),
         compatibility: compatibility_for(release),
         rollout: rollout_for(release),
       }
+    end
+
+    PUBLISHED_VERSION_STATUSES = %w[available halted pulled].freeze
+    private_constant :PUBLISHED_VERSION_STATUSES
+
+    def version_status_for(release)
+      status = release.respond_to?(:status) ? release.status.to_s : 'available'
+      PUBLISHED_VERSION_STATUSES.include?(status) ? status : 'available'
     end
 
     # Task 32a: staged rollout, Play-Console-parity. `respond_to?` keeps this
