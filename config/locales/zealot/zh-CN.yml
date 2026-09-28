@@ -242,6 +242,31 @@ zh-CN:
         primary_color_hex_hint: 例如 #FF6600。
         domains_hint: 每行一个主机名，例如 store.example.com。不能是网址，也不能是本部署已在使用的主机。
         logo_sha256_hint: 设置标志地址时必填（64 位十六进制字符）。
+      members:
+        title: 成员
+        intro: "可以在该租户自己的域名上使用其控制台的人员。只有平台管理员在默认域名上才能修改。成员查看应用仍需具备原有的应用访问权限。"
+        no_members: 该租户还没有成员，因此无人可以登录其控制台。
+        email: 邮箱
+        username: 用户名
+        role: 角色
+        roles:
+          member: 成员
+          owner: 所有者
+        save: 保存
+        remove: 移除
+        add_title: 添加成员
+        email_placeholder: someone@example.com
+        add: 添加成员
+        confirm_remove: 确定将此成员从该租户移除吗？
+        success:
+          create: "已将 %{email} 添加为%{role}。"
+          update: "%{email} 现为%{role}。"
+          destroy: "已移除 %{email}。"
+        errors:
+          user_not_found: "没有邮箱为 %{email} 的用户，需要先注册账号。"
+          already_member: "%{email} 已是该租户的成员。"
+          invalid_role: "该角色无效。"
+          last_owner: "%{email} 是该租户唯一的所有者，请先指定另一位所有者。"
       keys:
         title: 签名密钥（目录索引）
         intro: 当前生效密钥的公钥就是 D-store 和 Storeapp 固定（pin）的公钥。请先暂存下一个密钥，以便在使用前完成固定；私钥永远不会显示。

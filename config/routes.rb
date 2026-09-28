@@ -239,6 +239,10 @@ Rails.application.routes.draw do
           post :promote
           post :retire
         end
+
+        # Task 37b-iii-s7c-7: who may sign in to this tenant's console (`tenant_memberships`).
+        # POST/PATCH/DELETE only: the panel on the tenant's edit page is the only view.
+        resources :memberships, only: %i[ create update destroy ], controller: 'tenant_memberships'
       end
 
       resources :collections do

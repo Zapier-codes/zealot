@@ -1,0 +1,40 @@
+/ Task 37b-iii-s7c-7: who may use this tenant's console. Admin-only, edit page only; the controller
+/ and TenantMembershipPolicy still decide, this only offers the buttons.
+ruby:
+  members = TenantMembership.for_tenant(tenant).includes(:user).order(:id).to_a
+
+.card.mt-4
+  .card-header
+    h3.card-title = t('.title')
+  .card-body
+    p.opacity-65.text-sm = t('.intro')
+
+    - if members.empty?
+      p.text-sm = t('.no_members')
+    - else
+      .overflow-x-auto
+        table.d-table
+          thead
+            tr
+              th = t('.email')
+              th = t('.username')
+              th = t('.role')
+              th
+          tbody
+            - members.each do |membership|
+              tr
+                td = membership.user.email
+                td = membership.user.username
+                td
+                  = form_with url: admin_tenant_membership_path(tenant, membership), method: :patch, class: 'flex gap-2' do |f|
+                    = f.select :role, TenantMembership::ROLES.map { |role| [t(".roles.#{role}"), role] }, { selected: membership.role }, class: 'd-select d-select-sm'
+                    = f.submit t('.save'), class: 'd-btn d-btn-sm'
+                td
+                  = link_to t('.remove'), admin_tenant_membership_path(tenant, membership), class: 'd-btn d-btn-error d-btn-sm', \
+                    data: { turbo_method: :delete, turbo_confirm: t('.confirm_remove') }
+
+    h4.mt-4.font-semibold = t('.add_title')
+    = form_with url: admin_tenant_memberships_path(tenant), method: :post, class: 'flex flex-wrap gap-2 mt-2' do |f|
+      = f.email_field :email, placeholder: t('.email_placeholder'), required: true, class: 'd-input d-input-sm'
+      = f.select :role, TenantMembership::ROLES.map { |role| [t(".roles.#{role}"), role] }, {}, class: 'd-select d-select-sm'
+      = f.submit t('.add'), class: 'd-btn d-btn-primary d-btn-sm'

@@ -121,4 +121,26 @@ RSpec.describe TenantMembership do
       expect(Tenant.exists?(globex.id)).to be(true)
     end
   end
+
+  describe '#last_owner?' do
+    let(:tenant) { create(:tenant) }
+
+    it 'is true for the only owner, false once there is a second owner, false for a member' do
+      only = create(:tenant_membership, :owner, tenant: tenant)
+      member = create(:tenant_membership, tenant: tenant)
+
+      expect(only.last_owner?).to be true
+      expect(member.last_owner?).to be false
+
+      create(:tenant_membership, :owner, tenant: tenant)
+      expect(only.last_owner?).to be false
+    end
+
+    it 'does not count owners of another tenant' do
+      mine = create(:tenant_membership, :owner, tenant: tenant)
+      create(:tenant_membership, :owner)
+
+      expect(mine.last_owner?).to be true
+    end
+  end
 end

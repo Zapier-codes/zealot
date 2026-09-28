@@ -244,6 +244,31 @@ en:
         primary_color_hex_hint: "For example #FF6600."
         domains_hint: "One host per line, such as store.example.com. Not a URL, and not a host this deployment already uses."
         logo_sha256_hint: "Required whenever a logo URL is set (64 hex characters)."
+      members:
+        title: Members
+        intro: "Who may use this tenant's console on its own host. Only a platform admin, working on the default host, can change this. A member also needs the usual per-app access to see an app."
+        no_members: This tenant has no members yet, so nobody can sign in to its console.
+        email: Email
+        username: Username
+        role: Role
+        roles:
+          member: Member
+          owner: Owner
+        save: Save
+        remove: Remove
+        add_title: Add a member
+        email_placeholder: someone@example.com
+        add: Add member
+        confirm_remove: Remove this member from the tenant?
+        success:
+          create: "Added %{email} as %{role}."
+          update: "%{email} is now %{role}."
+          destroy: "Removed %{email}."
+        errors:
+          user_not_found: "No user has the email %{email}. They need an account first."
+          already_member: "%{email} is already a member of this tenant."
+          invalid_role: "That is not a role."
+          last_owner: "%{email} is the only owner of this tenant. Make someone else an owner first."
       keys:
         title: Signing keys (catalog index)
         intro: "The public key of the active key is what D-store and Storeapp pin. Stage the next key first so it can be pinned before it is used; the private key is never shown."

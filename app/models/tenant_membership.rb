@@ -21,6 +21,13 @@ class TenantMembership < ApplicationRecord
   # A user has at most one membership per tenant; the unique index backs this up.
   validates :user_id, uniqueness: { scope: :tenant_id }
 
+  # Task 37b-iii-s7c-7: true when this is the only `owner` of its tenant. The admin actions refuse
+  # to remove or demote it, so a tenant that has an owner never ends up with none. (A user's own
+  # `dependent: :destroy` and a raw delete are not guarded: see the handover.)
+  def last_owner?
+    owner? && !self.class.owner.where(tenant_id: tenant_id).where.not(id: id).exists?
+  end
+
   scope :for_tenant, ->(tenant) { where(tenant: tenant) }
   scope :for_user, ->(user) { where(user: user) }
 end
