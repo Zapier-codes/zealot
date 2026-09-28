@@ -115,4 +115,34 @@ RSpec.describe App do
       end
     end
   end
+
+  # Task 27d-d1: one YouTube video ID per app, never a URL (docs/store_listing_graphics.md,
+  # "Video"). ListingGraphicRules.youtube_id? is the format check this validation defers to; its
+  # own examples (spec/services/listing_graphic_rules_spec.rb) cover the format in detail.
+  describe 'promo_video_youtube_id' do
+    it 'accepts a plain video id' do
+      app = build(:app, promo_video_youtube_id: 'dQw4w9WgXcQ')
+
+      expect(app).to be_valid
+    end
+
+    it 'accepts a blank value' do
+      expect(build(:app, promo_video_youtube_id: nil)).to be_valid
+      expect(build(:app, promo_video_youtube_id: '  ')).to be_valid
+    end
+
+    it 'refuses a full URL' do
+      app = build(:app, promo_video_youtube_id: 'https://youtube.com/watch?v=dQw4w9WgXcQ')
+
+      expect(app).not_to be_valid
+      expect(app.errors[:promo_video_youtube_id]).not_to be_empty
+    end
+
+    it 'strips surrounding whitespace before validating' do
+      app = build(:app, promo_video_youtube_id: '  dQw4w9WgXcQ  ')
+      app.valid?
+
+      expect(app.promo_video_youtube_id).to eq('dQw4w9WgXcQ')
+    end
+  end
 end

@@ -21,6 +21,9 @@ class App < ApplicationRecord
   # draft/commit/discard behavior; App itself stays a plain parent here,
   # the same relationship shape as sponsored_slots/collection_apps above.
   has_many :listing_edits, dependent: :destroy
+  # Task 27d-d1: store-listing graphics (docs/store_listing_graphics.md). Owned by the app, not a
+  # release. No uploader, route or reader yet (27d-d2, 27d-e1).
+  has_many :listing_graphics, dependent: :destroy
 
   scope :all_names, -> { all.map { |c| [c.name, c.id] } }
   scope :debug_files, -> { joins(:debug_files).distinct }
@@ -543,6 +546,23 @@ class App < ApplicationRecord
 
     errors.add(:play_package_name, I18n.t('apps.messages.errors.invalid_play_package_name'))
   end
+
+  def normalize_promo_video_youtube_id
+    self.promo_video_youtube_id = promo_video_youtube_id.to_s.strip.presence
+  end
+
+  def promo_video_youtube_id_format_valid
+    return if promo_video_youtube_id.blank? || ListingGraphicRules.youtube_id?(promo_video_youtube_id)
+
+    errors.add(:promo_video_youtube_id, 'must be a plain YouTube video ID, not a URL or playlist')
+  end
+
+  # Task 27d-d1: one YouTube video ID per app (docs/store_listing_graphics.md, "Video"). Stored as
+  # the bare 11-character ID, never a URL -- turning a pasted link into an ID is 27d-e2's job, not
+  # this column's. `ListingGraphicRules.youtube_id?` is the single source of truth for the format
+  # so the model and (in 27d-e1) the index serializer never disagree on what counts as valid.
+  before_validation :normalize_promo_video_youtube_id
+  validate :promo_video_youtube_id_format_valid
 
   def schedule_play_preflight
     AnthropicPlayPreflightJob.perform_later(id)

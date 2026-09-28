@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_30_200000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_30_210000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -72,6 +72,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_200000) do
     t.datetime "play_setup_checked_at"
     t.text "play_setup_message"
     t.string "play_setup_status", default: "unchecked", null: false
+    t.string "promo_video_youtube_id"
     t.string "publisher_alias"
     t.bigint "publisher_profile_id"
     t.bigint "tenant_id"
@@ -309,6 +310,28 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_200000) do
     t.index ["app_id"], name: "index_listing_edits_on_app_id_when_draft", unique: true, where: "((status)::text = 'draft'::text)"
     t.index ["app_id"], name: "index_listing_edits_on_app_id"
     t.index ["editor_id"], name: "index_listing_edits_on_editor_id"
+  end
+
+  create_table "listing_graphics", force: :cascade do |t|
+    t.string "alt_text"
+    t.bigint "app_id", null: false
+    t.integer "byte_size", null: false
+    t.string "content_type", null: false
+    t.datetime "created_at", null: false
+    t.string "device", default: "phone", null: false
+    t.integer "height", null: false
+    t.string "kind", null: false
+    t.integer "position", default: 0, null: false
+    t.string "sha256"
+    t.string "storage_key"
+    t.datetime "updated_at", null: false
+    t.integer "width", null: false
+    t.index ["app_id", "device"], name: "index_listing_graphics_on_app_id_device_feature_graphic", unique: true, where: "((kind)::text = 'feature_graphic'::text)"
+    t.index ["app_id", "kind", "device", "position"], name: "index_listing_graphics_on_app_id_kind_device_position", unique: true
+    t.check_constraint "byte_size > 0", name: "listing_graphics_byte_size_positive"
+    t.check_constraint "device::text = 'phone'::text", name: "listing_graphics_device_known"
+    t.check_constraint "kind::text = 'screenshot'::text OR kind::text = 'feature_graphic'::text", name: "listing_graphics_kind_known"
+    t.check_constraint "width > 0 AND height > 0", name: "listing_graphics_dimensions_positive"
   end
 
   create_table "metadata", force: :cascade do |t|
@@ -626,6 +649,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_200000) do
   add_foreign_key "debug_files", "apps", on_delete: :cascade
   add_foreign_key "listing_edits", "apps", on_delete: :cascade
   add_foreign_key "listing_edits", "users", column: "editor_id", on_delete: :nullify
+  add_foreign_key "listing_graphics", "apps", on_delete: :cascade
   add_foreign_key "metadata", "releases", on_delete: :cascade
   add_foreign_key "metadata", "users", on_delete: :cascade
   add_foreign_key "publisher_profiles", "users", on_delete: :cascade
