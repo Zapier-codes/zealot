@@ -46,8 +46,7 @@ module CatalogIndex
         id.empty? || id == Zealot::TenantResolver::DEFAULT_TENANT_ID
       end
 
-      private
-
+      # Task 37b-iii-s1: public so `Publish` keys its advisory lock by the same normalized id.
       def tenant_id_of(tenant)
         (tenant.respond_to?(:tenant_id) ? tenant.tenant_id : tenant).to_s.strip.downcase
       end

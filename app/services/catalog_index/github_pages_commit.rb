@@ -61,10 +61,35 @@ module CatalogIndex
       ensure_configured!
     end
 
+    # Task 37b-iii-s1: a tenant's publish root is a directory in the ONE Pages repo. The default
+    # tenant has no root (its four files stay at the repo root, unchanged); every other tenant
+    # publishes under `tenants/<tenant_id>/`, so it can never touch the default tenant's files or
+    # another tenant's. `tenant_id` follows the `tenants` table's own check constraint, and
+    # `default` is refused because that tenant already owns the repo root.
+    TENANTS_DIR = 'tenants'
+    TENANT_ID_PATTERN = /\A[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\z/
+
+    class InvalidRootError < Error; end
+
+    # @return [String, nil] the directory prefix for a tenant id ("tenants/acme"), nil for the default
+    def self.root_for(tenant_id)
+      id = tenant_id.to_s
+      return nil if id.empty?
+      if id == 'default'
+        raise InvalidRootError, 'no publish root for "default": that tenant publishes at the repo root'
+      end
+      raise InvalidRootError, "#{id.inspect} is not a valid tenant id" unless TENANT_ID_PATTERN.match?(id)
+
+      "#{TENANTS_DIR}/#{id}"
+    end
+
     # files: { "index.json" => "...", "index.json.sig" => "..." } (UTF-8 text)
-    def publish(files, message:)
+    # root: nil (repo root, the default tenant) or the string `.root_for` returns. Every path is
+    # written under it; nothing outside it is read or changed by this call.
+    def publish(files, message:, root: nil)
       raise ArgumentError, 'no files to publish' if files.empty?
 
+      files = rooted(files, root)
       attempts = 0
       begin
         attempts += 1
@@ -77,6 +102,22 @@ module CatalogIndex
     end
 
     private
+
+    def rooted(files, root)
+      return files if root.nil?
+
+      prefix = "#{TENANTS_DIR}/"
+      valid = root.is_a?(String) && root.start_with?(prefix) && TENANT_ID_PATTERN.match?(root.delete_prefix(prefix))
+      raise InvalidRootError, "publish root must come from GithubPagesCommit.root_for, got #{root.inspect}" unless valid
+
+      files.transform_keys do |path|
+        if path.start_with?('/') || path.split('/').include?('..')
+          raise InvalidRootError, "unsafe path #{path.inspect} for a tenant root"
+        end
+
+        "#{root}/#{path}"
+      end
+    end
 
     def publish_once(files, message)
       tip_sha = fetch_tip_sha

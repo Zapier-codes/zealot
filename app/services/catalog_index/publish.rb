@@ -31,6 +31,20 @@ module CatalogIndex
 
     Result = Struct.new(:status, :commit_sha, :generated_at, :key_id, :hook, keyword_init: true)
 
+    # Task 37b-iii-s1: the advisory-lock statement for one tenant. The DEFAULT tenant keeps the
+    # exact single-key statement it has always used. Any other tenant takes the two-key form
+    # `(LOCK_KEY, hashtext(tenant_id))`, which Postgres keeps in a separate key space from the
+    # single-key form, so a tenant can never contend with the default tenant's lock, and two
+    # tenants only share a lock on a `hashtext` collision (harmless: they just take turns).
+    # `verb` is `lock` or `unlock`; the tenant id is quoted by the connection, never interpolated.
+    def self.lock_sql(connection, tenant, verb)
+      raise ArgumentError, "verb must be lock or unlock, got #{verb.inspect}" unless %w[lock unlock].include?(verb)
+      return "SELECT pg_advisory_#{verb}(#{LOCK_KEY})" if CatalogIndex::KeyResolver.default?(tenant)
+
+      id = CatalogIndex::KeyResolver.tenant_id_of(tenant)
+      "SELECT pg_advisory_#{verb}(#{LOCK_KEY}, hashtext(#{connection.quote(id)}))"
+    end
+
     def self.configured?
       CatalogIndex::GithubPagesCommit.configured? && !CatalogIndexSigningKey.current.nil?
     end
@@ -47,6 +61,7 @@ module CatalogIndex
 
       @apps = apps
       @client = client
+      @tenant = tenant
       @key = key
       @now = now
       @hook_url = hook_url.to_s.strip
@@ -81,11 +96,11 @@ module CatalogIndex
 
     def with_publish_lock
       ActiveRecord::Base.connection_pool.with_connection do |connection|
-        connection.execute("SELECT pg_advisory_lock(#{LOCK_KEY})")
+        connection.execute(self.class.lock_sql(connection, @tenant, 'lock'))
         begin
           yield
         ensure
-          connection.execute("SELECT pg_advisory_unlock(#{LOCK_KEY})")
+          connection.execute(self.class.lock_sql(connection, @tenant, 'unlock'))
         end
       end
     end

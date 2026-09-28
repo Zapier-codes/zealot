@@ -78,9 +78,14 @@ exercised regularly rather than discovered broken during an emergency.
 
 ## 4. What is published per tenant
 
-Layout below is relative to a tenant's **publish root**; where that root lives (own
-path in one Pages repo, or own repo) and the per-tenant advisory lock are 37b-iii's
-job. The default tenant's four existing files are **unchanged**.
+Layout below is relative to a tenant's **publish root**. The default tenant's four
+existing files are **unchanged** and stay at the Pages repo root. **Decided in
+37b-iii-s1:** every other tenant's publish root is the directory `tenants/<tenant_id>/`
+in the same Pages repo (`CatalogIndex::GithubPagesCommit.root_for`), and the publish
+advisory lock is keyed by tenant (`CatalogIndex::Publish.lock_sql`), so one tenant's
+publish never takes the default tenant's lock. A tenant's `catalog_index_base_url`
+is where its readers fetch from, so a tenant can point a custom domain or CDN at its
+directory without a separate repo.
 
 | Path (relative to the tenant publish root) | Content |
 |---|---|

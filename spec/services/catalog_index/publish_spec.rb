@@ -61,4 +61,38 @@ RSpec.describe CatalogIndex::Publish do
 
     expect { described_class.call(apps: [], client: client, key: nil) }.to raise_error(CatalogIndex::Signer::NoKeyError)
   end
+
+  # Task 37b-iii-s1: the advisory lock is keyed by tenant.
+  describe '.lock_sql' do
+    let(:connection) { ActiveRecord::Base.connection }
+
+    it 'is exactly the historical statement for the default tenant, however it is spelled' do
+      [nil, '', 'default', 'DEFAULT', ' default '].each do |t|
+        expect(described_class.lock_sql(connection, t, 'lock')).to eq('SELECT pg_advisory_lock(2027003)'), t.inspect
+        expect(described_class.lock_sql(connection, t, 'unlock')).to eq('SELECT pg_advisory_unlock(2027003)'), t.inspect
+      end
+    end
+
+    it 'uses the two-key form, in its own key space, for any other tenant' do
+      expect(described_class.lock_sql(connection, 'acme', 'lock'))
+        .to eq("SELECT pg_advisory_lock(2027003, hashtext('acme'))")
+      expect(described_class.lock_sql(connection, 'acme', 'unlock'))
+        .to eq("SELECT pg_advisory_unlock(2027003, hashtext('acme'))")
+    end
+
+    it 'takes a Tenant or anything answering tenant_id, and quotes the id instead of interpolating it' do
+      expect(described_class.lock_sql(connection, Struct.new(:tenant_id).new('globex'), 'lock')).to include("'globex'")
+      expect(described_class.lock_sql(connection, "x'); DROP TABLE apps; --", 'lock')).to include("''")
+    end
+
+    it 'refuses a verb other than lock or unlock' do
+      expect { described_class.lock_sql(connection, 'acme', 'lock(1); --') }.to raise_error(ArgumentError)
+    end
+
+    it 'runs against Postgres: a tenant lock can be taken and released' do
+      connection.execute(described_class.lock_sql(connection, 'acme', 'lock'))
+      released = connection.select_value(described_class.lock_sql(connection, 'acme', 'unlock'))
+      expect([true, 't']).to include(released)
+    end
+  end
 end

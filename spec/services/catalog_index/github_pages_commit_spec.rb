@@ -132,4 +132,80 @@ RSpec.describe CatalogIndex::GithubPagesCommit do
     expect(described_class.configured?('CATALOG_PAGES_REPO' => 'o/r', 'CATALOG_PAGES_TOKEN' => 't')).to be true
     expect(described_class.configured?('CATALOG_PAGES_REPO' => 'o/r')).to be false
   end
+
+  # Task 37b-iii-s1: a tenant's publish root is a directory in the same Pages repo.
+  describe 'tenant publish roots' do
+    let(:four) { { 'index.json' => '{}', 'index.json.sig' => 'sig', 'signing_key.pub' => 'pub', '.nojekyll' => '' } }
+
+    it 'has no root for the default tenant and one directory per other tenant' do
+      expect(described_class.root_for(nil)).to be_nil
+      expect(described_class.root_for('')).to be_nil
+      expect(described_class.root_for('acme')).to eq('tenants/acme')
+      expect(described_class.root_for('a')).to eq('tenants/a')
+    end
+
+    it 'refuses "default" and anything that is not a valid tenant id' do
+      ['default', 'Acme', 'a b', '../etc', 'a/b', '-a', 'a-', 'x' * 64, 'a.b'].each do |bad|
+        expect { described_class.root_for(bad) }.to raise_error(described_class::InvalidRootError), bad.inspect
+      end
+    end
+
+    it 'writes every file under the root and leaves everything else untouched' do
+      gh = FakeGitHub.new
+      c = client(gh)
+      c.publish(four, message: 'default')
+      c.publish(four.merge('index.json' => '{"acme":1}'), message: 'acme', root: described_class.root_for('acme'))
+
+      files = gh.tip_files
+      expect(files.keys).to include('README.md', 'index.json', 'index.json.sig', 'signing_key.pub', '.nojekyll')
+      expect(files['index.json']).to eq('{}') # the default tenant's file did not move
+      expect(files['tenants/acme/index.json']).to eq('{"acme":1}')
+      expect(files.keys.grep(%r{\Atenants/})).to contain_exactly(
+        'tenants/acme/index.json', 'tenants/acme/index.json.sig', 'tenants/acme/signing_key.pub', 'tenants/acme/.nojekyll'
+      )
+    end
+
+    it 'keeps two tenants apart' do
+      gh = FakeGitHub.new
+      c = client(gh)
+      c.publish({ 'index.json' => 'A' }, message: 'a', root: described_class.root_for('acme'))
+      c.publish({ 'index.json' => 'B' }, message: 'b', root: described_class.root_for('globex'))
+
+      expect(gh.tip_files).to include('tenants/acme/index.json' => 'A', 'tenants/globex/index.json' => 'B')
+    end
+
+    it 'is unchanged for the default tenant: no root gives the same paths and the same tree as before' do
+      gh_a = FakeGitHub.new
+      gh_b = FakeGitHub.new
+      client(gh_a).publish(four, message: 'm')
+      client(gh_b).publish(four, message: 'm', root: nil)
+
+      expect(gh_a.tip_files).to eq(gh_b.tip_files)
+      expect(gh_a.tip_files.keys).to contain_exactly('README.md', *four.keys)
+    end
+
+    it 'refuses a root that did not come from root_for, and paths that could leave the root, before any request' do
+      gh = FakeGitHub.new
+      c = client(gh)
+
+      ['acme', 'tenants/', 'tenants/../x', 'tenants/Acme', '/tenants/acme', 'tenants/default/../x', 5].each do |bad|
+        expect { c.publish(four, message: 'm', root: bad) }.to raise_error(described_class::InvalidRootError), bad.inspect
+      end
+      ['../index.json', '/index.json', 'a/../../index.json'].each do |bad|
+        expect { c.publish({ bad => 'x' }, message: 'm', root: 'tenants/acme') }
+          .to raise_error(described_class::InvalidRootError), bad.inspect
+      end
+      expect(gh.calls).to be_empty
+    end
+
+    it 'still starts over from the new tip when the branch moved while a tenant published' do
+      gh = FakeGitHub.new
+      gh.fail_next_patch = 1
+
+      result = client(gh).publish(four, message: 'm', root: described_class.root_for('acme'))
+
+      expect(result.status).to eq(:published)
+      expect(gh.tip_files).to include('other.txt', 'tenants/acme/index.json' => '{}')
+    end
+  end
 end
