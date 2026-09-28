@@ -145,7 +145,7 @@ by `anthropic_deploy_main.yml`), and `fly.toml`'s `:nightly` image is
 | **Anthropic - Build & Deploy develop** (`anthropic_deploy_main.yml`) | **Yes, every push** (except docs-only: `**.md`, `.devcontainer/`, `.vscode/`, `LICENSE`) | 2 jobs: Build & push → Trigger Render deploy | **YES — the only one** |
 | Publish Nightly Docker Image (`publish_nighty.yml`) | **No** — manual only since this fix | 1 job: "Push Docker image to multiple registries" | No |
 | Publish Codespace Docker Image (`publish_codespace.yml`) | Only if `package.json`, `pnpm-lock.yaml`, `Gemfile*`, `yarn.lock`, `.mise.toml`, `.devcontainer/Dockerfile.base` or that workflow file changed (can run 10–25 min) | 1 job: "Push Codespace Docker image to multiple registries" | No |
-| CI - RSpec, tests only (`ci_rspec.yml`) | **No** — pull requests and manual (`workflow_dispatch`) only | 1 job: "RSpec (PostgreSQL 16)" | No (builds no image, never touches Render) |
+| CI - RSpec, tests only (`ci_rspec.yml`) | **No** — pull requests and manual (`workflow_dispatch`) only | 2 jobs: "RSpec (PostgreSQL 16)" and "db/schema.rb matches migrations" | No (builds no image, never touches Render) |
 | Sync README to Organization (`sync_readme.yml`) | Only if `README.md` changed | 1 job | No |
 | Publish Preview (`publish_preview.yml`) | No — `release/*` branches only | 1 job | No |
 | Publish Release (`publish_release.yml`) | No — version tags only | 1 job | No |
@@ -833,7 +833,7 @@ Companion to D-store's `6.b` track and Storeapp's Track c (both already recorded
 
 **Ordering (TSF formula):** ❓1 ✅ confirmed → s1 ✅ (needs no decision, foundation, default behaviour unchanged) → s2 ✅ (data) → s3 ✅ (read scope) → s4 ✅ (publish; lifted the k4/k5 guards) → s5 ✅ (triggers) → s6a ✅ (collections) → s7 ✅ (survey) → s7a ✅ (landing count) → **s6b next once ❓3a is answered**; s6b after ❓3a (sponsored slots) (survey, ❓4, independent of the rest). k8 needs s4; k9 to k11 follow k8.
 
-**Suggested next session (updated after the CI - RSpec workflow):** **read the first manual `CI - RSpec` run** (Actions → "CI - RSpec (tests only, NOT the deploy)" → Run workflow on `develop`) and fix what it shows, before building anything new. Everything below still holds.
+**Suggested next session (updated after the schema-drift job):** **read the first manual `CI - RSpec` run** (Actions → "CI - RSpec (tests only, NOT the deploy)" → Run workflow on `develop`; two jobs, RSpec and schema drift) and fix what it shows, before building anything new. Everything below still holds.
 
 **Earlier suggestion (after s7a):** **s6b** once the operator answers ❓3a (a two-line change plus specs, no migration, if the recommendation stands). ❓4a decides s7b and s7c (recommended answer: not yet, so neither is needed). 38c is still gated on the default-tenant-as-root confirmation; 38d needs 38c. **Nothing else is unblocked without an operator answer**, so if none arrives, the useful non-guessing work is checking that CI runs `rspec` against a real Postgres (Task 38 open item 3): every slice since 37b-iii-s2 is unrun.
 
@@ -5346,3 +5346,14 @@ them is already modernized.
 - **Behaviour change on deploy:** none. This patch touches only `.github/workflows/ci_rspec.yml` and `handover.md`. A push to `develop` starts `Anthropic - Build & Deploy develop` (workflow files are not in its `paths-ignore`), but the app code is unchanged, so the image is the same. **Post-push check (1 minute):** confirm `Anthropic - Build & Deploy develop` (two jobs) goes green, then open Actions → **CI - RSpec (tests only, NOT the deploy)** → **Run workflow** → branch `develop`, and paste the result (or the first failing step's log) into the next session.
 - **Changed:** `.github/workflows/ci_rspec.yml` (new), `handover.md`. No migration, route, locale, dependency or app code. One combined patch, branch `feat/ci-rspec-postgres`, base `develop` @ `841c136c`.
 - **Needs the operator:** the first manual run's result; and, unchanged, **❓3a**, **❓4a** and the default-tenant-as-root confirmation.
+
+### Session — CI: `db/schema.rb` drift check (second job in `ci_rspec.yml`)
+
+- **Confirmed landed first:** `origin/develop` tip when fetched was `047710c3` (`ci: run RSpec against a real PostgreSQL`), the previous session's patch (new hash because `git am` re-commits; content identical); the tree was clean, so this patch is built on the right base. **Not confirmed:** any run of `CI - RSpec`: the workflow page showed "This workflow has no runs yet", so the operator has not triggered it and **the first-run result is still outstanding**. Deploy run for `047710c3` not fetched.
+- **Picked because:** the operator said to go on. Everything else on the board is still gated on ❓3a, ❓4a and the default-tenant-as-root confirmation, and the CI result does not exist yet. This is the item the previous session flagged and left out (its choice 2): the rspec job loads `db/schema.rb`, so it cannot notice a hand-edited schema that disagrees with the migrations.
+- **Built:** a second job, `schema-drift`, in `.github/workflows/ci_rspec.yml`: Postgres 16, `bin/rails db:create db:migrate` from empty, then `git diff --exit-code -- db/schema.rb`. A separate job so neither result hides the other. Same triggers as before (PR and manual), so the deploy pipeline is unaffected.
+- **Static check done here:** `db/schema.rb` declares version `2026_09_30_160000`, equal to the newest migration (`20260930160000_add_tenant_to_collections.rb`); 103 migration files. That proves only the version line, not the contents.
+- **Verified how:** YAML parses; `git am` check against the tip. **Nothing run.** Not verified: that all 103 migrations run cleanly from an empty database (old upstream migrations may fail on Postgres 16 or need extensions); that regenerated output is byte-identical to the committed file (Rails/Postgres version differences can reorder or reformat lines, in which case this job is red for a cosmetic reason and the fix is to commit the regenerated `schema.rb`, not to hand-edit).
+- **Behaviour change on deploy:** none; no app code. A push starts `Anthropic - Build & Deploy develop`; the image is unchanged. Then run `CI - RSpec` by hand.
+- **Changed:** `.github/workflows/ci_rspec.yml`, `handover.md`. One combined patch, branch `feat/ci-schema-drift`, base `develop` @ `047710c3`.
+- **Needs the operator:** run `CI - RSpec` once (both jobs) and report; and, unchanged, **❓3a**, **❓4a**, default-tenant-as-root.

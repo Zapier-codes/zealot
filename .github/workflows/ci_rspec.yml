@@ -97,3 +97,56 @@ jobs:
 
       - name: Run RSpec
         run: bundle exec rspec --format documentation
+
+  # Separate job so its result never hides (or is hidden by) the RSpec result.
+  # Several slices hand-edited db/schema.rb because the sandbox had no
+  # Postgres; the rspec job loads schema.rb and so cannot notice if it
+  # disagrees with the migrations. This job runs every migration from an
+  # empty database and fails if the regenerated schema.rb differs.
+  schema-drift:
+    name: db/schema.rb matches migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      RAILS_ENV: test
+      ZEALOT_POSTGRES_HOST: localhost
+      ZEALOT_POSTGRES_PORT: "5432"
+      ZEALOT_POSTGRES_USERNAME: postgres
+      ZEALOT_POSTGRES_PASSWORD: postgres
+      ZEALOT_SENTRY_DISABLE: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install system libraries (from Aptfile)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpq-dev libmagickwand-dev libwebp-dev webp
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4.8" # keep in step with .mise.toml
+          bundler-cache: true
+
+      - name: Run every migration from an empty database
+        run: bin/rails db:create db:migrate
+
+      - name: Fail if schema.rb changed
+        run: git diff --exit-code -- db/schema.rb
