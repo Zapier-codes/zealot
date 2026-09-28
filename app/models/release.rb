@@ -145,6 +145,14 @@ class Release < ApplicationRecord
   has_one :metadata, class_name: 'Metadatum', dependent: :destroy
   has_and_belongs_to_many :devices, dependent: :destroy
 
+  # Task 37b-iii-s7a: the releases that belong to one tenant's catalog, i.e. the releases of the
+  # apps `App.for_tenant` returns (release -> channel -> scheme -> app). It reads through
+  # `App.for_tenant` on purpose so the two can never disagree about what "the default tenant"
+  # or "an unknown tenant" means. Currently used only by the public landing count.
+  scope :for_tenant, ->(tenant) {
+    joins(channel: :scheme).where(schemes: { app_id: App.for_tenant(tenant).select(:id) })
+  }
+
   validates :file, presence: true, on: :create
   validates :rollout_percentage, numericality: {
     only_integer: true, greater_than_or_equal_to: 0, less_than_or_equal_to: 100

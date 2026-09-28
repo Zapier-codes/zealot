@@ -47,13 +47,19 @@ class HomeController < ApplicationController
   # Live counts, plus the documented migration baseline above. Uptime
   # stays static brand copy — nothing in this schema tracks uptime.
   #
+  # Task 37b-iii-s7a: this page is unauthenticated and is the DEFAULT site's number, so it counts
+  # the default tenant's catalog only (`tenant_id IS NULL`, and those apps' releases). Before
+  # this, `App.count` / `Release.count` also counted every tenant's apps into a public total.
+  # With no tenant owning an app yet (nothing sets `apps.tenant_id`), the figure is unchanged.
+  #
   # `compact: true` stats are rendered/animated as "5M+" style shorthand
   # once they reach the millions (see HomeHelper#compact_count and
   # counter_controller.js) instead of a long run of digits.
   def landing_stats
     [
-      { label: t('home.stats.apps'), value: MIGRATED_APPS_BASELINE + App.count, compact: true },
-      { label: t('home.stats.releases'), value: MIGRATED_RELEASES_BASELINE + Release.count, compact: true },
+      { label: t('home.stats.apps'), value: MIGRATED_APPS_BASELINE + App.for_tenant(nil).count, compact: true },
+      { label: t('home.stats.releases'), value: MIGRATED_RELEASES_BASELINE + Release.for_tenant(nil).count,
+        compact: true },
       { label: t('home.stats.uptime'), value: 99, suffix: '.9%' }
     ]
   end
