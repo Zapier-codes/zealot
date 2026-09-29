@@ -3,13 +3,20 @@
 # Task 27e-c: the owner edits the text of the store listing: the name, the short description and the
 # full description. Nothing here changes the live listing.
 #
-#   GET   /apps/:app_id/listing_text    the form, filled with what the draft would publish
-#   PATCH /apps/:app_id/listing_text    listing_text[name|short_description|description]
+#   GET    /apps/:app_id/listing_text          the form, filled with what the draft would publish
+#   PATCH  /apps/:app_id/listing_text          listing_text[name|short_description|description]
+#   POST   /apps/:app_id/listing_text/commit   publish the draft (Task 27e-d)
+#   DELETE /apps/:app_id/listing_text          discard the draft (Task 27e-d)
 #
 # PATCH stages the change into the app's one draft through `ListingEditService#stage`, never through
 # `@app.update`. The draft is checked against the real `App` validations when it is saved (length limits,
 # a name that is not blank), so this controller repeats none of them; a refusal re-shows the form with what
-# the owner typed and leaves the saved draft as it was. Publishing or discarding the draft is 27e-d.
+# the owner typed and leaves the saved draft as it was.
+#
+# Task 27e-d: `commit` writes the draft to the live app in one transaction (`ListingEditService#commit!`);
+# `App`'s own after_commit then republishes the catalog index once, so nothing here enqueues anything.
+# `destroy` discards the draft and touches nothing else. Neither creates a draft: with none there is
+# nothing to publish or discard, and the owner is told so.
 #
 # Only a field the owner has actually changed is staged. A field put back to what is live now is taken out
 # of the draft again (`ListingEditService#unstage`), so the draft never carries an old copy of a field the
@@ -50,7 +57,46 @@ class Apps::ListingTextsController < ApplicationController
     redirect_to app_listing_text_path(@app), notice: t('.saved')
   end
 
+  # POST /apps/:app_id/listing_text/commit
+  def commit
+    authorize ListingEdit.new(app: @app), :commit?
+    raise_if_app_archived!(@app)
+
+    service = ListingEditService.new(app: @app, editor: current_user)
+    draft = open_draft
+    return redirect_to(app_listing_text_path(@app), alert: t('.nothing')) if draft.nil?
+
+    # An empty draft (a refused first save leaves one) has nothing to publish: clear it.
+    if draft.staged_attributes.blank?
+      service.discard!
+      return redirect_to(app_listing_text_path(@app), notice: t('.nothing_staged'))
+    end
+
+    if service.commit!
+      redirect_to app_listing_text_path(@app), notice: t('.published')
+    else
+      reasons = service.draft.errors.map(&:message).to_sentence.presence || t('.unknown')
+      redirect_to app_listing_text_path(@app), alert: t('.refused', reasons: reasons)
+    end
+  end
+
+  # DELETE /apps/:app_id/listing_text
+  def destroy
+    authorize ListingEdit.new(app: @app), :discard?
+    raise_if_app_archived!(@app)
+
+    return redirect_to(app_listing_text_path(@app), alert: t('.nothing')) if open_draft.nil?
+
+    ListingEditService.new(app: @app, editor: current_user).discard!
+    redirect_to app_listing_text_path(@app), notice: t('.discarded')
+  end
+
   private
+
+  # The app's draft if it has one. Never creates it (`ListingEditService#draft` would).
+  def open_draft
+    @app.listing_edits.status_draft.first
+  end
 
   def set_app
     @app = App.find(params[:app_id])

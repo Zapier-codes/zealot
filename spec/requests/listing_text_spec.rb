@@ -2,7 +2,8 @@
 
 require 'rails_helper'
 
-# Task 27e-c: GET and PATCH /apps/:app_id/listing_text. Needs Postgres. NOT run in the sandbox that wrote
+# Task 27e-c and 27e-d: GET and PATCH /apps/:app_id/listing_text, POST .../commit and DELETE (publish and
+# discard the draft). Needs Postgres. NOT run in the sandbox that wrote
 # it (no Rails boot or database there), so look here first if CI is red. What the page does with a draft is
 # the staging layer's job (spec/models/listing_edit_spec.rb, spec/services/listing_edit_service_spec.rb);
 # this file checks the page: who may use it, that it stages and never publishes, and how it refuses.
@@ -22,6 +23,18 @@ RSpec.describe 'Listing text editor', type: :request do
 
   def draft
     app.listing_edits.status_draft.first
+  end
+
+  def publish
+    post commit_app_listing_text_path(app)
+  end
+
+  def discard
+    delete app_listing_text_path(app)
+  end
+
+  def stage_draft(fields)
+    ListingEdit.create!(app: app, editor: owner, staged_attributes: fields)
   end
 
   let(:admin) { make_user('boss', :admin) }
@@ -189,6 +202,152 @@ RSpec.describe 'Listing text editor', type: :request do
         expect(app.listing_edits.count).to eq(0)
       end
     end
+
+    describe 'POST commit (publish)' do
+      it 'writes the draft to the live app in one step and marks the draft committed' do
+        edit = stage_draft('name' => 'New name', 'short_description' => 'New short', 'description' => 'New long')
+
+        publish
+
+        expect(response).to redirect_to(app_listing_text_path(app))
+        expect(flash[:notice]).to eq(I18n.t('apps.listing_texts.commit.published'))
+        app.reload
+        expect([ app.name, app.short_description, app.description ]).to eq([ 'New name', 'New short', 'New long' ])
+        expect(edit.reload).to be_status_committed
+        expect(draft).to be_nil
+      end
+
+      it 'leaves fields that were not staged as they are' do
+        stage_draft('description' => 'New long')
+
+        publish
+
+        app.reload
+        expect([ app.name, app.short_description, app.description ]).to eq([ 'Text app', 'Live short', 'New long' ])
+      end
+
+      it 'enqueues one index publish for a live app' do
+        allow_any_instance_of(App).to receive(:listing_live?).and_return(true)
+        stage_draft('name' => 'New name', 'description' => 'New long')
+
+        expect { publish }.to have_enqueued_job(CatalogIndexPublishJob).exactly(:once)
+      end
+
+      it 'refuses a draft that no longer passes the app rules, and keeps both draft and listing' do
+        edit = stage_draft('name' => 'New name')
+        edit.update_columns(staged_attributes: { 'description' => 'x' * (ListingText::DESCRIPTION_MAX_LENGTH + 1) })
+
+        publish
+
+        expect(response).to redirect_to(app_listing_text_path(app))
+        expect(flash[:alert]).to start_with(I18n.t('apps.listing_texts.commit.refused', reasons: '').chomp('.'))
+        expect(app.reload.description).to eq('Live long')
+        expect(edit.reload).to be_status_draft
+      end
+
+      it 'says there is nothing to publish when there is no draft, and creates none' do
+        publish
+
+        expect(flash[:alert]).to eq(I18n.t('apps.listing_texts.commit.nothing'))
+        expect(app.listing_edits.count).to eq(0)
+      end
+
+      it 'clears an empty draft instead of publishing it' do
+        edit = ListingEdit.create!(app: app, editor: owner, staged_attributes: {})
+
+        expect { publish }.not_to have_enqueued_job(CatalogIndexPublishJob)
+
+        expect(flash[:notice]).to eq(I18n.t('apps.listing_texts.commit.nothing_staged'))
+        expect(edit.reload).to be_status_discarded
+      end
+
+      it 'a second press finds nothing to publish' do
+        stage_draft('name' => 'New name')
+
+        publish
+        publish
+
+        expect(flash[:alert]).to eq(I18n.t('apps.listing_texts.commit.nothing'))
+        expect(app.reload.name).to eq('New name')
+      end
+
+      it 'lets the owner start again after publishing (a new draft can exist)' do
+        stage_draft('name' => 'One')
+        publish
+
+        save_text(name: 'Two')
+
+        expect(draft.staged_attributes).to eq('name' => 'Two')
+        expect(app.listing_edits.count).to eq(2)
+      end
+
+      it 'refuses an archived app' do
+        stage_draft('name' => 'New name')
+        app.update_columns(archived: true)
+
+        publish
+
+        expect(app.reload.name).to eq('Text app')
+        expect(draft).not_to be_nil
+      end
+    end
+
+    describe 'DELETE (discard)' do
+      it 'marks the draft discarded and changes nothing on the app' do
+        edit = stage_draft('name' => 'New name', 'description' => 'New long')
+
+        expect { discard }.not_to have_enqueued_job(CatalogIndexPublishJob)
+
+        expect(response).to redirect_to(app_listing_text_path(app))
+        expect(flash[:notice]).to eq(I18n.t('apps.listing_texts.destroy.discarded'))
+        expect(edit.reload).to be_status_discarded
+        app.reload
+        expect([ app.name, app.short_description, app.description ]).to eq([ 'Text app', 'Live short', 'Live long' ])
+      end
+
+      it 'says there is nothing to discard when there is no draft, and creates none' do
+        discard
+
+        expect(flash[:alert]).to eq(I18n.t('apps.listing_texts.destroy.nothing'))
+        expect(app.listing_edits.count).to eq(0)
+      end
+
+      it 'refuses an archived app and keeps the draft' do
+        stage_draft('name' => 'New name')
+        app.update_columns(archived: true)
+
+        discard
+
+        expect(draft).not_to be_nil
+      end
+    end
+
+    describe 'the buttons on the page' do
+      it 'show Publish and Discard when there is a draft with changes' do
+        stage_draft('name' => 'New name')
+
+        get app_listing_text_path(app)
+
+        expect(response.body).to include(commit_app_listing_text_path(app), I18n.t('apps.listing_texts.show.publish'),
+                                         I18n.t('apps.listing_texts.show.discard'))
+      end
+
+      it 'show only Discard for a draft with nothing that differs from the live listing' do
+        stage_draft('name' => 'Text app')
+
+        get app_listing_text_path(app)
+
+        expect(response.body).to include(I18n.t('apps.listing_texts.show.discard'))
+        expect(response.body).not_to include(commit_app_listing_text_path(app))
+      end
+
+      it 'are absent when there is no draft' do
+        get app_listing_text_path(app)
+
+        expect(response.body).not_to include(commit_app_listing_text_path(app))
+        expect(response.body).not_to include(I18n.t('apps.listing_texts.show.discard'))
+      end
+    end
   end
 
   context 'as an admin' do
@@ -200,6 +359,9 @@ RSpec.describe 'Listing text editor', type: :request do
 
       save_text(name: 'Admin name')
       expect(draft.staged_attributes).to eq('name' => 'Admin name')
+
+      publish
+      expect(app.reload.name).to eq('Admin name')
     end
   end
 
@@ -214,6 +376,12 @@ RSpec.describe 'Listing text editor', type: :request do
         save_text(name: 'Nope')
         expect(response).to have_http_status(:forbidden)
 
+        publish
+        expect(response).to have_http_status(:forbidden)
+
+        discard
+        expect(response).to have_http_status(:forbidden)
+
         sign_out user
       end
 
@@ -221,8 +389,26 @@ RSpec.describe 'Listing text editor', type: :request do
       expect(response).not_to have_http_status(:ok)
       save_text(name: 'Nope')
       expect(response).not_to have_http_status(:ok)
+      publish
+      expect(response).not_to have_http_status(:ok)
+      discard
+      expect(response).not_to have_http_status(:ok)
 
       expect(app.listing_edits.count).to eq(0)
+      expect(app.reload.name).to eq('Text app')
+    end
+
+    it 'cannot publish or discard a draft the owner staged' do
+      edit = ListingEdit.create!(app: app, editor: owner, staged_attributes: { 'name' => 'Owner draft' })
+
+      [ teammate, stranger ].each do |user|
+        sign_in user
+        publish
+        discard
+        sign_out user
+      end
+
+      expect(edit.reload).to be_status_draft
       expect(app.reload.name).to eq('Text app')
     end
 
@@ -260,6 +446,27 @@ RSpec.describe 'Listing text editor', type: :request do
 
       expect(response).to have_http_status(:forbidden)
       expect(acme_app.listing_edits.count).to eq(0)
+    end
+
+    it 'refuses a non-member publishing or discarding a draft on the tenant\'s app' do
+      edit = ListingEdit.create!(app: acme_app, editor: owner, staged_attributes: { 'name' => 'Acme draft' })
+
+      post commit_app_listing_text_path(acme_app)
+      expect(response).to have_http_status(:forbidden)
+      delete app_listing_text_path(acme_app)
+      expect(response).to have_http_status(:forbidden)
+
+      expect(edit.reload).to be_status_draft
+      expect(acme_app.reload.name).to eq('Acme app')
+    end
+
+    it 'lets a member publish a draft on that tenant\'s app' do
+      TenantMembership.create!(user: owner, tenant: acme, role: 'owner')
+      ListingEdit.create!(app: acme_app, editor: owner, staged_attributes: { 'name' => 'Acme draft' })
+
+      post commit_app_listing_text_path(acme_app)
+
+      expect(acme_app.reload.name).to eq('Acme draft')
     end
 
     it 'lets a member stage a change on that tenant\'s app' do

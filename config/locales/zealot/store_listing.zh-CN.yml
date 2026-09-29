@@ -72,6 +72,11 @@ zh-CN:
         empty: 无
         save: 保存草稿
         back: 返回应用
+        publish_hint: 发布会立即把草稿写入商店上架信息。放弃会丢弃草稿，上架信息保持不变。
+        publish: 发布草稿
+        discard: 放弃草稿
+        confirm_publish: 确定把这份草稿发布到商店上架信息吗？
+        confirm_discard: 确定放弃这份草稿吗？未发布的更改将丢失。
         fields:
           name: 名称
           short_description: 简短描述
@@ -84,6 +89,15 @@ zh-CN:
         saved: 草稿已保存，商店上暂未生效。
         unchanged: 没有任何更改。
         refused: "文字未保存：%{reasons}。"
+      commit:
+        published: 草稿已发布，上架信息现已显示你的文字。
+        nothing: 没有可发布的草稿。
+        nothing_staged: 草稿没有任何更改，无需发布。
+        refused: "草稿未发布：%{reasons}。"
+        unknown: 无法更新上架信息
+      destroy:
+        discarded: 草稿已放弃，上架信息未改变。
+        nothing: 没有可放弃的草稿。
     show:
       store_listing: 商店上架
       listing_text: 商店文字

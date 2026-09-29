@@ -72,6 +72,11 @@ en:
         empty: none
         save: Save draft
         back: Back to the app
+        publish_hint: "Publish writes your draft to the listing now. Discard throws the draft away and keeps the listing as it is."
+        publish: Publish draft
+        discard: Discard draft
+        confirm_publish: Publish this draft to the store listing?
+        confirm_discard: Discard this draft? Your unpublished changes will be lost.
         fields:
           name: Name
           short_description: Short description
@@ -84,6 +89,15 @@ en:
         saved: Draft saved. It is not on the store yet.
         unchanged: Nothing was changed.
         refused: "The text was not saved: %{reasons}."
+      commit:
+        published: Draft published. The listing now shows your text.
+        nothing: There is no draft to publish.
+        nothing_staged: The draft had no changes, so there was nothing to publish.
+        refused: "The draft was not published: %{reasons}."
+        unknown: the listing could not be updated
+      destroy:
+        discarded: Draft discarded. The listing was not changed.
+        nothing: There is no draft to discard.
     show:
       store_listing: Store listing
       listing_text: Store listing text

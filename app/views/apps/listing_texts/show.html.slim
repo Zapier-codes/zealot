@@ -1,6 +1,6 @@
 / Task 27e-c: the store-listing text editor. The form is filled with what the app's draft would publish
-/ (`@values`); saving stages a draft and changes nothing on the live listing (27e-d adds publish and
-/ discard). `@live` and `@staged` let each changed field show what is live now. Forms target _top because
+/ (`@values`); saving stages a draft and changes nothing on the live listing. Task 27e-d: the buttons under
+/ the form publish or discard the draft. `@live` and `@staged` let each changed field show what is live now. Forms target _top because
 / the flash notice is outside any turbo frame.
 - fields = [ [ 'name', :text_field ], [ 'short_description', :text_field ], [ 'description', :text_area ] ]
 
@@ -43,3 +43,13 @@
           div class="flex flex-wrap items-center gap-3"
             = f.submit t('.save'), class: 'd-btn d-btn-primary'
             = link_to t('.back'), app_path(@app), class: 'd-link', data: { turbo_frame: '_top' }
+
+        - if @draft
+          .border-t.border-base-300.pt-4.space-y-2
+            p.text-sm.opacity-70 = t('.publish_hint')
+            div class="flex flex-wrap items-center gap-3"
+              - if @staged.any?
+                = button_to t('.publish'), commit_app_listing_text_path(@app), method: :post, class: 'd-btn d-btn-success', \
+                  form: { data: { turbo_frame: '_top', turbo_confirm: t('.confirm_publish') } }
+              = button_to t('.discard'), app_listing_text_path(@app), method: :delete, class: 'd-btn d-btn-error d-btn-outline', \
+                form: { data: { turbo_frame: '_top', turbo_confirm: t('.confirm_discard') } }

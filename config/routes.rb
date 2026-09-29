@@ -54,8 +54,11 @@ Rails.application.routes.draw do
     # Task 27d-e2-d: set or clear the promo video (PATCH /apps/:app_id/promo_video).
     resource :promo_video, only: :update, module: :apps
     # Task 27e-c: the store-listing text editor (name, short description, full description). It stages a
-    # draft (ListingEditService); nothing on the live listing changes until 27e-d adds the commit.
-    resource :listing_text, only: %i[show update], module: :apps
+    # draft (ListingEditService); nothing on the live listing changes until the owner publishes (27e-d).
+    # Task 27e-d: publish (POST .../listing_text/commit) or discard (DELETE) the draft.
+    resource :listing_text, only: %i[show update destroy], module: :apps do
+      post :commit
+    end
     resources :listing_graphics, only: %i[create update destroy], module: :apps do
       # Task 27d-e2-c: move a screenshot up or down one place (params: direction=up|down).
       member { patch :move }
