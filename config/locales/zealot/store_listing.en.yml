@@ -47,6 +47,30 @@ en:
         notice: Graphic removed.
     show:
       store_listing: Store listing
+      listing_graphics:
+        title: Store graphics
+        intro: These are the screenshots and feature graphic store visitors see. Changes reach the store the next time the catalog is published.
+        screenshots: Screenshots
+        screenshots_used: "%{used} of %{max} screenshots"
+        no_screenshots: No screenshots yet. Two or more are recommended.
+        feature_graphic: Feature graphic
+        no_feature_graphic: No feature graphic yet.
+        position: "Screenshot %{number}"
+        size: "%{width} x %{height} px"
+        no_alt_text: No description
+        not_stored: Not stored yet
+        remove: Remove
+        confirm_remove: Remove this graphic from the store listing?
+        add_title: Add a graphic
+        kind: Kind
+        kinds:
+          screenshot: Screenshot
+          feature_graphic: Feature graphic
+        file: Image file
+        alt_text: Description
+        alt_placeholder: "Describe the image (up to %{max} characters)"
+        add: Add
+        rules: "JPEG or PNG without transparency, up to %{max_mb} MB. Screenshots: each side %{min} to %{max_side} px, at most %{max_shots}. Feature graphic: exactly %{feature_w} x %{feature_h} px; a new one replaces the old."
     store_listings:
       status:
         draft: Not on the store

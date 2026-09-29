@@ -47,6 +47,30 @@ zh-CN:
         notice: 图片已删除。
     show:
       store_listing: 商店上架
+      listing_graphics:
+        title: 商店图片
+        intro: 这是商店访客看到的截图和宣传图。修改会在下次发布目录时同步到商店。
+        screenshots: 截图
+        screenshots_used: "已有 %{used} 张，最多 %{max} 张"
+        no_screenshots: 还没有截图，建议至少添加两张。
+        feature_graphic: 宣传图
+        no_feature_graphic: 还没有宣传图。
+        position: "第 %{number} 张截图"
+        size: "%{width} x %{height} 像素"
+        no_alt_text: 无描述
+        not_stored: 尚未保存
+        remove: 删除
+        confirm_remove: 确定从商店上架信息中删除这张图片吗？
+        add_title: 添加图片
+        kind: 类型
+        kinds:
+          screenshot: 截图
+          feature_graphic: 宣传图
+        file: 图片文件
+        alt_text: 描述
+        alt_placeholder: "描述这张图片（最多 %{max} 个字符）"
+        add: 添加
+        rules: "JPEG 或不含透明通道的 PNG，最大 %{max_mb} MB。截图：每边 %{min} 至 %{max_side} 像素，最多 %{max_shots} 张。宣传图：必须为 %{feature_w} x %{feature_h} 像素；新图会替换旧图。"
     store_listings:
       status:
         draft: 未上架

@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 # Task 27d-e2-a: the owner adds and removes an app's store-listing graphics (screenshots and the
-# feature graphic). Two actions and no page: the page that lists them and holds the form is 27d-e2-b,
-# so for now both redirect to the app's page.
+# feature graphic). Two actions and no page of their own: the panel that lists them and holds the form
+# is a section of the app page (27d-e2-b, `apps/_listing_graphics`), which is where both redirect.
 #
 #   POST   /apps/:app_id/listing_graphics       multipart: listing_graphic[file], [kind], [alt_text]
 #   DELETE /apps/:app_id/listing_graphics/:id

@@ -1,0 +1,47 @@
+/ Task 27d-e2-b: the owner's store-listing graphics panel. Shown on the app page to whoever passes
+/ ListingGraphicPolicy#create? (see show.html.slim). Lists what the signed catalog index will carry
+/ (screenshots in position order, then the feature graphic) and holds the upload form; add and remove
+/ post to Apps::ListingGraphicsController (27d-e2-a). Links and forms target _top because the app
+/ page lives inside the #app turbo frame and the flash notice is outside it.
+- screenshots = app.listing_graphics.select(&:kind_screenshot?).sort_by(&:position)
+- feature = app.listing_graphics.find(&:kind_feature_graphic?)
+- max_screenshots = ListingGraphicRules::MAX_SCREENSHOTS
+
+.card.mb-4#listing-graphics
+  .card-header
+    h3.card-title = t('apps.show.listing_graphics.title')
+    .card-tools
+      span.text-xs.opacity-65 = t('apps.show.listing_graphics.screenshots_used', used: screenshots.size, max: max_screenshots)
+  .card-body
+    p.text-sm.opacity-65.mb-4 = t('apps.show.listing_graphics.intro')
+
+    h4.text-sm.font-semibold.mb-2 = t('apps.show.listing_graphics.screenshots')
+    - if screenshots.empty?
+      p.text-sm.opacity-65.mb-4 = t('apps.show.listing_graphics.no_screenshots')
+    - else
+      .flex.flex-wrap.gap-3.mb-4
+        - screenshots.each_with_index do |graphic, index|
+          = render 'apps/listing_graphic', app: app, graphic: graphic, label: t('apps.show.listing_graphics.position', number: index + 1)
+
+    h4.text-sm.font-semibold.mb-2 = t('apps.show.listing_graphics.feature_graphic')
+    - if feature
+      .flex.flex-wrap.gap-3.mb-4
+        = render 'apps/listing_graphic', app: app, graphic: feature, label: nil
+    - else
+      p.text-sm.opacity-65.mb-4 = t('apps.show.listing_graphics.no_feature_graphic')
+
+    = form_with scope: :listing_graphic, url: app_listing_graphics_path(app), method: :post, multipart: true, \
+      html: { class: 'flex flex-col gap-2 border-t border-base-300 pt-4' }, data: { turbo_frame: '_top' } do |f|
+      h4.text-sm.font-semibold = t('apps.show.listing_graphics.add_title')
+      .flex.flex-wrap.gap-2
+        = f.select :kind, [ [ t('apps.show.listing_graphics.kinds.screenshot'), 'screenshot' ], \
+                            [ t('apps.show.listing_graphics.kinds.feature_graphic'), 'feature_graphic' ] ], \
+          {}, class: 'd-select d-select-sm', 'aria-label': t('apps.show.listing_graphics.kind')
+        = f.file_field :file, accept: ListingGraphicRules::ALLOWED_CONTENT_TYPES.join(','), required: true, \
+          class: 'd-file-input d-file-input-sm', 'aria-label': t('apps.show.listing_graphics.file')
+      = f.text_field :alt_text, maxlength: ListingGraphicRules::ALT_TEXT_MAX_LENGTH, \
+        placeholder: t('apps.show.listing_graphics.alt_placeholder', max: ListingGraphicRules::ALT_TEXT_MAX_LENGTH), \
+        class: 'd-input d-input-sm w-full', 'aria-label': t('apps.show.listing_graphics.alt_text')
+      p.text-xs.opacity-65 = t('apps.show.listing_graphics.rules', min: ListingGraphicRules::MIN_SIDE, max_side: ListingGraphicRules::MAX_SIDE, feature_w: ListingGraphicRules::FEATURE_GRAPHIC_WIDTH, feature_h: ListingGraphicRules::FEATURE_GRAPHIC_HEIGHT, max_mb: ListingGraphicRules::MAX_BYTES / (1024 * 1024), max_shots: max_screenshots)
+      div
+        = f.submit t('apps.show.listing_graphics.add'), class: 'd-btn d-btn-primary d-btn-sm'

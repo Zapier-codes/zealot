@@ -1,0 +1,18 @@
+/ Task 27d-e2-b: one tile of the graphics panel (a screenshot or the feature graphic) with its remove
+/ button. The thumbnail is the same public URL the catalog index carries (GET /download/graphics/:id);
+/ a row that has no stored bytes yet shows a placeholder instead of a broken image, the rule the
+/ index applies (it lists only a graphic that is stored and hashed).
+- stored = graphic.storage_key.present? && graphic.sha256.present?
+.flex.flex-col.gap-1.text-xs style="width: 9rem"
+  - if stored
+    = image_tag download_graphic_path(graphic), alt: graphic.alt_text.to_s, loading: 'lazy', \
+      class: 'rounded border border-base-300 w-full h-auto'
+  - else
+    .rounded.border.border-base-300.p-3.opacity-65 = t('apps.show.listing_graphics.not_stored')
+  - if label
+    .font-semibold = label
+  .opacity-65 = t('apps.show.listing_graphics.size', width: graphic.width, height: graphic.height)
+  .opacity-65 = graphic.alt_text.presence || t('apps.show.listing_graphics.no_alt_text')
+  = button_to t('apps.show.listing_graphics.remove'), app_listing_graphic_path(app, graphic), method: :delete, \
+    class: 'd-btn d-btn-error d-btn-outline d-btn-xs', \
+    form: { data: { turbo_frame: '_top', turbo_confirm: t('apps.show.listing_graphics.confirm_remove') } }

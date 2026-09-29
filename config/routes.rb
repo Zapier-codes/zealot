@@ -50,7 +50,7 @@ Rails.application.routes.draw do
 
     resources :collaborators, except: %i[index show]
 
-    # Task 27d-e2-a: add and remove store-listing graphics (no page yet: 27d-e2-b).
+    # Task 27d-e2-a: add and remove store-listing graphics; the panel that calls them is on the app page (27d-e2-b).
     resources :listing_graphics, only: %i[create destroy], module: :apps
 
     # Task 25: the app's store listing (draft -> awaiting payment -> live).

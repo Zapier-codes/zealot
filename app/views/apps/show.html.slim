@@ -38,5 +38,9 @@
 
   = render 'schemes', app: @app
 
+  / Task 27d-e2-b: store-listing graphics, for whoever may change them (the same rule the endpoints use).
+  - if !@app.archived && policy(ListingGraphic.new(app: @app)).create?
+    = render 'listing_graphics', app: @app
+
   - if current_user&.manage?(app: @app)
     == render "collaborators", app: @app
