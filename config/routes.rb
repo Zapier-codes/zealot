@@ -51,7 +51,10 @@ Rails.application.routes.draw do
     resources :collaborators, except: %i[index show]
 
     # Task 27d-e2-a: add and remove store-listing graphics; the panel that calls them is on the app page (27d-e2-b).
-    resources :listing_graphics, only: %i[create destroy], module: :apps
+    resources :listing_graphics, only: %i[create update destroy], module: :apps do
+      # Task 27d-e2-c: move a screenshot up or down one place (params: direction=up|down).
+      member { patch :move }
+    end
 
     # Task 25: the app's store listing (draft -> awaiting payment -> live).
     resource :store_listing, only: %i[show create], module: :apps do

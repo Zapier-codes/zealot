@@ -45,6 +45,13 @@ en:
         storage_failed: The image could not be stored. Nothing was saved; please try again in a moment.
       destroy:
         notice: Graphic removed.
+      update:
+        notice: Description saved.
+        refused: "The description was not saved: %{reasons}."
+      move:
+        moved: Screenshot moved.
+        unchanged: The screenshot is already there.
+        bad_direction: Choose whether to move the screenshot earlier or later.
     show:
       store_listing: Store listing
       listing_graphics:
@@ -60,6 +67,9 @@ en:
         no_alt_text: No description
         not_stored: Not stored yet
         remove: Remove
+        save: Save
+        move_earlier: Earlier
+        move_later: Later
         confirm_remove: Remove this graphic from the store listing?
         add_title: Add a graphic
         kind: Kind

@@ -1,5 +1,5 @@
 / Task 27d-e2-b: one tile of the graphics panel (a screenshot or the feature graphic) with its remove
-/ button. The thumbnail is the same public URL the catalog index carries (GET /download/graphics/:id);
+/ button (and, since 27d-e2-c, its description form and move buttons). The thumbnail is the same public URL the catalog index carries (GET /download/graphics/:id);
 / a row that has no stored bytes yet shows a placeholder instead of a broken image, the rule the
 / index applies (it lists only a graphic that is stored and hashed).
 - stored = graphic.storage_key.present? && graphic.sha256.present?
@@ -12,7 +12,24 @@
   - if label
     .font-semibold = label
   .opacity-65 = t('apps.show.listing_graphics.size', width: graphic.width, height: graphic.height)
-  .opacity-65 = graphic.alt_text.presence || t('apps.show.listing_graphics.no_alt_text')
+  / Task 27d-e2-c1: change the description in place (blank clears it). Only the description is sent.
+  = form_with scope: :listing_graphic, url: app_listing_graphic_path(app, graphic), method: :patch, \
+    html: { class: 'flex flex-col gap-1' }, data: { turbo_frame: '_top' } do |f|
+    = f.text_field :alt_text, value: graphic.alt_text, maxlength: ListingGraphicRules::ALT_TEXT_MAX_LENGTH, \
+      placeholder: t('apps.show.listing_graphics.no_alt_text'), class: 'd-input d-input-xs w-full', \
+      'aria-label': t('apps.show.listing_graphics.alt_text')
+    = f.submit t('apps.show.listing_graphics.save'), class: 'd-btn d-btn-xs'
+  / Task 27d-e2-c2: screenshots only. The first has no "earlier" and the last no "later".
+  - if label
+    .flex.gap-1
+      - unless first
+        = button_to t('apps.show.listing_graphics.move_earlier'), move_app_listing_graphic_path(app, graphic), \
+          method: :patch, params: { direction: 'up' }, class: 'd-btn d-btn-xs', \
+          form: { data: { turbo_frame: '_top' } }
+      - unless last
+        = button_to t('apps.show.listing_graphics.move_later'), move_app_listing_graphic_path(app, graphic), \
+          method: :patch, params: { direction: 'down' }, class: 'd-btn d-btn-xs', \
+          form: { data: { turbo_frame: '_top' } }
   = button_to t('apps.show.listing_graphics.remove'), app_listing_graphic_path(app, graphic), method: :delete, \
     class: 'd-btn d-btn-error d-btn-outline d-btn-xs', \
     form: { data: { turbo_frame: '_top', turbo_confirm: t('apps.show.listing_graphics.confirm_remove') } }

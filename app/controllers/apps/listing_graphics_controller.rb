@@ -6,6 +6,8 @@
 #
 #   POST   /apps/:app_id/listing_graphics       multipart: listing_graphic[file], [kind], [alt_text]
 #   DELETE /apps/:app_id/listing_graphics/:id
+#   PATCH  /apps/:app_id/listing_graphics/:id        (27d-e2-c1: the description)
+#   PATCH  /apps/:app_id/listing_graphics/:id/move   (27d-e2-c2: up or down one place)
 #
 # All the judgement is `ListingGraphicIngest` (27d-d2-c): it reads the type and size from the file's own
 # bytes, applies Play's rules and the slot cap, and stores and hashes the bytes. This controller only
@@ -37,6 +39,37 @@ class Apps::ListingGraphicsController < ApplicationController
   rescue ListingGraphicIngest::StorageFailed => e
     Rails.logger.error("[Apps::ListingGraphicsController#create] app #{@app.id}: #{e.message}")
     redirect_to app_path(@app), alert: t('.storage_failed')
+  end
+
+  # PATCH /apps/:app_id/listing_graphics/:id  (Task 27d-e2-c1)
+  # Changes the description (alt text) and nothing else: the file, its kind and its position are never
+  # taken from the request. A blank value clears it. The model's length check is the only judge.
+  def update
+    graphic = @app.listing_graphics.find(params[:id])
+    authorize graphic, :update?
+    raise_if_app_archived!(@app)
+
+    if graphic.update(alt_text: graphic_params[:alt_text].to_s.strip.presence)
+      redirect_to app_path(@app), notice: t('.notice')
+    else
+      redirect_to app_path(@app), alert: t('.refused', reasons: graphic.errors.full_messages.to_sentence)
+    end
+  end
+
+  # PATCH /apps/:app_id/listing_graphics/:id/move?direction=up|down  (Task 27d-e2-c2)
+  # Screenshots only (the feature graphic has no order, so its id is a 404 here).
+  def move
+    graphic = @app.listing_graphics.kind_screenshot.find(params[:id])
+    authorize graphic, :move?
+    raise_if_app_archived!(@app)
+
+    direction = params[:direction].to_s
+    unless ListingGraphicReorder::DIRECTIONS.include?(direction)
+      return redirect_to(app_path(@app), alert: t('.bad_direction'))
+    end
+
+    result = ListingGraphicReorder.call(app: @app, graphic: graphic, direction: direction)
+    redirect_to app_path(@app), notice: t(result.changed? ? '.moved' : '.unchanged')
   end
 
   # DELETE /apps/:app_id/listing_graphics/:id

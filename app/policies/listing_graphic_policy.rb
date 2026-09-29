@@ -15,6 +15,17 @@ class ListingGraphicPolicy < ApplicationPolicy
     manage_listing?
   end
 
+  # Task 27d-e2-c: changing a graphic's description and moving a screenshot. These are overridden on
+  # purpose: the inherited `update?` is `tenant_access? && manage?` with no app, which would let any
+  # developer edit another owner's graphics.
+  def update?
+    manage_listing?
+  end
+
+  def move?
+    manage_listing?
+  end
+
   class Scope < Scope
     def resolve
       scope.all

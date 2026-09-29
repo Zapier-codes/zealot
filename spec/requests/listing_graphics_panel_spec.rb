@@ -72,6 +72,22 @@ RSpec.describe 'Listing graphics panel on the app page', type: :request do
       expect(response.body).not_to include(I18n.t('apps.show.listing_graphics.no_feature_graphic'))
     end
 
+    it 'offers a description form on every graphic and move buttons only where a move is possible' do
+      first = add_graphic(kind: 'screenshot', position: 0)
+      second = add_graphic(kind: 'screenshot', position: 1)
+      feature = add_graphic(kind: 'feature_graphic', width: 1024, height: 500)
+
+      get app_path(app)
+
+      [ first, second, feature ].each do |graphic|
+        expect(response.body).to include(%(action="#{app_listing_graphic_path(app, graphic)}"))
+      end
+      # first can only go later, second only earlier, the feature graphic has no order
+      expect(response.body.scan(move_app_listing_graphic_path(app, first)).size).to eq(1)
+      expect(response.body.scan(move_app_listing_graphic_path(app, second)).size).to eq(1)
+      expect(response.body).not_to include(move_app_listing_graphic_path(app, feature))
+    end
+
     it 'shows a placeholder, not a broken image, for a row whose bytes are not stored yet' do
       pending_row = add_graphic(kind: 'screenshot', stored: false)
 

@@ -45,6 +45,13 @@ zh-CN:
         storage_failed: 图片无法保存，未做任何更改，请稍后重试。
       destroy:
         notice: 图片已删除。
+      update:
+        notice: 描述已保存。
+        refused: "描述未保存：%{reasons}。"
+      move:
+        moved: 截图已移动。
+        unchanged: 截图已在该位置。
+        bad_direction: 请选择将截图前移还是后移。
     show:
       store_listing: 商店上架
       listing_graphics:
@@ -60,6 +67,9 @@ zh-CN:
         no_alt_text: 无描述
         not_stored: 尚未保存
         remove: 删除
+        save: 保存
+        move_earlier: 前移
+        move_later: 后移
         confirm_remove: 确定从商店上架信息中删除这张图片吗？
         add_title: 添加图片
         kind: 类型
