@@ -71,6 +71,26 @@ RSpec.describe 'Listing text editor', type: :request do
         expect(response.body).to include('Draft short', 'Live long')
         expect(response.body).to include(I18n.t('apps.listing_texts.show.live_now', text: 'Live short'))
       end
+
+      it 'says the wording check is advice and shows none for plain text (Task 27e-e)' do
+        get app_listing_text_path(app)
+
+        expect(response.body).to include(I18n.t('apps.listing_texts.show.advice.note'))
+        expect(response.body).not_to include('data-advice=')
+        expect(response.body).not_to include('-advice"')
+      end
+
+      it 'shows wording advice under the field whose text uses discouraged wording (Task 27e-e)' do
+        ListingEdit.create!(app: app, editor: owner, staged_attributes: { 'name' => 'BEST APP!!! Free' })
+
+        get app_listing_text_path(app)
+
+        expect(response.body).to include('id="listing-text-name-advice"')
+        expect(response.body).to include('data-advice="repeated_punctuation"', 'data-advice="performance"',
+                                         'data-advice="deal"')
+        expect(response.body).not_to include('id="listing-text-short_description-advice"')
+        expect(response.body).not_to include('id="listing-text-description-advice"')
+      end
     end
 
     describe 'PATCH' do
@@ -84,6 +104,25 @@ RSpec.describe 'Listing text editor', type: :request do
         expect(draft.editor).to eq(owner)
         app.reload
         expect([ app.name, app.short_description, app.description ]).to eq([ 'Text app', 'Live short', 'Live long' ])
+      end
+
+      it 'stages text that has wording warnings and shows the advice after the redirect (Task 27e-e)' do
+        save_text(name: 'BEST APP!!! Free')
+
+        expect(response).to redirect_to(app_listing_text_path(app))
+        expect(flash[:notice]).to eq(I18n.t('apps.listing_texts.update.saved'))
+        expect(draft.staged_attributes).to eq('name' => 'BEST APP!!! Free')
+
+        follow_redirect!
+
+        expect(response.body).to include('data-advice="repeated_punctuation"')
+      end
+
+      it 'shows the advice again when a refused save re-renders the form (Task 27e-e)' do
+        save_text(name: 'BEST APP!!!', description: 'x' * (ListingText::DESCRIPTION_MAX_LENGTH + 1))
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response.body).to include('data-advice="performance"')
       end
 
       it 'does not republish the catalog index, even for a live app' do
@@ -215,6 +254,16 @@ RSpec.describe 'Listing text editor', type: :request do
         expect([ app.name, app.short_description, app.description ]).to eq([ 'New name', 'New short', 'New long' ])
         expect(edit.reload).to be_status_committed
         expect(draft).to be_nil
+      end
+
+      it 'publishes a draft that has wording warnings; the advice never blocks it (Task 27e-e)' do
+        stage_draft('name' => 'BEST APP!!! Free', 'description' => 'Download now.')
+
+        publish
+
+        expect(flash[:notice]).to eq(I18n.t('apps.listing_texts.commit.published'))
+        app.reload
+        expect([ app.name, app.description ]).to eq([ 'BEST APP!!! Free', 'Download now.' ])
       end
 
       it 'leaves fields that were not staged as they are' do

@@ -85,6 +85,20 @@ en:
           name: The app's name.
           short_description: "One line, up to %{max_short} characters. Line breaks become spaces."
           description: "Plain text, up to %{max_full} characters. Blank lines separate paragraphs; links and formatting are not applied."
+        advice:
+          note: The wording check reads English only. It is advice; it never stops you from saving or publishing.
+          title: Wording advice
+          warnings:
+            too_long: "Google Play limits titles to %{limit} characters; this name has %{count}."
+            emoji: "Google Play's metadata policy discourages emoji and emoticons here: %{match}."
+            repeated_punctuation: "Google Play's metadata policy discourages repeated punctuation: %{match}."
+            all_caps_word: "Google Play allows ALL-CAPS words only for a brand name: %{match}."
+            performance: "Google Play's metadata policy discourages performance and ranking claims: %{match}."
+            deal: "Google Play's metadata policy discourages price and promotion wording: %{match}."
+            call_to_action: "Google Play's metadata policy discourages calls to action: %{match}."
+            all_caps_run: "Runs of ALL-CAPS words read as shouting: %{match}."
+            many_emoji: "This text has %{count} emoji. Google Play discourages excessive emoji; more than %{limit} is flagged here."
+            keyword_stuffing: "This text may repeat keywords too often: %{match} (the most used appears %{count} times). Google Play discourages keyword stuffing."
       update:
         saved: Draft saved. It is not on the store yet.
         unchanged: Nothing was changed.

@@ -18,6 +18,10 @@
 # `destroy` discards the draft and touches nothing else. Neither creates a draft: with none there is
 # nothing to publish or discard, and the owner is told so.
 #
+# Task 27e-e: the page also shows wording advice per field (`ListingCopyAdvisor`, from Play's metadata
+# rules) for the text the form holds. It is advice only: it is computed for display and never read by
+# `update`, so it cannot refuse or change a save.
+#
 # Only a field the owner has actually changed is staged. A field put back to what is live now is taken out
 # of the draft again (`ListingEditService#unstage`), so the draft never carries an old copy of a field the
 # owner did not touch, which a later commit would write over the live app.
@@ -157,6 +161,7 @@ class Apps::ListingTextsController < ApplicationController
     @values = shown.merge(values || {})
     staged = @draft ? @draft.staged_attributes.stringify_keys : {}
     @staged = FIELDS.select { |field| staged.key?(field) && staged[field] != @live[field] }
+    @advice = ListingCopyAdvisor.call(@values)
     @title = t('apps.listing_texts.show.title')
   end
 end

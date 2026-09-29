@@ -85,6 +85,20 @@ zh-CN:
           name: 应用的名称。
           short_description: "单行，最多 %{max_short} 个字符。换行会变成空格。"
           description: "纯文本，最多 %{max_full} 个字符。空行用于分段；链接和格式不会生效。"
+        advice:
+          note: 措辞检查目前只识别英文。它只是建议，不会阻止你保存或发布。
+          title: 措辞建议
+          warnings:
+            too_long: "Google Play 将标题限制为 %{limit} 个字符；这个名称有 %{count} 个。"
+            emoji: "Google Play 的元数据政策不建议在此处使用表情符号或文字表情：%{match}。"
+            repeated_punctuation: "Google Play 的元数据政策不建议重复使用标点：%{match}。"
+            all_caps_word: "Google Play 只允许品牌名称使用全大写单词：%{match}。"
+            performance: "Google Play 的元数据政策不建议使用性能和排名类宣称：%{match}。"
+            deal: "Google Play 的元数据政策不建议使用价格和促销类措辞：%{match}。"
+            call_to_action: "Google Play 的元数据政策不建议使用行动号召类措辞：%{match}。"
+            all_caps_run: "连续的全大写单词读起来像在喊叫：%{match}。"
+            many_emoji: "这段文字有 %{count} 个表情符号。Google Play 不建议过量使用表情符号；这里超过 %{limit} 个就会提示。"
+            keyword_stuffing: "这段文字可能过于频繁地重复关键词：%{match}（出现最多的一个出现了 %{count} 次）。Google Play 不建议堆砌关键词。"
       update:
         saved: 草稿已保存，商店上暂未生效。
         unchanged: 没有任何更改。

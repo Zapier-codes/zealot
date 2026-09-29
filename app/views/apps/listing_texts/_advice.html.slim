@@ -1,0 +1,12 @@
+/ Task 27e-e: the wording advice for one field of the listing text editor. Advice, not a gate: nothing here
+/ blocks a save or a publish. `warnings` are ListingCopyAdvisor::Warning structs for this field (the page
+/ passes an empty list when the text is clean, and then nothing is drawn). The heading carries the meaning in
+/ words, so colour is never the only signal.
+- base = 'apps.listing_texts.show.advice'
+- if warnings.any?
+  .d-alert.d-alert-warning.dark:d-alert-soft.mt-2.text-xs role="note" id="listing-text-#{field}-advice"
+    div
+      p.font-semibold = t("#{base}.title")
+      ul.list-disc.pl-4
+        - warnings.each do |warning|
+          li data-advice=warning.key = t("#{base}.warnings.#{warning.key}", match: warning.match.to_s, count: warning.count, limit: warning.limit)

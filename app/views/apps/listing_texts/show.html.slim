@@ -1,7 +1,8 @@
 / Task 27e-c: the store-listing text editor. The form is filled with what the app's draft would publish
 / (`@values`); saving stages a draft and changes nothing on the live listing. Task 27e-d: the buttons under
 / the form publish or discard the draft. `@live` and `@staged` let each changed field show what is live now. Forms target _top because
-/ the flash notice is outside any turbo frame.
+/ the flash notice is outside any turbo frame. Task 27e-c/27e-e: `@advice` holds the wording warnings per field
+/ (advice only; see ListingCopyAdvisor), shown under the field they belong to; they never block a save.
 - fields = [ [ 'name', :text_field ], [ 'short_description', :text_field ], [ 'description', :text_area ] ]
 
 - content_for :title do
@@ -19,6 +20,7 @@
         h3.card-title = t('.card_title')
       .card-body class="space-y-4"
         p.text-sm.opacity-70 = t('.intro')
+        p.text-xs.opacity-65 = t('.advice.note')
 
         - if @staged.any?
           .d-alert.d-alert-info role="status"
@@ -27,16 +29,18 @@
         = form_with scope: :listing_text, url: app_listing_text_path(@app), method: :patch, \
           html: { class: 'space-y-4' }, data: { turbo_frame: '_top' } do |f|
           - fields.each do |field, kind|
+            - described_by = [ "listing-text-#{field}-hint", (@advice[field].any? ? "listing-text-#{field}-advice" : nil) ].compact.join(' ')
             div
               = f.label field, t(".fields.#{field}"), class: 'block text-sm font-semibold mb-1'
               - if kind == :text_area
                 = f.text_area field, value: @values[field], rows: 12, class: 'd-textarea w-full', \
-                  'aria-describedby': "listing-text-#{field}-hint"
+                  'aria-describedby': described_by
               - else
                 = f.text_field field, value: @values[field], class: 'd-input w-full', \
-                  'aria-describedby': "listing-text-#{field}-hint"
+                  'aria-describedby': described_by
               p.text-xs.opacity-65.mt-1 id="listing-text-#{field}-hint"
                 = t(".hints.#{field}", max_short: ListingText::SHORT_DESCRIPTION_MAX_LENGTH, max_full: ListingText::DESCRIPTION_MAX_LENGTH)
+              = render 'apps/listing_texts/advice', field: field, warnings: @advice[field]
               - if @staged.include?(field)
                 p.text-xs.opacity-65.mt-1
                   = t('.live_now', text: truncate(@live[field].to_s.presence || t('.empty'), length: 200))
