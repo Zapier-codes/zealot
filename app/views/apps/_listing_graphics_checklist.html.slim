@@ -1,0 +1,19 @@
+/ Task 27d-e2-e: the Play-style checklist. Advice, not a gate: nothing here blocks an upload or going live.
+/ Built by ListingGraphicChecklist from what the index will carry (stored graphics only). The tick is
+/ never the only signal: each row also carries screen-reader text saying done or not done.
+- items = ListingGraphicChecklist.call(app.listing_graphics, video_youtube_id: app.promo_video_youtube_id)
+- base = 'apps.show.listing_graphics.checklist'
+.mb-4#listing-graphics-checklist
+  h4.text-sm.font-semibold.mb-1
+    = t("#{base}.title")
+    span.text-xs.font-normal.opacity-65.ml-2 = t("#{base}.summary", met: ListingGraphicChecklist.met_count(items), total: items.size)
+  ul.text-sm.flex.flex-col.gap-1
+    - items.each do |item|
+      li.flex.gap-2 data-checklist-item=item.key data-met=item.met.to_s
+        span aria-hidden="true" class=(item.met ? 'text-success' : 'opacity-65') = item.met ? '✓' : '○'
+        span.sr-only = t("#{base}.#{item.met ? 'done' : 'todo'}")
+        span class=(item.met ? '' : 'opacity-80')
+          = t("#{base}.items.#{item.key}")
+          - if item.count
+            span.opacity-65.ml-1 = t("#{base}.progress", count: [ item.count, item.target ].min, target: item.target)
+  p.text-xs.opacity-65.mt-1 = t("#{base}.hint")

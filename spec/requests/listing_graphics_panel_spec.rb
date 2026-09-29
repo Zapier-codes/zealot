@@ -100,6 +100,37 @@ RSpec.describe 'Listing graphics panel on the app page', type: :request do
       expect(response.body).to include(I18n.t('apps.show.listing_graphics.video.remove'))
     end
 
+    # Task 27d-e2-e: the Play checklist is advice, ticked from what the index will carry.
+    it 'shows the Play checklist with nothing ticked for an app with no graphics' do
+      get app_path(app)
+
+      expect(response.body).to include('id="listing-graphics-checklist"')
+      expect(response.body).to include(I18n.t('apps.show.listing_graphics.checklist.summary', met: 0, total: 5))
+      expect(response.body.scan('data-met="false"').size).to eq(5)
+      expect(response.body).not_to include('data-met="true"')
+    end
+
+    it 'ticks the checklist as stored graphics, a description and a video are added' do
+      2.times { |i| add_graphic(kind: 'screenshot', position: i, alt_text: 'Home') }
+      add_graphic(kind: 'feature_graphic', alt_text: 'Cover', width: 1024, height: 500)
+      app.update!(promo_video_youtube_id: 'dQw4w9WgXcQ')
+
+      get app_path(app)
+
+      expect(response.body).to include(I18n.t('apps.show.listing_graphics.checklist.summary', met: 4, total: 5))
+      expect(response.body).to include('data-checklist-item="min_screenshots" data-met="true"')
+      expect(response.body).to include('data-checklist-item="promo_screenshots" data-met="false"')
+      expect(response.body).to include('data-checklist-item="video" data-met="true"')
+    end
+
+    it 'does not tick anything for a row whose bytes are not stored yet' do
+      2.times { |i| add_graphic(kind: 'screenshot', position: i, stored: false) }
+
+      get app_path(app)
+
+      expect(response.body).to include('data-checklist-item="min_screenshots" data-met="false"')
+    end
+
     it 'shows a placeholder, not a broken image, for a row whose bytes are not stored yet' do
       pending_row = add_graphic(kind: 'screenshot', stored: false)
 

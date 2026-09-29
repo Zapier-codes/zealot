@@ -67,6 +67,19 @@ en:
       listing_graphics:
         title: Store graphics
         intro: These are the screenshots and feature graphic store visitors see. Changes reach the store the next time the catalog is published.
+        checklist:
+          title: Play checklist
+          summary: "%{met} of %{total} done"
+          done: Done.
+          todo: Not done yet.
+          progress: "(%{count} of %{target})"
+          hint: These are Google Play's recommendations. They are advice only; nothing here stops you from publishing.
+          items:
+            min_screenshots: At least 2 screenshots (Play needs 2 to publish)
+            promo_screenshots: 4 or more screenshots of 1080 px or more, 16:9 or 9:16 (recommended for store promotion)
+            feature_graphic: A feature graphic (1024 x 500 px)
+            alt_text: A description on every graphic
+            video: A promo video
         screenshots: Screenshots
         screenshots_used: "%{used} of %{max} screenshots"
         no_screenshots: No screenshots yet. Two or more are recommended.

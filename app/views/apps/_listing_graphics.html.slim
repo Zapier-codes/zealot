@@ -15,6 +15,9 @@
   .card-body
     p.text-sm.opacity-65.mb-4 = t('apps.show.listing_graphics.intro')
 
+    / Task 27d-e2-e: Play's recommendations as a tick list (advice only).
+    = render 'apps/listing_graphics_checklist', app: app
+
     h4.text-sm.font-semibold.mb-2 = t('apps.show.listing_graphics.screenshots')
     - if screenshots.empty?
       p.text-sm.opacity-65.mb-4 = t('apps.show.listing_graphics.no_screenshots')

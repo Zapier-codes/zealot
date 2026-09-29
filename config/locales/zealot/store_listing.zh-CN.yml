@@ -67,6 +67,19 @@ zh-CN:
       listing_graphics:
         title: 商店图片
         intro: 这是商店访客看到的截图和宣传图。修改会在下次发布目录时同步到商店。
+        checklist:
+          title: Play 上架清单
+          summary: "已完成 %{met} / %{total}"
+          done: 已完成。
+          todo: 尚未完成。
+          progress: "（%{count} / %{target}）"
+          hint: 这些是 Google Play 的建议，仅供参考，不会阻止你发布。
+          items:
+            min_screenshots: 至少 2 张截图（Play 发布需要 2 张）
+            promo_screenshots: 4 张或更多截图，边长不少于 1080 像素，比例为 16:9 或 9:16（建议用于商店推广）
+            feature_graphic: 一张宣传图（1024 x 500 像素）
+            alt_text: 每张图片都有描述
+            video: 宣传视频
         screenshots: 截图
         screenshots_used: "已有 %{used} 张，最多 %{max} 张"
         no_screenshots: 还没有截图，建议至少添加两张。
