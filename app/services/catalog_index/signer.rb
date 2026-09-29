@@ -53,7 +53,7 @@ module CatalogIndex
     # apps. Task 38c: plus every descendant tenant's (`App.for_tenant_subtree`); the default tenant
     # never cascades. An unknown tenant gets none, never the default catalog.
     def self.apps_for(tenant)
-      App.listing_live.for_tenant_subtree(tenant).where(archived: [false, nil])
+      App.listing_live.for_tenant_subtree(tenant).where(archived: [false, nil]).includes(:listing_graphics)
     end
 
     # `key:` is one key or an array of keys, primary first. It defaults to every key valid for

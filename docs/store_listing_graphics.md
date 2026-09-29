@@ -90,7 +90,7 @@ the store icon without a new release. It is not part of 27d-d/e.
 
 `listing.screenshots[]` already exists in `catalog_index_v2.schema.json` as
 `{url, sha256}` with `additionalProperties: false`. The proposal, which needs
-D-store's reader to tolerate new keys before it is built:
+D-store's reader to tolerate new keys before it is built (built as 27d-e1; D-store's reader does tolerate them, see below):
 
 ```json
 "listing": {
@@ -106,6 +106,25 @@ the JSON Schema (the `additionalProperties: false` on the screenshot item and
 the `listing` object), so it is a **v2 additive change that D-store must accept
 before Zealot publishes it**: the schema version is not bumped, but the
 cross-repo check the earlier 27 cards used (D-store's `5.g.i.zo` sign-off) applies.
+
+## Decisions on the four open questions (recorded with 27d-e1)
+
+The operator delegated the four questions to industry-standard practice. None of these was individually
+confirmed, so all four can still be overruled.
+
+1. **8 MB cap per image: keep.** Play states no cap for phone screenshots (8 MB is its figure for XR ones),
+   and 8 MB is the ceiling most stores and CDNs use for listing art. It also bounds the memory the local
+   adapter needs to serve a graphic.
+2. **Optional versus required: keep optional.** Play blocks publishing on 2 screenshots and a feature
+   graphic; Zealot's listing states already gate on payment and review, and a hard block here would strand
+   apps that are otherwise ready. The console's checklist (27d-e2) is where the recommendation is shown. If
+   the operator wants Play's exact gate, it is a validation on `App#go_live!`, not a change to this data.
+3. **Index shape: additive, no version bump, D-store needs no coordination to accept it.** See
+   "Listing graphics" in `catalog_index_v2.md`. D-store's reader was read, not assumed: it ignores unknown
+   keys. D-store learns of the new keys from the handover entry and from its own leaf that will render them
+   (today it hard-codes `screenshots: []`), not from a gate on this side.
+4. **Listing icon (27d-f): not now.** Keep deriving the icon from the newest release that has one. A
+   per-app store icon is worth building only once owners ask to change the icon without shipping a build.
 
 ## Not covered
 

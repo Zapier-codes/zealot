@@ -43,6 +43,13 @@ RSpec.describe App do
       expect { app.update!(play_package_name: 'com.example.app') }.to have_enqueued_job(CatalogIndexPublishJob)
     end
 
+    # Task 27d-e1: the promo video is part of the listing in the index.
+    it 'enqueues a publish when the promo video changes' do
+      app = create(:app, listing_status: :live, listed_at: Time.current)
+
+      expect { app.update!(promo_video_youtube_id: 'dQw4w9WgXcQ') }.to have_enqueued_job(CatalogIndexPublishJob)
+    end
+
     it 'does not enqueue a publish for an unrelated field change' do
       app = create(:app, listing_status: :live, listed_at: Time.current)
 

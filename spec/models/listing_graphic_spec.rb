@@ -99,4 +99,47 @@ RSpec.describe ListingGraphic do
       expect { app.destroy! }.to have_enqueued_job(ListingGraphicStorageCleanupJob).exactly(:twice)
     end
   end
+
+  # Task 27d-e1: a graphic is part of the app's listing in the signed index.
+  describe 'republishing the catalog index' do
+    let(:live_app) { create(:app, listing_status: :live, listed_at: Time.current) }
+
+    def graphic_for(target, overrides = {})
+      described_class.create!({ app: target, kind: 'screenshot', device: 'phone', content_type: 'image/png',
+                                byte_size: 500_000, width: 1080, height: 1920, position: 0 }.merge(overrides))
+    end
+
+    it 'enqueues one publish when a graphic is added to a live app' do
+      live_app
+
+      expect { graphic_for(live_app) }.to have_enqueued_job(CatalogIndexPublishJob).with(no_args).exactly(:once)
+    end
+
+    it 'enqueues a publish when a graphic changes or is removed' do
+      graphic = graphic_for(live_app)
+
+      expect { graphic.update!(alt_text: 'Home screen') }.to have_enqueued_job(CatalogIndexPublishJob)
+      expect { graphic.destroy }.to have_enqueued_job(CatalogIndexPublishJob)
+    end
+
+    it 'publishes the tenant that owns the app and no other' do
+      tenant = create(:tenant, tenant_id: 'acme')
+      owned = create(:app, listing_status: :live, listed_at: Time.current, tenant: tenant)
+
+      expect { graphic_for(owned) }.to have_enqueued_job(CatalogIndexPublishJob).with('acme').exactly(:once)
+      expect { graphic_for(owned, position: 1) }.not_to have_enqueued_job(CatalogIndexPublishJob).with(no_args)
+    end
+
+    it 'does not publish for an app that is not live' do
+      draft = create(:app)
+
+      expect { graphic_for(draft) }.not_to have_enqueued_job(CatalogIndexPublishJob)
+    end
+
+    it 'does not publish once per graphic when the whole app is destroyed' do
+      graphic_for(live_app)
+
+      expect { live_app.destroy }.not_to have_enqueued_job(CatalogIndexPublishJob)
+    end
+  end
 end

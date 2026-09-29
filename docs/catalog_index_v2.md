@@ -53,7 +53,9 @@ full rationale and the phase this sits in (Phase 1, trust core).
         "title": "Example App",
         "description": null,
         "icon": { "url": null, "sha256": null },  // 27d-c: /download/releases/:id/icon + hash of the newest release that has an icon
-        "screenshots": [],
+        "screenshots": [],                 // 27d-e1: [{ "url", "sha256", "alt", "width", "height" }] in position order (phone only); url is /download/graphics/:id
+        "feature_graphic": null,           // 27d-e1: { "url", "sha256", "alt" } (1024 x 500) or null
+        "video": null,                     // 27d-e1: { "youtube_id": "<11 chars>" } or null; an external link, so no hash
         // --- v2 additions to listing ---
         "content_rating": null,            // NEW, reserved -- e.g. "everyone", "teen"; vocabulary not decided yet
         "data_safety": {                   // NEW, reserved -- all null/false until a real declaration flow exists
@@ -121,6 +123,29 @@ full rationale and the phase this sits in (Phase 1, trust core).
   ]
 }
 ```
+
+## Listing graphics: an additive change to v2 (Task 27d-e1)
+
+`listing.screenshots[]` items gained `alt`, `width` and `height`, and `listing` gained two keys,
+`feature_graphic` and `video`, both `null` when the app has none. **`schema_version` stays `2`.** The rule
+that makes this safe is the usual one for a signed, versioned JSON document: a change that only *adds*
+optional keys is not a new version, because a reader is expected to ignore keys it does not know; only a
+change that removes, renames or re-types a key needs a new `schema_version`. D-store's reader
+(`lib/sources/zealot.ts`, read on 2026-09-29) does exactly that: it verifies the signature over the raw
+bytes, checks only `schema_version`, `expires_at` and the anti-rollback counter, and picks fields by name
+with no runtime schema check, so the new keys pass through unread until D-store chooses to consume them.
+
+- Only a graphic that is **stored and hashed** is listed, so every listed `url` serves bytes a reader can
+  check against `sha256`. A row whose ingest has not finished, or that predates it, is left out.
+- `screenshots[]` is the app's phone screenshots in `position` order. `feature_graphic` is at most one.
+- `video` is one YouTube ID (11 characters, checked when it was saved). It is an external link, so it has
+  no hash and Zealot does not claim the video is public, embeddable or ad-free.
+- The `url` is Zealot's stable `GET /download/graphics/:id`, never a signed storage URL.
+- Adding, changing, reordering or removing a graphic, or changing the promo video, republishes the owning
+  tenant's index (only for a live app: a draft is not in the index).
+- The JSON Schema keeps `additionalProperties: false`, and now requires `feature_graphic` and `video` to be
+  present (they are always emitted). It is the contract for what Zealot *writes*; readers should not copy
+  that strictness.
 
 ## The slug rule
 

@@ -196,6 +196,107 @@ RSpec.describe CatalogIndex::Serializer do
       end
     end
 
+    describe 'listing graphics (Task 27d-e1)' do
+      let(:sha) { 'a' * 64 }
+
+      def listing_of(app)
+        described_class.call(app)[:apps].first[:listing]
+      end
+
+      def add_graphic(app, overrides = {})
+        @next_position = (@next_position || -1) + 1
+        key = "uploads/apps/a#{app.id}/graphics/g#{@next_position}/graphic.png"
+        ListingGraphic.create!({ app: app, kind: 'screenshot', device: 'phone', content_type: 'image/png',
+                                 byte_size: 500_000, width: 1080, height: 1920, position: @next_position,
+                                 sha256: sha, storage_key: key }.merge(overrides))
+      end
+
+      it 'keeps the empty values for an app with no graphics and no video' do
+        app, = build_app_with_release
+
+        expect(listing_of(app)).to include(screenshots: [], feature_graphic: nil, video: nil)
+      end
+
+      it 'lists screenshots in position order with url, hash, alt and size' do
+        app, = build_app_with_release
+        second = add_graphic(app, position: 1, alt_text: 'Second', sha256: 'b' * 64)
+        first = add_graphic(app, position: 0, alt_text: nil)
+
+        expect(listing_of(app)[:screenshots]).to eq(
+          [
+            { url: first.download_url, sha256: sha, alt: nil, width: 1080, height: 1920 },
+            { url: second.download_url, sha256: 'b' * 64, alt: 'Second', width: 1080, height: 1920 }
+          ]
+        )
+        expect(first.download_url).to end_with("/download/graphics/#{first.id}")
+      end
+
+      it 'leaves out a graphic that is not stored yet, or has no hash' do
+        app, = build_app_with_release
+        add_graphic(app, position: 0, storage_key: nil)
+        add_graphic(app, position: 1, sha256: nil)
+        kept = add_graphic(app, position: 2)
+
+        expect(listing_of(app)[:screenshots].map { |shot| shot[:url] }).to eq([ kept.download_url ])
+      end
+
+      it 'carries the feature graphic apart from the screenshots' do
+        app, = build_app_with_release
+        banner = add_graphic(app, kind: 'feature_graphic', content_type: 'image/jpeg', width: 1024, height: 500,
+                                  position: 0, alt_text: 'Banner')
+
+        listing = listing_of(app)
+
+        expect(listing[:feature_graphic]).to eq(url: banner.download_url, sha256: sha, alt: 'Banner')
+        expect(listing[:screenshots]).to eq([])
+      end
+
+      it 'gives the feature graphic nothing until it is stored and hashed' do
+        app, = build_app_with_release
+        add_graphic(app, kind: 'feature_graphic', content_type: 'image/jpeg', width: 1024, height: 500,
+                         position: 0, storage_key: nil)
+
+        expect(listing_of(app)[:feature_graphic]).to be_nil
+      end
+
+      it 'carries the promo video as its YouTube ID only' do
+        app, = build_app_with_release
+        app.update_columns(promo_video_youtube_id: 'dQw4w9WgXcQ')
+
+        expect(listing_of(app)[:video]).to eq(youtube_id: 'dQw4w9WgXcQ')
+      end
+
+      it 'does not list another app\'s graphics' do
+        app, = build_app_with_release
+        other, = build_app_with_release(package_name: 'com.example.other')
+        add_graphic(other, position: 0)
+
+        expect(listing_of(app)[:screenshots]).to eq([])
+      end
+
+      it 'gives a fixture that knows nothing about graphics the empty values' do
+        struct = Struct.new(:id, :play_package_name, :listing_status, :name, :created_at, :updated_at,
+                            :publisher_display_name, :recently_release, keyword_init: true)
+        fixture = struct.new(id: 1, play_package_name: 'x.y', listing_status: 'live', name: 'X',
+                             created_at: Time.utc(2026, 1, 1), updated_at: Time.utc(2026, 1, 1))
+
+        expect(listing_of(fixture)).to include(screenshots: [], feature_graphic: nil, video: nil)
+      end
+
+      it 'produces a listing that validates against docs/catalog_index_v2.schema.json when a schema gem is loaded' do
+        skip 'no JSON Schema library available' unless defined?(JSON::Validator)
+
+        app, = build_app_with_release
+        add_graphic(app, position: 0)
+        app.update_columns(promo_video_youtube_id: 'dQw4w9WgXcQ')
+        schema = Rails.root.join('docs/catalog_index_v2.schema.json').to_s
+
+        document = JSON.parse(JSON.generate(described_class.call(app)))
+
+        expect(JSON::Validator.fully_validate(schema, document)).to eq([])
+      end
+    end
+
     it 'reads real compatibility columns once Task 29c has populated them at upload time' do
       app, release = build_app_with_release
       release.update_columns(

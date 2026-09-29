@@ -225,7 +225,8 @@ class App < ApplicationRecord
   # CATALOG_PAGES_REPO/CATALOG_PAGES_TOKEN and a signing key exist (see that
   # job's own comment), so it's safe to always enqueue here rather than
   # re-checking CatalogIndex::Publish.configured? on every save.
-  CATALOG_INDEX_LISTING_FIELDS = %w[name publisher_alias play_package_name publisher_profile_id category].freeze
+  CATALOG_INDEX_LISTING_FIELDS = %w[name publisher_alias play_package_name publisher_profile_id category
+                                    promo_video_youtube_id].freeze
 
   after_commit :publish_catalog_index_if_needed, on: :update
 

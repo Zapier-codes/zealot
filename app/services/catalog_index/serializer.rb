@@ -94,8 +94,8 @@ module CatalogIndex
     # is the default tenant's catalog: the same apps as before tenants existed. Task 37b-iii-s6a: the
     # same tenant picks the collection registry, and the apps' own slots (s6b) come along with the apps.
     def self.for_live_apps(tenant: nil, generated_at: Time.now.utc, sequence: 0, expires_at: nil)
-      call(App.listing_live.for_tenant_subtree(tenant), generated_at: generated_at, sequence: sequence,
-                                                        expires_at: expires_at, tenant: tenant)
+      apps = App.listing_live.for_tenant_subtree(tenant).includes(:listing_graphics) # Task 27d-e1: no N+1
+      call(apps, generated_at: generated_at, sequence: sequence, expires_at: expires_at, tenant: tenant)
     end
 
     def initialize(apps, generated_at:, sequence:, expires_at:, editorial: true, tenant: nil)
@@ -144,7 +144,9 @@ module CatalogIndex
           title: app.name,
           description: nil,                # reserved for 27e (store-listing editor)
           icon: icon_for(releases),         # Task 27d-c
-          screenshots: [],                  # reserved for 27d-d/e
+          screenshots: graphics_for(app, 'screenshot'), # Task 27d-e1
+          feature_graphic: feature_graphic_for(app),    # Task 27d-e1
+          video: video_for(app),                        # Task 27d-e1
           content_rating: nil,              # reserved -- vocabulary not decided
           data_safety: {
             collects_data: nil,
@@ -269,6 +271,47 @@ module CatalogIndex
       else
         []
       end
+    end
+
+    # Task 27d-e1: the app's stored listing graphics (docs/store_listing_graphics.md). Only a graphic
+    # that is both stored and hashed is advertised (`storage_key` and `sha256` present), the same rule
+    # `icon_available?` applies: the URL is only listed when it serves bytes a reader can check. A row
+    # from before 27d-d2's ingest, or one whose ingest failed half way, is simply left out.
+    # Duck-typed like the rest of the class: a fixture that knows nothing about graphics gets the empty
+    # value. Sorted in Ruby (not `.ordered`) so the `includes(:listing_graphics)` preload is used.
+    def available_graphics(app, kind)
+      return [] unless app.respond_to?(:listing_graphics)
+
+      app.listing_graphics.select do |graphic|
+        graphic.kind == kind && graphic.storage_key.present? && graphic.sha256.present?
+      end.sort_by { |graphic| [ graphic.position.to_i, graphic.id.to_i ] }
+    end
+
+    # `screenshots[]`: phone screenshots in `position` order, `{url, sha256, alt, width, height}`. Phone
+    # is the only device today (a check constraint says so); the filter is what keeps a future tablet
+    # set out of this list rather than mixing it in, since the entry has no `device` key.
+    def graphics_for(app, kind)
+      available_graphics(app, kind).select { |graphic| graphic.device == 'phone' }.map do |graphic|
+        { url: graphic.download_url, sha256: graphic.sha256, alt: graphic.alt_text,
+          width: graphic.width, height: graphic.height }
+      end
+    end
+
+    # `feature_graphic`: `{url, sha256, alt}` or nil. Its size is fixed (1024 x 500), so width and height
+    # carry no information here. At most one row exists per app and device (a unique index); if that
+    # ever failed, the newest wins.
+    def feature_graphic_for(app)
+      graphic = available_graphics(app, 'feature_graphic').max_by { |candidate| candidate.id.to_i }
+      return nil unless graphic
+
+      { url: graphic.download_url, sha256: graphic.sha256, alt: graphic.alt_text }
+    end
+
+    # `video`: `{youtube_id}` or nil. An external link, so no hash (docs/store_listing_graphics.md,
+    # "Integrity"). The value was checked to be a plain video ID when it was saved.
+    def video_for(app)
+      youtube_id = app.respond_to?(:promo_video_youtube_id) ? app.promo_video_youtube_id : nil
+      youtube_id.present? ? { youtube_id: youtube_id } : nil
     end
 
     # Task 27d-c: `listing.icon` is `{url, sha256}` of the newest catalog release that still has an

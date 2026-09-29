@@ -98,7 +98,7 @@
         "listing": {
           "type": "object",
           "required": [
-            "title", "description", "icon", "screenshots",
+            "title", "description", "icon", "screenshots", "feature_graphic", "video",
             "content_rating", "data_safety", "contains_ads", "has_in_app_purchases"
           ],
           "additionalProperties": false,
@@ -116,14 +116,38 @@
             },
             "screenshots": {
               "type": "array",
+              "description": "Phone screenshots in display order (Task 27d-e1). Only graphics that are stored and hashed are listed. alt, width and height were added in 27d-e1 and are optional for a reader.",
               "items": {
                 "type": "object",
                 "required": [ "url", "sha256" ],
                 "additionalProperties": false,
                 "properties": {
                   "url": { "type": "string", "format": "uri" },
-                  "sha256": { "$ref": "#/$defs/sha256_or_null" }
+                  "sha256": { "$ref": "#/$defs/sha256_or_null" },
+                  "alt": { "type": [ "string", "null" ], "maxLength": 140 },
+                  "width": { "type": "integer", "minimum": 1 },
+                  "height": { "type": "integer", "minimum": 1 }
                 }
+              }
+            },
+            "feature_graphic": {
+              "description": "The 1024 x 500 feature graphic, or null when the app has none (Task 27d-e1).",
+              "type": [ "object", "null" ],
+              "required": [ "url", "sha256" ],
+              "additionalProperties": false,
+              "properties": {
+                "url": { "type": "string", "format": "uri" },
+                "sha256": { "$ref": "#/$defs/sha256_or_null" },
+                "alt": { "type": [ "string", "null" ], "maxLength": 140 }
+              }
+            },
+            "video": {
+              "description": "The app's promo video: one YouTube video ID, or null (Task 27d-e1). An external link, so it carries no hash.",
+              "type": [ "object", "null" ],
+              "required": [ "youtube_id" ],
+              "additionalProperties": false,
+              "properties": {
+                "youtube_id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{11}$" }
               }
             },
             "content_rating": { "type": [ "string", "null" ] },
