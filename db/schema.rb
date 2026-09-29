@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_30_210000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_30_220000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -75,6 +75,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_210000) do
     t.string "promo_video_youtube_id"
     t.string "publisher_alias"
     t.bigint "publisher_profile_id"
+    t.string "short_description"
     t.bigint "tenant_id"
     t.datetime "updated_at", null: false
     t.index ["name"], name: "index_apps_on_name"

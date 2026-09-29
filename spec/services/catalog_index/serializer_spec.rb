@@ -297,6 +297,71 @@ RSpec.describe CatalogIndex::Serializer do
       end
     end
 
+    describe 'listing text (Task 27e-a, 27e-b)' do
+      def entry_of(app)
+        described_class.call(app)[:apps].first
+      end
+
+      it 'emits nil for both when the owner has written nothing' do
+        app, = build_app_with_release
+        entry = entry_of(app)
+
+        expect(entry[:listing][:description]).to be_nil
+        expect(entry[:summary]).to be_nil
+      end
+
+      it 'emits the full description under listing and the short description as the top-level summary' do
+        app, = build_app_with_release
+        app.update_columns(description: "First paragraph.\n\nSecond paragraph.", short_description: 'Notes that stay out of your way')
+        entry = entry_of(app)
+
+        expect(entry[:listing][:description]).to eq("First paragraph.\n\nSecond paragraph.")
+        expect(entry[:summary]).to eq('Notes that stay out of your way')
+      end
+
+      it 'does not mix the two fields up' do
+        app, = build_app_with_release
+        app.update_columns(description: 'long text', short_description: 'short text')
+        entry = entry_of(app)
+
+        expect(entry[:listing][:description]).not_to eq('short text')
+        expect(entry[:summary]).not_to eq('long text')
+      end
+
+      it 'emits nil, never an empty string, for text that was saved blank around validation' do
+        app, = build_app_with_release
+        app.update_columns(description: '', short_description: '')
+        entry = entry_of(app)
+
+        expect(entry[:listing][:description]).to be_nil
+        expect(entry[:summary]).to be_nil
+      end
+
+      it 'gives a fixture that knows nothing about listing text nil for both' do
+        struct = Struct.new(:id, :play_package_name, :listing_status, :name, :created_at, :updated_at,
+                            :publisher_display_name, :recently_release, keyword_init: true)
+        fixture = struct.new(id: 1, play_package_name: 'x.y', listing_status: 'live', name: 'X',
+                             created_at: Time.utc(2026, 1, 1), updated_at: Time.utc(2026, 1, 1))
+        entry = entry_of(fixture)
+
+        expect(entry[:listing][:description]).to be_nil
+        expect(entry[:summary]).to be_nil
+      end
+
+      it 'produces an entry that validates against docs/catalog_index_v2.schema.json when a schema gem is loaded' do
+        skip 'no JSON Schema library available' unless defined?(JSON::Validator)
+
+        app, = build_app_with_release
+        app.update_columns(description: 'a' * ListingText::DESCRIPTION_MAX_LENGTH,
+                           short_description: 'a' * ListingText::SHORT_DESCRIPTION_MAX_LENGTH)
+        schema = Rails.root.join('docs/catalog_index_v2.schema.json').to_s
+
+        document = JSON.parse(JSON.generate(described_class.call(app)))
+
+        expect(JSON::Validator.fully_validate(schema, document)).to eq([])
+      end
+    end
+
     it 'reads real compatibility columns once Task 29c has populated them at upload time' do
       app, release = build_app_with_release
       release.update_columns(

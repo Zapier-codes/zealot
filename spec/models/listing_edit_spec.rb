@@ -16,13 +16,39 @@ RSpec.describe ListingEdit do
       expect(edit.errors[:staged_attributes].join).to include('listing_status')
     end
 
-    it 'accepts every field App::CATALOG_INDEX_LISTING_FIELDS plus description' do
+    it 'accepts every field in App::CATALOG_INDEX_LISTING_FIELDS, which includes the listing text' do
       app = create(:app)
       edit = build(:listing_edit, app: app, staged_attributes: {
-                     'name' => 'New name', 'description' => 'New copy', 'category' => 'tools'
+                     'name' => 'New name', 'description' => 'New copy', 'short_description' => 'New line',
+                     'category' => 'tools'
                    })
 
       expect(edit).to be_valid
+    end
+
+    # Task 27e-a: the old "+ %w[description]" is gone, so the two lists are one list.
+    it 'stages exactly the fields the index republishes for, each once' do
+      expect(described_class::LISTING_FIELDS).to eq(App::CATALOG_INDEX_LISTING_FIELDS)
+      expect(described_class::LISTING_FIELDS).to include('description', 'short_description')
+      expect(described_class::LISTING_FIELDS.uniq).to eq(described_class::LISTING_FIELDS)
+    end
+
+    it 'rejects a staged description over the limit, with the model\'s own message' do
+      app = create(:app)
+      edit = build(:listing_edit, app: app,
+                                  staged_attributes: { 'description' => 'a' * (ListingText::DESCRIPTION_MAX_LENGTH + 1) })
+
+      expect(edit).not_to be_valid
+      expect(edit.errors[:staged_attributes].join).to include('description')
+    end
+
+    it 'rejects a staged short description over the limit' do
+      app = create(:app)
+      edit = build(:listing_edit, app: app,
+                                  staged_attributes: { 'short_description' => 'a' * (ListingText::SHORT_DESCRIPTION_MAX_LENGTH + 1) })
+
+      expect(edit).not_to be_valid
+      expect(edit.errors[:staged_attributes].join).to include('short_description')
     end
   end
 
@@ -86,6 +112,21 @@ RSpec.describe ListingEdit do
       expect(app.category).to eq('social')
       expect(edit.reload).to be_status_committed
       expect(edit.committed_at).to be_present
+    end
+
+    # Task 27e-a / 27e-b: the listing text goes through the same commit, is tidied by the App on the way in,
+    # and republishes the index once, through App's own after_commit (ListingEdit adds no publish code).
+    it 'commits staged listing text, tidied by the App, and enqueues one index publish for a live app' do
+      app = create(:app, listing_status: :live, listed_at: Time.current)
+      edit = create(:listing_edit, app: app, staged_attributes: {
+                      'description' => "  First.\r\n\r\n\r\nSecond.  ", 'short_description' => "One\nline"
+                    })
+
+      expect { expect(edit.commit!).to be(true) }.to have_enqueued_job(CatalogIndexPublishJob).exactly(:once)
+
+      app.reload
+      expect(app.description).to eq("First.\n\nSecond.")
+      expect(app.short_description).to eq('One line')
     end
 
     it 'leaves the live App and itself untouched when staged_attributes fails App validation' do

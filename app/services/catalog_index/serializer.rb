@@ -142,7 +142,7 @@ module CatalogIndex
         },
         listing: {
           title: app.name,
-          description: nil,                # reserved for 27e (store-listing editor)
+          description: text_for(app, :description),     # Task 27e-a
           icon: icon_for(releases),         # Task 27d-c
           screenshots: graphics_for(app, 'screenshot'), # Task 27d-e1
           feature_graphic: feature_graphic_for(app),    # Task 27d-e1
@@ -159,7 +159,7 @@ module CatalogIndex
           has_in_app_purchases: nil,
         },
         slug: slug_for(app),
-        summary: nil,     # reserved -- no summary column yet
+        summary: text_for(app, :short_description),   # Task 27e-b: the one-line short description (<= 80 characters)
         category: category_for(app),
         license: nil,     # reserved
         links: { site: nil, source: nil, tracker: nil, donate: nil }, # reserved
@@ -171,6 +171,13 @@ module CatalogIndex
         collections: @editorial ? collection_slugs_for(app) : [],
         versions: releases.map { |release| serialize_version(release) },
       }
+    end
+
+    # Task 27e-a / 27e-b: the store listing's free text. `nil` when the app has none (blank is stored as NULL,
+    # see ListingText), never an empty string. Duck-typed like the rest of the class: a fixture without the
+    # member reads as "no text" rather than raising.
+    def text_for(app, member)
+      app.respond_to?(member) ? app.public_send(member).presence : nil
     end
 
     # Real column as of AddCategoryToApps; duck-typed like the rest of this

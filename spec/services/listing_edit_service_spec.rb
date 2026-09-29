@@ -44,6 +44,14 @@ RSpec.describe ListingEditService do
       expect(service.draft.staged_attributes).to eq('name' => 'First', 'category' => 'tools')
     end
 
+    it 'keeps the listing text fields (Task 27e-a, 27e-b)' do
+      service = described_class.new(app: create(:app))
+
+      service.stage(description: 'Long text', short_description: 'Short text', archived: true)
+
+      expect(service.draft.staged_attributes).to eq('description' => 'Long text', 'short_description' => 'Short text')
+    end
+
     it 'silently drops a key that is not a listing field' do
       service = described_class.new(app: create(:app))
 

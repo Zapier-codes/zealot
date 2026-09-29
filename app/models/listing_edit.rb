@@ -8,23 +8,24 @@
 # nothing here that can go stale by *not* being edited.
 #
 # Scope of LISTING_FIELDS today is deliberately exactly the App columns
-# that exist and represent "the listing" as of this session: the same set
-# App#publish_catalog_index_if_needed already watches
-# (App::CATALOG_INDEX_LISTING_FIELDS), plus `description`, which is a
-# listing field (27e's own table lists "descriptions" first) that has had
-# a column since the original apps migration but has no editor UI and
-# isn't serialized into the index yet (see
-# CatalogIndex::Serializer's `description: nil, # reserved for 27e`).
-# 27e's other listed surfaces -- graphics (27d), data safety, content
-# rating -- have no App columns at all yet, so they simply cannot be
-# staged here until those slices add the columns; extend LISTING_FIELDS
-# when they do, the rest of this class (validation, commit, discard)
-# needs no change to grow with it.
+# that exist and represent "the listing": the same set
+# App#publish_catalog_index_if_needed watches (App::CATALOG_INDEX_LISTING_FIELDS).
+# Task 27e-a/27e-b moved `description` and `short_description` into that
+# set, so the old "+ description" here (it had a column but no index
+# support yet) is gone -- a field is stageable exactly when it is a field
+# the index carries and republishes for, and there is one list to keep in
+# step instead of two. 27e's other listed surfaces -- data safety and
+# content rating -- have no App columns at all yet, so they simply cannot
+# be staged here until those slices add the columns; extend
+# CATALOG_INDEX_LISTING_FIELDS when they do, the rest of this class
+# (validation, commit, discard) needs no change to grow with it.
+# (Graphics are separate rows, not App columns, and are edited directly by
+# the 27d-e2 panel rather than through a staged draft.)
 class ListingEdit < ApplicationRecord
   belongs_to :app
   belongs_to :editor, class_name: 'User', optional: true
 
-  LISTING_FIELDS = (App::CATALOG_INDEX_LISTING_FIELDS + %w[description]).freeze
+  LISTING_FIELDS = App::CATALOG_INDEX_LISTING_FIELDS
 
   enum :status, { draft: 'draft', committed: 'committed', discarded: 'discarded' }, prefix: :status
 

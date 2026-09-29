@@ -51,7 +51,7 @@ full rationale and the phase this sits in (Phase 1, trust core).
       },
       "listing": {
         "title": "Example App",
-        "description": null,
+        "description": null,               // 27e-a: plain text, <= 4000 characters, paragraphs split by a blank line; null when the owner wrote none
         "icon": { "url": null, "sha256": null },  // 27d-c: /download/releases/:id/icon + hash of the newest release that has an icon
         "screenshots": [],                 // 27d-e1: [{ "url", "sha256", "alt", "width", "height" }] in position order (phone only); url is /download/graphics/:id
         "feature_graphic": null,           // 27d-e1: { "url", "sha256", "alt" } (1024 x 500) or null
@@ -70,7 +70,7 @@ full rationale and the phase this sits in (Phase 1, trust core).
       },
       // --- v2: NEW top-level per-app fields ---
       "slug": "example-app",               // immutable once listing_status first reaches "live" -- see "The slug rule" below
-      "summary": null,                     // short one-liner, distinct from listing.description
+      "summary": null,                     // 27e-b: the short description, one line, <= 80 characters, distinct from listing.description; null when the owner wrote none
       "category": null,                    // one of CATEGORIES below, or null if not yet categorized
       "license": null,
       "links": { "site": null, "source": null, "tracker": null, "donate": null },

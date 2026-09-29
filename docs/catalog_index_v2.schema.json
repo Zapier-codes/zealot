@@ -104,7 +104,11 @@
           "additionalProperties": false,
           "properties": {
             "title": { "type": "string" },
-            "description": { "type": [ "string", "null" ] },
+            "description": {
+              "description": "The full description (Task 27e-a): plain text, paragraphs separated by a blank line (\"\\n\\n\"), at most 4000 characters (Play's limit; see app/services/listing_text.rb). null when the owner has written none.",
+              "type": [ "string", "null" ],
+              "maxLength": 4000
+            },
             "icon": {
               "type": "object",
               "required": [ "url", "sha256" ],
@@ -172,7 +176,11 @@
           "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
           "description": "Immutable once the app first goes live. See docs/catalog_index_v2.md's 'The slug rule'."
         },
-        "summary": { "type": [ "string", "null" ] },
+        "summary": {
+          "description": "The short description (Task 27e-b): one line of plain text, at most 80 characters (Play's limit; see app/services/listing_text.rb). null when the owner has written none. Distinct from listing.description.",
+          "type": [ "string", "null" ],
+          "maxLength": 80
+        },
         "category": { "$ref": "#/$defs/category" },
         "license": { "type": [ "string", "null" ] },
         "links": {

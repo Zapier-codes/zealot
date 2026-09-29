@@ -81,6 +81,14 @@ class App < ApplicationRecord
   before_validation :normalize_publisher_alias
   validates :publisher_alias, length: { maximum: PUBLISHER_ALIAS_MAX_LENGTH }, allow_nil: true
 
+  # Task 27e-a / 27e-b: the free text of the store listing. Cleaned once before validation and then held
+  # to Play's own limits (ListingText owns the rules and the numbers, so the editor, the index schema and
+  # this model cannot disagree). Blank is stored as NULL, never as an empty string. Both are watched by
+  # CATALOG_INDEX_LISTING_FIELDS below, so an edit to either republishes the index.
+  before_validation :normalize_description, :normalize_short_description
+  validates :description, length: { maximum: ListingText::DESCRIPTION_MAX_LENGTH }, allow_nil: true
+  validates :short_description, length: { maximum: ListingText::SHORT_DESCRIPTION_MAX_LENGTH }, allow_nil: true
+
   # Category vocabulary, resolving catalog_index_v2.md's open ❓1 in favor of
   # full Play parity: Play Console has a developer pick an application type
   # (Apps or Games) and then one category from that type's own list --
@@ -225,8 +233,11 @@ class App < ApplicationRecord
   # CATALOG_PAGES_REPO/CATALOG_PAGES_TOKEN and a signing key exist (see that
   # job's own comment), so it's safe to always enqueue here rather than
   # re-checking CatalogIndex::Publish.configured? on every save.
+  # Task 27e-a / 27e-b add `description` (listing.description) and `short_description` (the app's summary).
+  # This constant is also the set ListingEdit may stage (see LISTING_FIELDS there), so a field added here
+  # becomes editable through the staged editor at the same time it starts republishing the index.
   CATALOG_INDEX_LISTING_FIELDS = %w[name publisher_alias play_package_name publisher_profile_id category
-                                    promo_video_youtube_id].freeze
+                                    promo_video_youtube_id description short_description].freeze
 
   after_commit :publish_catalog_index_if_needed, on: :update
 
@@ -536,6 +547,14 @@ class App < ApplicationRecord
     return if publisher_alias.nil?
 
     self.publisher_alias = publisher_alias.to_s.gsub(/[[:cntrl:]]/, ' ').squish.presence
+  end
+
+  def normalize_description
+    self.description = ListingText.tidy_description(description)
+  end
+
+  def normalize_short_description
+    self.short_description = ListingText.tidy_short_description(short_description)
   end
 
   def normalize_play_package_name

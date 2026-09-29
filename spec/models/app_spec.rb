@@ -50,6 +50,26 @@ RSpec.describe App do
       expect { app.update!(promo_video_youtube_id: 'dQw4w9WgXcQ') }.to have_enqueued_job(CatalogIndexPublishJob)
     end
 
+    # Task 27e-a / 27e-b: the listing's free text is part of the index too.
+    it 'enqueues a publish when a live app changes its description' do
+      app = create(:app, listing_status: :live, listed_at: Time.current)
+
+      expect { app.update!(description: 'A fast, small notes app.') }.to have_enqueued_job(CatalogIndexPublishJob)
+    end
+
+    it 'enqueues a publish when a live app changes its short description' do
+      app = create(:app, listing_status: :live, listed_at: Time.current)
+
+      expect { app.update!(short_description: 'Notes that stay out of your way') }
+        .to have_enqueued_job(CatalogIndexPublishJob)
+    end
+
+    it 'does not enqueue a publish when a save changes the description to what it already is' do
+      app = create(:app, listing_status: :live, listed_at: Time.current, description: 'Same text')
+
+      expect { app.update!(description: "  Same text \r\n") }.not_to have_enqueued_job(CatalogIndexPublishJob)
+    end
+
     it 'does not enqueue a publish for an unrelated field change' do
       app = create(:app, listing_status: :live, listed_at: Time.current)
 
@@ -150,6 +170,75 @@ RSpec.describe App do
       app.valid?
 
       expect(app.promo_video_youtube_id).to eq('dQw4w9WgXcQ')
+    end
+  end
+
+  # Task 27e-a: the full description. ListingText's own spec covers the tidying in detail; these examples
+  # cover what the model does with it (when it runs, the limit, and that blank is NULL).
+  describe 'description' do
+    it 'is optional' do
+      expect(build(:app, description: nil)).to be_valid
+    end
+
+    it 'accepts exactly the limit and refuses one character more' do
+      expect(build(:app, description: 'a' * ListingText::DESCRIPTION_MAX_LENGTH)).to be_valid
+
+      app = build(:app, description: 'a' * (ListingText::DESCRIPTION_MAX_LENGTH + 1))
+
+      expect(app).not_to be_valid
+      expect(app.errors[:description]).not_to be_empty
+    end
+
+    it 'counts characters, not bytes' do
+      expect(build(:app, description: '日' * ListingText::DESCRIPTION_MAX_LENGTH)).to be_valid
+    end
+
+    it 'tidies the text before validating and keeps paragraphs' do
+      app = build(:app, description: "  One\r\n\r\n\r\n\r\nTwo  \u0000 ")
+      app.valid?
+
+      expect(app.description).to eq("One\n\nTwo")
+    end
+
+    it 'measures the limit after tidying, so trailing blank lines do not count against it' do
+      app = build(:app, description: 'a' * ListingText::DESCRIPTION_MAX_LENGTH + "\n\n\n   ")
+
+      expect(app).to be_valid
+    end
+
+    it 'stores a blank value as NULL, not an empty string' do
+      app = create(:app, description: '   ')
+
+      expect(app.reload.description).to be_nil
+    end
+  end
+
+  # Task 27e-b: the short description, one line of at most 80 characters (the index's `summary`).
+  describe 'short_description' do
+    it 'is optional' do
+      expect(build(:app, short_description: nil)).to be_valid
+    end
+
+    it 'accepts exactly the limit and refuses one character more' do
+      expect(build(:app, short_description: 'a' * ListingText::SHORT_DESCRIPTION_MAX_LENGTH)).to be_valid
+
+      app = build(:app, short_description: 'a' * (ListingText::SHORT_DESCRIPTION_MAX_LENGTH + 1))
+
+      expect(app).not_to be_valid
+      expect(app.errors[:short_description]).not_to be_empty
+    end
+
+    it 'makes the text one line before validating' do
+      app = build(:app, short_description: "Fast\nsmall   notes\tapp ")
+      app.valid?
+
+      expect(app.short_description).to eq('Fast small notes app')
+    end
+
+    it 'stores a blank value as NULL, not an empty string' do
+      app = create(:app, short_description: "\n ")
+
+      expect(app.reload.short_description).to be_nil
     end
   end
 end
