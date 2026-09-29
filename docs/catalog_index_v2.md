@@ -80,6 +80,7 @@ full rationale and the phase this sits in (Phase 1, trust core).
       "editorial": { "featured": false, "editors_pick": false },  // Task 31a -- Zealot-authored, D-store reads only. Real `apps.featured`/`apps.editors_pick` columns; false is the default until an admin opts an app in, not a placeholder
       "sponsored_slots": [],               // Task 31a -- real `SponsoredSlot` rows, current-or-upcoming only, soonest first. Shape: [{ "starts_at": "...", "ends_at": "..." }]
       "collections": [],                   // Task 31a -- real `Collection` membership via `CollectionApp`. Array of collection slugs, resolving against the top-level `collections` registry below
+      "suggested_version_code": "42",      // Task 27f-c -- the version_code a client should offer: the highest version_code among `versions[]` whose `status` is "available", compared as versions (so "100" beats "99"), or null when none is. Halting or pulling the newest release moves it to the previous available one (a Play-style rollback, no new data). Additive: no schema_version bump; a reader that does not know the key ignores it. It ignores the rollout ramp: whether one device is offered it is still the reader's call, from `rollout`.
 
       // --- v2: `latest_version` replaced by `versions[]` ---
       "versions": [

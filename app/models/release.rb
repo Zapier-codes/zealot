@@ -15,6 +15,12 @@ class Release < ApplicationRecord
     CatalogIndexPublishJob.enqueue_for(app.tenant)
   end
 
+  # Task 27f-d: true when the save changed a column the index publishes per version. Read from
+  # `saved_changes` (not `saved_change_to_<column>?` per name) so the list lives in one constant.
+  def catalog_index_release_field_changed?
+    (saved_changes.keys & CATALOG_INDEX_RELEASE_FIELDS).any?
+  end
+
   # Task 12 emails: "new build published" to the app's members, and a notice
   # when a Play Store publish fails. Both only enqueue a job (GoodJob) and
   # never block or fail the upload.
@@ -246,9 +252,13 @@ class Release < ApplicationRecord
   # a wasted publish.
   after_create  :publish_catalog_index_if_app_live
   # Task 27f-a: holding, releasing, halting or pulling a release changes what the index shows, so
-  # it republishes the owning tenant's catalog like a new release does. Only `status`: see the
-  # 27f-a session entry for why a rollout change is not added here.
-  after_update_commit :publish_catalog_index_if_app_live, if: :saved_change_to_status?
+  # it republishes the owning tenant's catalog like a new release does. Task 27f-d adds the two
+  # rollout columns: the index carries `rollout` per version (`Serializer#rollout_for`), so a ramp
+  # step or a halted rollout has to reach readers now, not at the next unrelated publish. One
+  # callback with an OR condition, so a save that changes several of them still enqueues once.
+  CATALOG_INDEX_RELEASE_FIELDS = %w[status rollout_percentage rollout_status].freeze
+
+  after_update_commit :publish_catalog_index_if_app_live, if: :catalog_index_release_field_changed?
 
   delegate :scheme, to: :channel
   delegate :app, to: :scheme

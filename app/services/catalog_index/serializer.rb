@@ -169,8 +169,34 @@ module CatalogIndex
         editorial: editorial_for(app),
         sponsored_slots: @editorial ? sponsored_slots_for(app) : [],
         collections: @editorial ? collection_slugs_for(app) : [],
+        suggested_version_code: suggested_version_code_for(releases), # Task 27f-c
         versions: releases.map { |release| serialize_version(release) },
       }
+    end
+
+    # Task 27f-c: the version a store client should offer, derived from what `versions[]` already says:
+    # the highest `version_code` among the releases whose published status is `available`, or nil when
+    # there is none. Halting or pulling the newest release therefore moves the suggestion to the previous
+    # available one with no new data (a Play-style rollback). Compared as versions (`VersionCompare`),
+    # never as strings, so "100" beats "99". A blank code is skipped. A code `Gem::Version` cannot parse
+    # never beats one it can; if none parses, the newest available release's code is used (`releases`
+    # arrives newest first). Between equal codes the first (newest) release is kept.
+    def suggested_version_code_for(releases)
+      codes = releases.select { |release| version_status_for(release) == 'available' }
+                      .map { |release| release.respond_to?(:build_version) ? release.build_version.presence : nil }
+                      .compact
+      keyed = codes.filter_map { |code| (key = version_key(code)) && [ code, key ] }
+      best = keyed.reduce { |kept, candidate| (candidate[1] <=> kept[1]) == 1 ? candidate : kept }
+      best ? best[0] : codes.first
+    end
+
+    # A `Gem::Version` for a version code, through the same `semver` clean-up `VersionCompare` uses
+    # everywhere else, or nil when it is not a version.
+    def version_key(code)
+      @version_compare ||= Object.new.extend(VersionCompare)
+      Gem::Version.new(@version_compare.semver(code))
+    rescue ArgumentError
+      nil
     end
 
     # Task 27e-a / 27e-b: the store listing's free text. `nil` when the app has none (blank is stored as NULL,

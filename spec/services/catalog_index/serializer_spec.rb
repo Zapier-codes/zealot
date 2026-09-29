@@ -362,6 +362,118 @@ RSpec.describe CatalogIndex::Serializer do
       end
     end
 
+    describe 'suggested_version_code (Task 27f-c)' do
+      def suggested_of(app)
+        described_class.call(app)[:apps].first[:suggested_version_code]
+      end
+
+      # `release` is the app's first release (build_version '42'); more are added on the same channel,
+      # each newer than the last, so `App#catalog_releases` (newest first) lists them in call order.
+      def add_release(after, build_version:, status: 'available')
+        Release.new(channel: after.channel, version: build_version.to_i, changelog: [], release_version: "1.2.#{build_version}",
+                    build_version: build_version, status: status, created_at: after.created_at + 1.hour)
+               .tap { |added| added.save!(validate: false) }
+      end
+
+      it 'is the only available version code when there is one release' do
+        app, = build_app_with_release
+
+        expect(suggested_of(app)).to eq('42')
+      end
+
+      it 'is the highest available version code, compared as versions and not as strings' do
+        app, release = build_app_with_release
+        add_release(release, build_version: '100')
+        add_release(release, build_version: '99')
+
+        expect(suggested_of(app)).to eq('100')
+      end
+
+      it 'moves to the previous available release when the newest one is halted' do
+        app, release = build_app_with_release
+        add_release(release, build_version: '43', status: 'halted')
+
+        expect(suggested_of(app)).to eq('42')
+      end
+
+      it 'moves to the previous available release when the newest one is pulled' do
+        app, release = build_app_with_release
+        add_release(release, build_version: '43', status: 'pulled')
+
+        expect(suggested_of(app)).to eq('42')
+      end
+
+      it 'ignores a held release, which is not in the index at all' do
+        app, release = build_app_with_release
+        add_release(release, build_version: '43', status: 'held')
+
+        expect(suggested_of(app)).to eq('42')
+      end
+
+      it 'is nil when no release is available' do
+        app, release = build_app_with_release
+        release.update_columns(status: 'halted')
+
+        expect(suggested_of(app)).to be_nil
+      end
+
+      it 'is nil for an app with no releases' do
+        app = create(:app, play_package_name: 'com.example.empty')
+
+        expect(suggested_of(app)).to be_nil
+      end
+
+      it 'skips a release with a blank version code' do
+        app, release = build_app_with_release
+        add_release(release, build_version: '')
+
+        expect(suggested_of(app)).to eq('42')
+      end
+
+      it 'is nil when the only release has a blank version code' do
+        app, release = build_app_with_release
+        release.update_columns(build_version: '')
+
+        expect(suggested_of(app)).to be_nil
+      end
+
+      it 'keeps the newest release when two codes are equal as versions' do
+        app, release = build_app_with_release
+        release.update_columns(build_version: '1')
+        add_release(release, build_version: '1.0')
+
+        expect(suggested_of(app)).to eq('1.0')
+      end
+
+      it 'never lets a code that is not a version beat one that is' do
+        app, release = build_app_with_release
+        add_release(release, build_version: 'not a version')
+
+        expect(suggested_of(app)).to eq('42')
+      end
+
+      it 'is nil for a fixture that knows nothing about releases' do
+        struct = Struct.new(:id, :play_package_name, :listing_status, :name, :created_at, :updated_at,
+                            :publisher_display_name, keyword_init: true)
+        fixture = struct.new(id: 1, play_package_name: 'x.y', listing_status: 'live', name: 'X',
+                             created_at: Time.utc(2026, 1, 1), updated_at: Time.utc(2026, 1, 1))
+
+        expect(suggested_of(fixture)).to be_nil
+      end
+
+      it 'produces an entry that validates against docs/catalog_index_v2.schema.json when a schema gem is loaded' do
+        skip 'no JSON Schema library available' unless defined?(JSON::Validator)
+
+        app, release = build_app_with_release
+        add_release(release, build_version: '43', status: 'pulled')
+        schema = Rails.root.join('docs/catalog_index_v2.schema.json').to_s
+
+        document = JSON.parse(JSON.generate(described_class.call(app)))
+
+        expect(JSON::Validator.fully_validate(schema, document)).to eq([])
+      end
+    end
+
     it 'reads real compatibility columns once Task 29c has populated them at upload time' do
       app, release = build_app_with_release
       release.update_columns(

@@ -103,6 +103,52 @@ RSpec.describe Release, 'status (Task 27f-a)' do
         .to have_enqueued_job(CatalogIndexPublishJob).with('acme').exactly(:once)
     end
 
+    # Task 27f-d: the index carries `rollout` per version, so a ramp step or a halted rollout has to
+    # republish too (it used to reach readers only at the next unrelated publish).
+    it 'enqueues one publish when the rollout percentage changes' do
+      release = make_release
+
+      expect { release.update!(rollout_percentage: 50) }
+        .to have_enqueued_job(CatalogIndexPublishJob).with(no_args).exactly(:once)
+    end
+
+    it 'enqueues one publish when the rollout is halted or resumed' do
+      release = make_release
+
+      expect { release.update!(rollout_status: :halted) }
+        .to have_enqueued_job(CatalogIndexPublishJob).exactly(:once)
+      expect { release.update!(rollout_status: :active) }
+        .to have_enqueued_job(CatalogIndexPublishJob).exactly(:once)
+    end
+
+    it 'enqueues only one publish when a save changes the percentage and the rollout status together' do
+      release = make_release
+      release.update!(rollout_percentage: 50)
+
+      # Reaching 100 flips `rollout_status` to complete in a before_save, so two watched columns change.
+      expect { release.update!(rollout_percentage: 100) }
+        .to have_enqueued_job(CatalogIndexPublishJob).exactly(:once)
+      expect(release.reload.rollout_status).to eq('complete')
+    end
+
+    it 'enqueues one publish for a tenant app\'s rollout change, for that tenant only' do
+      tenant = create(:tenant, tenant_id: 'acme')
+      tenant_app = App.create!(name: 'Tenant app', listing_status: :live, listed_at: Time.current, tenant: tenant)
+      tenant_channel = tenant_app.schemes.create!(name: 'Main').channels.create!(name: 'Android', device_type: :android)
+      release = make_release(on: tenant_channel)
+
+      expect { release.update!(rollout_percentage: 25) }
+        .to have_enqueued_job(CatalogIndexPublishJob).with('acme').exactly(:once)
+    end
+
+    it 'does nothing for a rollout change on an app that is not live' do
+      draft = App.create!(name: 'Draft app', listing_status: :draft)
+      draft_channel = draft.schemes.create!(name: 'Main').channels.create!(name: 'Android', device_type: :android)
+      release = make_release(on: draft_channel)
+
+      expect { release.update!(rollout_percentage: 50) }.not_to have_enqueued_job(CatalogIndexPublishJob)
+    end
+
     it 'does nothing for a change to another column' do
       release = make_release
 

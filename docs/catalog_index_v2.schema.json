@@ -73,7 +73,7 @@
         "id", "package_name", "listing_status", "publisher", "listing",
         "slug", "summary", "category", "license", "links",
         "available_regions", "created_at", "updated_at",
-        "editorial", "sponsored_slots", "collections", "versions"
+        "editorial", "sponsored_slots", "collections", "suggested_version_code", "versions"
       ],
       "additionalProperties": false,
       "properties": {
@@ -225,6 +225,10 @@
         "collections": {
           "type": "array",
           "items": { "type": "string" }
+        },
+        "suggested_version_code": {
+          "description": "Task 27f-c: the version_code of the version a client should offer: the highest version_code among versions[] whose status is 'available' (compared as versions, not strings), or null when none is. Halting or pulling the newest release moves it to the previous available one. Additive: no schema_version bump; a reader that does not know the key ignores it.",
+          "type": [ "string", "null" ]
         },
         "versions": {
           "type": "array",
