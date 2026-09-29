@@ -28,6 +28,11 @@
         = button_link_to '', app_store_listing_path(@app), 'store', \
           class: 'd-join-item d-btn d-tooltip', \
           data: { tip: t('apps.show.store_listing'), turbo_frame: '_top' }
+      - if !@app.archived && policy(ListingEdit.new(app: @app)).update?
+        / Task 27e-c: the store-listing text editor (name, short and full description).
+        = button_link_to '', app_listing_text_path(@app), 'list-alt', \
+          class: 'd-join-item d-btn d-tooltip', \
+          data: { tip: t('apps.show.listing_text'), turbo_frame: '_top' }
       = button_link_to '', app_path(@app), 'trash-alt', \
         class: 'd-join-item d-btn d-tooltip text-error', \
         data: { tip: t('apps.show.destroy_app'), turbo_method: :delete, turbo_confirm: "#{t('apps.messages.confirm.delete_app', name: @app.name)}" }

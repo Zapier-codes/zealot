@@ -1,0 +1,45 @@
+/ Task 27e-c: the store-listing text editor. The form is filled with what the app's draft would publish
+/ (`@values`); saving stages a draft and changes nothing on the live listing (27e-d adds publish and
+/ discard). `@live` and `@staged` let each changed field show what is live now. Forms target _top because
+/ the flash notice is outside any turbo frame.
+- fields = [ [ 'name', :text_field ], [ 'short_description', :text_field ], [ 'description', :text_area ] ]
+
+- content_for :title do
+  = @title
+
+- content_for :section_title do
+  = @title
+  small class="pl-2 text-sm"
+    = @app.name
+
+.row
+  .col-md-12
+    .card
+      .card-header
+        h3.card-title = t('.card_title')
+      .card-body class="space-y-4"
+        p.text-sm.opacity-70 = t('.intro')
+
+        - if @staged.any?
+          .d-alert.d-alert-info role="status"
+            span = t('.draft_notice', fields: @staged.map { |field| t(".fields.#{field}") }.to_sentence)
+
+        = form_with scope: :listing_text, url: app_listing_text_path(@app), method: :patch, \
+          html: { class: 'space-y-4' }, data: { turbo_frame: '_top' } do |f|
+          - fields.each do |field, kind|
+            div
+              = f.label field, t(".fields.#{field}"), class: 'block text-sm font-semibold mb-1'
+              - if kind == :text_area
+                = f.text_area field, value: @values[field], rows: 12, class: 'd-textarea w-full', \
+                  'aria-describedby': "listing-text-#{field}-hint"
+              - else
+                = f.text_field field, value: @values[field], class: 'd-input w-full', \
+                  'aria-describedby': "listing-text-#{field}-hint"
+              p.text-xs.opacity-65.mt-1 id="listing-text-#{field}-hint"
+                = t(".hints.#{field}", max_short: ListingText::SHORT_DESCRIPTION_MAX_LENGTH, max_full: ListingText::DESCRIPTION_MAX_LENGTH)
+              - if @staged.include?(field)
+                p.text-xs.opacity-65.mt-1
+                  = t('.live_now', text: truncate(@live[field].to_s.presence || t('.empty'), length: 200))
+          div class="flex flex-wrap items-center gap-3"
+            = f.submit t('.save'), class: 'd-btn d-btn-primary'
+            = link_to t('.back'), app_path(@app), class: 'd-link', data: { turbo_frame: '_top' }

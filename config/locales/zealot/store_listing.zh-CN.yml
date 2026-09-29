@@ -62,8 +62,31 @@ zh-CN:
           other_host: 仅接受 YouTube 链接。
           playlist: 这是播放列表链接，请改为粘贴单个视频的链接。
           not_a_video: 这个 YouTube 链接不是单个视频，请粘贴视频本身的链接。
+    listing_texts:
+      show:
+        title: 商店文字
+        card_title: 名称和描述
+        intro: 编辑商店访客会看到的名称和描述。保存后更改会作为草稿保留，商店上的内容暂时不会改变。
+        draft_notice: "你有一份未发布的草稿，其中更改了：%{fields}。"
+        live_now: "当前线上：%{text}"
+        empty: 无
+        save: 保存草稿
+        back: 返回应用
+        fields:
+          name: 名称
+          short_description: 简短描述
+          description: 完整描述
+        hints:
+          name: 应用的名称。
+          short_description: "单行，最多 %{max_short} 个字符。换行会变成空格。"
+          description: "纯文本，最多 %{max_full} 个字符。空行用于分段；链接和格式不会生效。"
+      update:
+        saved: 草稿已保存，商店上暂未生效。
+        unchanged: 没有任何更改。
+        refused: "文字未保存：%{reasons}。"
     show:
       store_listing: 商店上架
+      listing_text: 商店文字
       listing_graphics:
         title: 商店图片
         intro: 这是商店访客看到的截图和宣传图。修改会在下次发布目录时同步到商店。

@@ -62,8 +62,31 @@ en:
           other_host: Only YouTube links are accepted.
           playlist: That link is a playlist. Paste the link to a single video instead.
           not_a_video: That YouTube link is not a single video. Paste the link to the video itself.
+    listing_texts:
+      show:
+        title: Store listing text
+        card_title: Name and descriptions
+        intro: Edit the name and the descriptions store visitors read. Saving keeps your changes as a draft; nothing on the store changes yet.
+        draft_notice: "You have an unpublished draft that changes: %{fields}."
+        live_now: "Live now: %{text}"
+        empty: none
+        save: Save draft
+        back: Back to the app
+        fields:
+          name: Name
+          short_description: Short description
+          description: Full description
+        hints:
+          name: The app's name.
+          short_description: "One line, up to %{max_short} characters. Line breaks become spaces."
+          description: "Plain text, up to %{max_full} characters. Blank lines separate paragraphs; links and formatting are not applied."
+      update:
+        saved: Draft saved. It is not on the store yet.
+        unchanged: Nothing was changed.
+        refused: "The text was not saved: %{reasons}."
     show:
       store_listing: Store listing
+      listing_text: Store listing text
       listing_graphics:
         title: Store graphics
         intro: These are the screenshots and feature graphic store visitors see. Changes reach the store the next time the catalog is published.

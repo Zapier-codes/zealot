@@ -42,6 +42,19 @@ class ListingEditService
     draft
   end
 
+  # Task 27e-c: takes fields back out of the draft, so they read through to the live app again. The text
+  # editor calls this for a field the owner has put back to what is live now: leaving it staged would
+  # commit an old copy over any change made to the live app since. Does nothing (and creates nothing)
+  # when there is no draft, and silently ignores a key that is not staged.
+  def unstage(*fields)
+    return nil unless app.listing_edits.status_draft.exists?
+
+    keys = fields.flatten.map(&:to_s)
+    draft.staged_attributes = draft.staged_attributes.except(*keys)
+    draft.save
+    draft
+  end
+
   def commit!
     draft.commit!
   end

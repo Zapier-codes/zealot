@@ -70,6 +70,46 @@ RSpec.describe ListingEditService do
     end
   end
 
+  # Task 27e-c: a field put back to the live value is dropped from the draft.
+  describe '#unstage' do
+    it 'drops the named fields and keeps the others' do
+      app = create(:app, name: 'Live name')
+      service = described_class.new(app: app)
+      service.stage(name: 'Staged name', short_description: 'Staged short')
+
+      service.unstage('name')
+
+      expect(service.draft.reload.staged_attributes).to eq('short_description' => 'Staged short')
+      expect(service.draft.previewed_attributes['name']).to eq('Live name')
+    end
+
+    it 'accepts symbols and a list, and ignores a field that is not staged' do
+      service = described_class.new(app: create(:app))
+      service.stage(name: 'A', short_description: 'B')
+
+      service.unstage(:name, [ :description ])
+
+      expect(service.draft.reload.staged_attributes).to eq('short_description' => 'B')
+    end
+
+    it 'does nothing, and creates no draft, when the app has none' do
+      app = create(:app)
+
+      expect(described_class.new(app: app).unstage('name')).to be_nil
+      expect(app.listing_edits.count).to eq(0)
+    end
+
+    it 'leaves the live app untouched' do
+      app = create(:app, name: 'Live name')
+      service = described_class.new(app: app)
+      service.stage(name: 'Staged name')
+
+      service.unstage('name')
+
+      expect(app.reload.name).to eq('Live name')
+    end
+  end
+
   describe '#commit! and #discard!' do
     it 'commits the current draft, applying it to the App' do
       app = create(:app, name: 'Old')
