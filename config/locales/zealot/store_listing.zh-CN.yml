@@ -35,6 +35,16 @@ zh-CN:
     update:
       notice: 发布者信息已更新。
   apps:
+    listing_graphics:
+      create:
+        added:
+          screenshot: 截图已添加。
+          feature_graphic: 宣传图已设置。
+        no_file: 请选择要上传的图片。
+        refused: "图片未添加：%{reasons}。"
+        storage_failed: 图片无法保存，未做任何更改，请稍后重试。
+      destroy:
+        notice: 图片已删除。
     show:
       store_listing: 商店上架
     store_listings:

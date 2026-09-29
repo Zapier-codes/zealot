@@ -35,6 +35,16 @@ en:
     update:
       notice: Publisher details updated.
   apps:
+    listing_graphics:
+      create:
+        added:
+          screenshot: Screenshot added.
+          feature_graphic: Feature graphic set.
+        no_file: Choose an image to upload.
+        refused: "The image was not added: %{reasons}."
+        storage_failed: The image could not be stored. Nothing was saved; please try again in a moment.
+      destroy:
+        notice: Graphic removed.
     show:
       store_listing: Store listing
     store_listings:

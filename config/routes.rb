@@ -50,6 +50,9 @@ Rails.application.routes.draw do
 
     resources :collaborators, except: %i[index show]
 
+    # Task 27d-e2-a: add and remove store-listing graphics (no page yet: 27d-e2-b).
+    resources :listing_graphics, only: %i[create destroy], module: :apps
+
     # Task 25: the app's store listing (draft -> awaiting payment -> live).
     resource :store_listing, only: %i[show create], module: :apps do
       patch :mark_paid
