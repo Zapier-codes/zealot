@@ -148,6 +148,9 @@ Rails.application.routes.draw do
         get ':filename', action: :download, filename: /.+/, as: 'filename'
       end
     end
+
+    # Task 27d-d2-d: a store-listing graphic (screenshot or feature graphic), served by id.
+    resources :graphics, only: :show
   end
 
   #############################################
