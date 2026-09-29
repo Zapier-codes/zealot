@@ -52,6 +52,16 @@ en:
         moved: Screenshot moved.
         unchanged: The screenshot is already there.
         bad_direction: Choose whether to move the screenshot earlier or later.
+    promo_videos:
+      update:
+        saved: Promo video saved.
+        removed: Promo video removed.
+        refused: "The promo video was not saved: %{reasons}."
+        errors:
+          not_a_url: That is not a web link. Paste the video's YouTube link.
+          other_host: Only YouTube links are accepted.
+          playlist: That link is a playlist. Paste the link to a single video instead.
+          not_a_video: That YouTube link is not a single video. Paste the link to the video itself.
     show:
       store_listing: Store listing
       listing_graphics:
@@ -80,6 +90,14 @@ en:
         alt_text: Description
         alt_placeholder: "Describe the image (up to %{max} characters)"
         add: Add
+        video:
+          title: Promo video
+          none: No promo video.
+          placeholder: Paste a YouTube link
+          save: Save
+          remove: Remove video
+          confirm_remove: Remove the promo video from the store listing?
+          hint: A single YouTube video link. It must be public or unlisted; Zealot cannot check that, or whether embedding is allowed. Playlists, channels and timestamps are not kept, only the video itself.
         rules: "JPEG or PNG without transparency, up to %{max_mb} MB. Screenshots: each side %{min} to %{max_side} px, at most %{max_shots}. Feature graphic: exactly %{feature_w} x %{feature_h} px; a new one replaces the old."
     store_listings:
       status:

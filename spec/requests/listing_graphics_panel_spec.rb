@@ -88,6 +88,18 @@ RSpec.describe 'Listing graphics panel on the app page', type: :request do
       expect(response.body).not_to include(move_app_listing_graphic_path(app, feature))
     end
 
+    it 'shows the promo video box, and a link only when a video is set' do
+      get app_path(app)
+      expect(response.body).to include(%(action="#{app_promo_video_path(app)}"), I18n.t('apps.show.listing_graphics.video.none'))
+      expect(response.body).not_to include('https://youtu.be/')
+
+      app.update!(promo_video_youtube_id: 'dQw4w9WgXcQ')
+      get app_path(app)
+
+      expect(response.body).to include('https://youtu.be/dQw4w9WgXcQ', 'rel="noopener noreferrer"')
+      expect(response.body).to include(I18n.t('apps.show.listing_graphics.video.remove'))
+    end
+
     it 'shows a placeholder, not a broken image, for a row whose bytes are not stored yet' do
       pending_row = add_graphic(kind: 'screenshot', stored: false)
 

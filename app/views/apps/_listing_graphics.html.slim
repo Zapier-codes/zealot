@@ -31,6 +31,25 @@
     - else
       p.text-sm.opacity-65.mb-4 = t('apps.show.listing_graphics.no_feature_graphic')
 
+    / Task 27d-e2-d: the promo video. Only the 11-character ID is stored; the link below is built from it.
+    h4.text-sm.font-semibold.mb-2 = t('apps.show.listing_graphics.video.title')
+    - if app.promo_video_youtube_id.present?
+      p.text-sm.mb-2
+        = link_to "https://youtu.be/#{app.promo_video_youtube_id}", "https://youtu.be/#{app.promo_video_youtube_id}", \
+          target: '_blank', rel: 'noopener noreferrer', class: 'd-link d-link-primary'
+    - else
+      p.text-sm.opacity-65.mb-2 = t('apps.show.listing_graphics.video.none')
+    = form_with scope: :promo_video, url: app_promo_video_path(app), method: :patch, \
+      html: { class: 'flex flex-wrap gap-2 mb-1' }, data: { turbo_frame: '_top' } do |f|
+      = f.text_field :url, placeholder: t('apps.show.listing_graphics.video.placeholder'), \
+        class: 'd-input d-input-sm flex-1', 'aria-label': t('apps.show.listing_graphics.video.title')
+      = f.submit t('apps.show.listing_graphics.video.save'), class: 'd-btn d-btn-primary d-btn-sm'
+    - if app.promo_video_youtube_id.present?
+      = button_to t('apps.show.listing_graphics.video.remove'), app_promo_video_path(app), method: :patch, \
+        params: { 'promo_video[url]': '' }, class: 'd-btn d-btn-error d-btn-outline d-btn-xs', \
+        form: { class: 'mb-1', data: { turbo_frame: '_top', turbo_confirm: t('apps.show.listing_graphics.video.confirm_remove') } }
+    p.text-xs.opacity-65.mb-4 = t('apps.show.listing_graphics.video.hint')
+
     = form_with scope: :listing_graphic, url: app_listing_graphics_path(app), method: :post, multipart: true, \
       html: { class: 'flex flex-col gap-2 border-t border-base-300 pt-4' }, data: { turbo_frame: '_top' } do |f|
       h4.text-sm.font-semibold = t('apps.show.listing_graphics.add_title')

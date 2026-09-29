@@ -51,6 +51,8 @@ Rails.application.routes.draw do
     resources :collaborators, except: %i[index show]
 
     # Task 27d-e2-a: add and remove store-listing graphics; the panel that calls them is on the app page (27d-e2-b).
+    # Task 27d-e2-d: set or clear the promo video (PATCH /apps/:app_id/promo_video).
+    resource :promo_video, only: :update, module: :apps
     resources :listing_graphics, only: %i[create update destroy], module: :apps do
       # Task 27d-e2-c: move a screenshot up or down one place (params: direction=up|down).
       member { patch :move }

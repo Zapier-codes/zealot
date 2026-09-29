@@ -52,6 +52,16 @@ zh-CN:
         moved: 截图已移动。
         unchanged: 截图已在该位置。
         bad_direction: 请选择将截图前移还是后移。
+    promo_videos:
+      update:
+        saved: 宣传视频已保存。
+        removed: 宣传视频已删除。
+        refused: "宣传视频未保存：%{reasons}。"
+        errors:
+          not_a_url: 这不是网页链接，请粘贴视频的 YouTube 链接。
+          other_host: 仅接受 YouTube 链接。
+          playlist: 这是播放列表链接，请改为粘贴单个视频的链接。
+          not_a_video: 这个 YouTube 链接不是单个视频，请粘贴视频本身的链接。
     show:
       store_listing: 商店上架
       listing_graphics:
@@ -80,6 +90,14 @@ zh-CN:
         alt_text: 描述
         alt_placeholder: "描述这张图片（最多 %{max} 个字符）"
         add: 添加
+        video:
+          title: 宣传视频
+          none: 尚未设置宣传视频。
+          placeholder: 粘贴 YouTube 链接
+          save: 保存
+          remove: 删除视频
+          confirm_remove: 确定从商店上架信息中删除宣传视频吗？
+          hint: 仅限单个 YouTube 视频链接。视频必须是公开或不公开列出的；Zealot 无法检查这一点，也无法检查是否允许嵌入。播放列表、频道和时间戳不会保留，只保留视频本身。
         rules: "JPEG 或不含透明通道的 PNG，最大 %{max_mb} MB。截图：每边 %{min} 至 %{max_side} 像素，最多 %{max_shots} 张。宣传图：必须为 %{feature_w} x %{feature_h} 像素；新图会替换旧图。"
     store_listings:
       status:
