@@ -1195,6 +1195,8 @@ zh-CN:
         not_found: 找不到调试文件，无法提供下载服务
   api:
     app_token_wrong_app: 此 API 令牌不属于该应用
+    release_app_archived: 该应用已归档，无法更改其版本
+    release_not_held: 只有已暂缓的版本才能通过此方式发布（当前版本状态为 %{status}）
     unauthorized_app_token: 未授权
     unauthorized_channel_key: 无效的应用渠道 Key
     unauthorized_token: 未授权用户 token

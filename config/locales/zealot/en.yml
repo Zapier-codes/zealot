@@ -1219,6 +1219,8 @@ en:
         not_found: Not found debug file
   api:
     app_token_wrong_app: This API token does not belong to that app
+    release_app_archived: This app is archived, so its releases cannot be changed
+    release_not_held: Only a held release can be released this way (this release is %{status})
     unauthorized_app_token: Unauthorized
     unauthorized_channel_key: Unauthorized channel key
     unauthorized_token: Unauthorized user token

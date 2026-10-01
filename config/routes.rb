@@ -366,7 +366,10 @@ Rails.application.routes.draw do
 
       resources :collaborators, param: :user_id, except: %i[index new edit]
     end
-    resources :releases, only: %i[update destroy]
+    resources :releases, only: %i[update destroy] do
+      # Task 34a-6: POST /api/releases/:id/release (held -> available; user token or per-app token).
+      member { post :release }
+    end
 
     # Task #7: token-authenticated, admin-only mirror of the admin-namespace
     # singleton (config/routes.rb line ~203). See Api::PlayCredentialsController
