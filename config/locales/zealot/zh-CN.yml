@@ -1194,6 +1194,8 @@ zh-CN:
       show:
         not_found: 找不到调试文件，无法提供下载服务
   api:
+    app_token_wrong_app: 此 API 令牌不属于该应用
+    unauthorized_app_token: 未授权
     unauthorized_channel_key: 无效的应用渠道 Key
     unauthorized_token: 未授权用户 token
     unprocessable_entity: 参数错误，请检查请求的参数是否正确

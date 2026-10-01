@@ -9,6 +9,9 @@ class Api::BaseController < ActionController::API
   # Task 37b-iii-s7c-5: sets `Current.tenant` (before the token check in each subclass) so the
   # policies and the scoped lookups below know which host the request came in on.
   include TenantScoped
+  # Task 34a-2: helpers for the per-app token path (Authorization: Bearer zpa_...). Opt-in only: no
+  # action uses it until its controller declares `before_action :validate_app_token`.
+  include Api::AppTokenAuth
 
   respond_to :json
 

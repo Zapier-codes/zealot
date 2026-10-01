@@ -1218,6 +1218,8 @@ en:
       show:
         not_found: Not found debug file
   api:
+    app_token_wrong_app: This API token does not belong to that app
+    unauthorized_app_token: Unauthorized
     unauthorized_channel_key: Unauthorized channel key
     unauthorized_token: Unauthorized user token
     unprocessable_entity: Unprocessable entity

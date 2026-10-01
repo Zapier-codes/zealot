@@ -24,6 +24,8 @@ class App < ApplicationRecord
   # Task 27d-d1: store-listing graphics (docs/store_listing_graphics.md). Owned by the app, not a
   # release. No uploader, route or reader yet (27d-d2, 27d-e1).
   has_many :listing_graphics, dependent: :destroy
+  # Task 34a-1: per-app API tokens for the owner's own CI (no route or caller until 34a-2).
+  has_many :api_tokens, class_name: 'AppApiToken', dependent: :destroy
 
   scope :all_names, -> { all.map { |c| [c.name, c.id] } }
   scope :debug_files, -> { joins(:debug_files).distinct }
