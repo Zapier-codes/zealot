@@ -365,6 +365,11 @@ Rails.application.routes.draw do
       end
 
       resources :collaborators, param: :user_id, except: %i[index new edit]
+
+      # Task 34a-3: the listing text over the API (stage, publish, discard); user token or per-app token.
+      resource :listing_edit, only: %i[show update destroy], controller: 'apps/listing_edits' do
+        post :commit
+      end
     end
     resources :releases, only: %i[update destroy] do
       # Task 34a-6: POST /api/releases/:id/release (held -> available; user token or per-app token).
