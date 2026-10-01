@@ -1,0 +1,106 @@
+- content_for :title do
+  = t('.title')
+
+- content_for :section_title do
+  = t('.title')
+
+- unless @result.ok?
+  .card.card-outline.card-warning
+    .card-header.card-border
+      h3.card-title = t(".unavailable.#{@result.status}")
+- else
+  p.text-sm.opacity-70 = t('.generated_at', time: @stats[:generated_at])
+
+  .grid.grid-cols-1.md:grid-cols-3.gap-4.mb-4
+    .card
+      .card-body
+        h3.card-title = t('.traffic.title')
+        p = t('.traffic.installs', count: @stats[:traffic][:total_installs])
+        p = t('.traffic.views', count: @stats[:traffic][:total_views])
+        p = t('.traffic.apps', count: @stats[:traffic][:apps_tracked])
+    .card
+      .card-body
+        h3.card-title = t('.searches.title')
+        p = t('.searches.total', count: @stats[:searches][:total])
+        p = t('.searches.distinct', count: @stats[:searches][:distinct_queries])
+    .card
+      .card-body
+        h3.card-title = t('.reviews.title')
+        p = t('.reviews.total', count: @stats[:reviews][:total])
+        p = t('.reviews.average', rating: @stats[:reviews][:average_rating] || t('.none'))
+
+  .card.mb-4
+    .card-header.card-border
+      h3.card-title = t('.traffic.per_app')
+    .card-body.p-0
+      - if @stats[:traffic][:per_app].any?
+        table.d-table
+          thead
+            tr
+              th = t('.slug')
+              th = t('.traffic.views_col')
+              th = t('.traffic.installs_col')
+          tbody
+            - @stats[:traffic][:per_app].each do |row|
+              tr
+                td = row[:slug]
+                td = row[:view_count]
+                td = row[:install_count]
+      - else
+        p.p-4 = t('.empty')
+
+  .card.mb-4
+    .card-header.card-border
+      h3.card-title = t('.searches.top')
+    .card-body.p-0
+      - if @stats[:searches][:top].any?
+        table.d-table
+          thead
+            tr
+              th = t('.searches.query')
+              th = t('.searches.count')
+          tbody
+            - @stats[:searches][:top].each do |row|
+              tr
+                td = row[:query]
+                td = row[:count]
+      - else
+        p.p-4 = t('.empty')
+
+  .card.mb-4
+    .card-header.card-border
+      h3.card-title = t('.reports.title', count: @stats[:reports][:total])
+    .card-body.p-0
+      - if @stats[:reports][:by_status].any? || @stats[:reports][:by_reason].any?
+        table.d-table
+          tbody
+            - @stats[:reports][:by_status].each do |name, n|
+              tr
+                td = t('.reports.status', name: name)
+                td = n
+            - @stats[:reports][:by_reason].each do |name, n|
+              tr
+                td = t('.reports.reason', name: name)
+                td = n
+      - else
+        p.p-4 = t('.empty')
+
+  .card
+    .card-header.card-border
+      h3.card-title = t('.reviews.per_app')
+    .card-body.p-0
+      - if @stats[:reviews][:per_app].any?
+        table.d-table
+          thead
+            tr
+              th = t('.slug')
+              th = t('.reviews.count')
+              th = t('.reviews.average_col')
+          tbody
+            - @stats[:reviews][:per_app].each do |row|
+              tr
+                td = row[:slug]
+                td = row[:count]
+                td = row[:average_rating] || t('.none')
+      - else
+        p.p-4 = t('.empty')

@@ -216,6 +216,8 @@ Rails.application.routes.draw do
       resources :background_jobs, only: :index
       resources :system_info, only: :index
       resources :database_analytics, only: :index
+      # Task 31b: read-only view of D-store-owned figures (see DstoreStats).
+      resources :dstore_stats, only: :index
       resources :apple_keys, except: %i[ edit update ] do
         member do
           put :sync_devices

@@ -300,6 +300,45 @@ zh-CN:
           retire: "已退役密钥 %{key_id}；其私钥已销毁。"
         errors:
           overlap_not_elapsed: "重叠期尚未结束（结束时间：%{ends_at}）。如需跳过，请使用“立即退役”。"
+    dstore_stats:
+      title: 商店统计
+      index:
+        title: :admin.dstore_stats.title
+        generated_at: "D-store 数据截至 %{time}。只读：Zealot 无法更改其中任何内容。"
+        slug: 应用
+        empty: 暂无记录。
+        none: 无
+        unavailable:
+          not_configured: "尚未配置。请设置 DSTORE_STATS_URL 和 DSTORE_STATS_TOKEN 以读取 D-store 的数据。"
+          unauthorized: "D-store 拒绝了该令牌。请确认 DSTORE_STATS_TOKEN 与 D-store 的 STATS_READ_TOKEN 一致。"
+          unavailable: "无法连接 D-store，或其统计数据尚不可用。请稍后重试。"
+          invalid: "D-store 已响应，但格式不符合 Zealot 的预期，因此不显示任何内容。"
+        traffic:
+          title: 流量
+          installs: "安装：%{count}"
+          views: "浏览：%{count}"
+          apps: "已跟踪应用：%{count}"
+          per_app: 浏览最多的应用
+          views_col: 浏览
+          installs_col: 安装
+        searches:
+          title: 搜索
+          total: "搜索次数：%{count}"
+          distinct: "不同的搜索词：%{count}"
+          top: 热门搜索
+          query: 搜索词
+          count: 次数
+        reports:
+          title: "举报：%{count}"
+          status: "状态：%{name}"
+          reason: "原因：%{name}"
+        reviews:
+          title: 评分
+          total: "评分数：%{count}"
+          average: "平均：%{rating}"
+          per_app: 各应用评分
+          count: 评分数
+          average_col: 平均
     sponsored_slots:
       title: 赞助位
       index:

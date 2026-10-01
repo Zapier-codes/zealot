@@ -302,6 +302,45 @@ en:
           retire: "Retired key %{key_id}; its private key was destroyed."
         errors:
           overlap_not_elapsed: "The overlap window has not ended yet (it ends at %{ends_at}). Use Retire now to skip it."
+    dstore_stats:
+      title: Store statistics
+      index:
+        title: :admin.dstore_stats.title
+        generated_at: "D-store figures as of %{time}. Read-only: Zealot cannot change any of this."
+        slug: App
+        empty: Nothing recorded yet.
+        none: n/a
+        unavailable:
+          not_configured: "Not configured. Set DSTORE_STATS_URL and DSTORE_STATS_TOKEN to read D-store's figures."
+          unauthorized: "D-store refused the token. Check that DSTORE_STATS_TOKEN matches D-store's STATS_READ_TOKEN."
+          unavailable: "D-store could not be reached, or its stats are not available yet. Try again in a moment."
+          invalid: "D-store answered, but not in the shape Zealot expects. Nothing is shown."
+        traffic:
+          title: Traffic
+          installs: "Installs: %{count}"
+          views: "Views: %{count}"
+          apps: "Apps tracked: %{count}"
+          per_app: Most viewed apps
+          views_col: Views
+          installs_col: Installs
+        searches:
+          title: Searches
+          total: "Searches: %{count}"
+          distinct: "Distinct queries: %{count}"
+          top: Top searches
+          query: Search
+          count: Times
+        reports:
+          title: "Reports: %{count}"
+          status: "Status: %{name}"
+          reason: "Reason: %{name}"
+        reviews:
+          title: Ratings
+          total: "Ratings: %{count}"
+          average: "Average: %{rating}"
+          per_app: Ratings by app
+          count: Ratings
+          average_col: Average
     sponsored_slots:
       title: Sponsored Slots
       index:
