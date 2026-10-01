@@ -33,6 +33,11 @@
         = button_link_to '', app_listing_text_path(@app), 'list-alt', \
           class: 'd-join-item d-btn d-tooltip', \
           data: { tip: t('apps.show.listing_text'), turbo_frame: '_top' }
+      - if !@app.archived && policy(AppApiToken.new(app: @app)).index?
+        / Task 34a-7: the owner's API tokens for CI publishing.
+        = button_link_to '', app_api_tokens_path(@app), 'key', \
+          class: 'd-join-item d-btn d-tooltip', \
+          data: { tip: t('apps.show.api_tokens'), turbo_frame: '_top' }
       = button_link_to '', app_path(@app), 'trash-alt', \
         class: 'd-join-item d-btn d-tooltip text-error', \
         data: { tip: t('apps.show.destroy_app'), turbo_method: :delete, turbo_confirm: "#{t('apps.messages.confirm.delete_app', name: @app.name)}" }

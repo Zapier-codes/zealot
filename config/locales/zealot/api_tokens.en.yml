@@ -1,0 +1,50 @@
+en:
+  apps:
+    show:
+      api_tokens: API tokens
+    api_tokens:
+      index:
+        title: API tokens
+        card_title: Tokens for publishing from CI
+        intro: A token lets a build job of yours publish to this app only (upload a release, stage and publish the listing text, set a channel's track, release a held release). It acts as you, so it stops working if you lose access to the app.
+        scope_note: "It can never manage tokens, collaborators, Play credentials or payments, and it cannot pull or halt a release. An app can have at most %{max} live tokens, so you can issue a new one before revoking the old."
+        secret_title: "Your new token \"%{name}\""
+        secret_once: Copy it now and keep it somewhere safe. It is shown only once and cannot be shown again. If you lose it, revoke it and make a new one.
+        copy: Copy token
+        create: Create token
+        back: Back to the app
+        fields:
+          name: Name
+          expiry: Expires
+        hints:
+          name: What it is for, for example "GitHub Actions release job".
+          expiry: A token that never expires is convenient but stays valid until you revoke it. 90 days is a good default.
+        expiry:
+          '30': In 30 days
+          '90': In 90 days (recommended)
+          '365': In 365 days
+          none: Never (not recommended)
+        cap_reached: "This app already has %{max} live tokens. Revoke one to create another."
+        list_title: Tokens
+        empty: No tokens yet.
+        columns:
+          name: Name
+          token: Token
+          created_by: Created by
+          last_used: Last used
+          expires: Expires
+          status: Status
+        unknown_creator: unknown
+        never: never
+        no_expiry: never
+        status:
+          live: Live
+          revoked: Revoked
+          expired: Expired
+        revoke: Revoke
+        confirm_revoke: "Revoke \"%{name}\"? Any job using it stops working immediately."
+      create:
+        created: Token created. Copy it now; it will not be shown again.
+        refused: "The token was not created: %{reasons}"
+      destroy:
+        revoked: "Token \"%{name}\" revoked."

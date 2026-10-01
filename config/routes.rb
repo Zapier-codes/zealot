@@ -53,6 +53,8 @@ Rails.application.routes.draw do
     # Task 27d-e2-a: add and remove store-listing graphics; the panel that calls them is on the app page (27d-e2-b).
     # Task 27d-e2-d: set or clear the promo video (PATCH /apps/:app_id/promo_video).
     resource :promo_video, only: :update, module: :apps
+    # Task 34a-7: the owner creates, lists and revokes the app's API tokens (a session page, never /api).
+    resources :api_tokens, only: %i[index create destroy], module: :apps
     # Task 27e-c: the store-listing text editor (name, short description, full description). It stages a
     # draft (ListingEditService); nothing on the live listing changes until the owner publishes (27e-d).
     # Task 27e-d: publish (POST .../listing_text/commit) or discard (DELETE) the draft.

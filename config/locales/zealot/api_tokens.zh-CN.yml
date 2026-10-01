@@ -1,0 +1,50 @@
+zh-CN:
+  apps:
+    show:
+      api_tokens: API 令牌
+    api_tokens:
+      index:
+        title: API 令牌
+        card_title: 用于 CI 发布的令牌
+        intro: 令牌让你的构建任务仅能向此应用发布（上传版本、暂存并发布商店文字、设置渠道轨道、发布已暂缓的版本）。它以你的身份操作，因此一旦你失去该应用的权限，它也会失效。
+        scope_note: "令牌无法管理令牌、协作者、Play 凭据或付款，也不能撤下或暂停版本。每个应用最多可有 %{max} 个有效令牌，因此可先创建新令牌再撤销旧令牌。"
+        secret_title: "新令牌“%{name}”"
+        secret_once: 请立即复制并妥善保存。它只显示这一次，之后无法再次显示。如果丢失，请撤销并重新创建。
+        copy: 复制令牌
+        create: 创建令牌
+        back: 返回应用
+        fields:
+          name: 名称
+          expiry: 有效期
+        hints:
+          name: 用途说明，例如“GitHub Actions 发布任务”。
+          expiry: 永不过期的令牌虽然方便，但在你撤销之前一直有效。建议使用 90 天。
+        expiry:
+          '30': 30 天后
+          '90': 90 天后（推荐）
+          '365': 365 天后
+          none: 永不过期（不推荐）
+        cap_reached: "此应用已有 %{max} 个有效令牌。请先撤销一个再创建。"
+        list_title: 令牌列表
+        empty: 还没有令牌。
+        columns:
+          name: 名称
+          token: 令牌
+          created_by: 创建者
+          last_used: 最近使用
+          expires: 到期时间
+          status: 状态
+        unknown_creator: 未知
+        never: 从未
+        no_expiry: 永不过期
+        status:
+          live: 有效
+          revoked: 已撤销
+          expired: 已过期
+        revoke: 撤销
+        confirm_revoke: "撤销“%{name}”？使用它的任务将立即失效。"
+      create:
+        created: 令牌已创建。请立即复制，之后不会再显示。
+        refused: "未能创建令牌：%{reasons}"
+      destroy:
+        revoked: "令牌“%{name}”已撤销。"

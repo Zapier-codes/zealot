@@ -1,0 +1,89 @@
+/ Task 34a-7 (Storeapp leaf `f.xiv`): the owner's API tokens for this app. `@issued` is set only in the response
+/ to a successful create: its secret is shown here once and exists nowhere else (only a SHA-256 digest is stored).
+/ The create form opts out of Turbo so that response renders as a plain page; see Apps::ApiTokensController.
+- content_for :title do
+  = @title
+
+- content_for :section_title do
+  = @title
+  small class="pl-2 text-sm"
+    = @app.name
+
+.row
+  .col-md-12
+    .card
+      .card-header
+        h3.card-title = t('.card_title')
+      .card-body class="space-y-4"
+        p.text-sm.opacity-70 = t('.intro')
+        p.text-xs.opacity-65 = t('.scope_note', max: AppApiToken::MAX_LIVE_PER_APP)
+
+        - if @issued
+          .d-alert.d-alert-warning role="alert" class="flex-col items-start space-y-2"
+            strong = t('.secret_title', name: @issued.token.name)
+            p.text-sm = t('.secret_once')
+            .d-join.w-full data-controller="clipboard-center"
+              input.d-join-item.d-input.w-full.font-mono.text-sm value=@issued.secret readonly="true" \
+                aria-label=t('.secret_title', name: @issued.token.name) data-clipboard-center-target="source"
+              button.d-join-item.d-btn type="button" data-action="clipboard-center#copy" \
+                data-clipboard-text=@issued.secret title=t('.copy')
+                i.fa-regular.fa-clipboard
+                span.sr-only = t('.copy')
+
+        - if @live_count < AppApiToken::MAX_LIVE_PER_APP
+          = form_with scope: :api_token, url: app_api_tokens_path(@app), method: :post, \
+            html: { class: 'space-y-4' }, data: { turbo: false } do |f|
+            div
+              = f.label :name, t('.fields.name'), class: 'block text-sm font-semibold mb-1'
+              = f.text_field :name, value: @form_name, maxlength: AppApiToken::NAME_MAX_LENGTH, required: true, \
+                class: 'd-input w-full', 'aria-describedby': 'api-token-name-hint'
+              p.text-xs.opacity-65.mt-1 id="api-token-name-hint" = t('.hints.name')
+            div
+              = f.label :expiry, t('.fields.expiry'), class: 'block text-sm font-semibold mb-1'
+              = f.select :expiry, \
+                [ [ t('.expiry.30'), '30' ], [ t('.expiry.90'), '90' ], [ t('.expiry.365'), '365' ], [ t('.expiry.none'), 'none' ] ], \
+                { selected: @form_expiry }, class: 'd-select w-full', 'aria-describedby': 'api-token-expiry-hint'
+              p.text-xs.opacity-65.mt-1 id="api-token-expiry-hint" = t('.hints.expiry')
+            div class="flex flex-wrap items-center gap-3"
+              = f.submit t('.create'), class: 'd-btn d-btn-primary'
+              = link_to t('.back'), app_path(@app), class: 'd-link', data: { turbo_frame: '_top' }
+        - else
+          .d-alert.d-alert-info role="status"
+            span = t('.cap_reached', max: AppApiToken::MAX_LIVE_PER_APP)
+
+        .border-t.border-base-300.pt-4
+          h4.text-sm.font-semibold.mb-2 = t('.list_title')
+          - if @tokens.empty?
+            p.text-sm.opacity-70 = t('.empty')
+          - else
+            .overflow-x-auto
+              table.d-table.d-table-sm
+                thead
+                  tr
+                    th = t('.columns.name')
+                    th = t('.columns.token')
+                    th = t('.columns.created_by')
+                    th = t('.columns.last_used')
+                    th = t('.columns.expires')
+                    th = t('.columns.status')
+                    th
+                tbody
+                  - @tokens.each do |token|
+                    tr
+                      td = token.name
+                      td.font-mono = "#{AppApiToken::PREFIX}…#{token.last_four}"
+                      td = token.created_by&.username || t('.unknown_creator')
+                      td = token.last_used_at ? l(token.last_used_at, format: :short) : t('.never')
+                      td = token.expires_at ? l(token.expires_at, format: :short) : t('.no_expiry')
+                      td
+                        - if token.revoked_at
+                          = t('.status.revoked')
+                        - elsif !token.live?
+                          = t('.status.expired')
+                        - else
+                          = t('.status.live')
+                      td
+                        - if token.live?
+                          = button_to t('.revoke'), app_api_token_path(@app, token), method: :delete, \
+                            class: 'd-btn d-btn-error d-btn-outline d-btn-xs', \
+                            form: { data: { turbo_frame: '_top', turbo_confirm: t('.confirm_revoke', name: token.name) } }
