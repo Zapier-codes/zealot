@@ -3,7 +3,16 @@
 class Api::Apps::UploadController < Api::BaseController
   include AppArchived
 
-  before_action :validate_user_token
+  # Task 34a-5 (Storeapp leaf `f.xiv`): this endpoint takes EITHER credential, never both, never a
+  # fallback from one to the other. With an `Authorization: Bearer zpa_...` header the per-app token
+  # path runs (Api::AppTokenAuth: header only, `?token=` ignored, the token's creator is the acting
+  # user) and the upload is confined to the token's own app; a presented-but-bad `zpa_` header is a
+  # 401 and the user token is NOT tried. Without such a header the user-token path is exactly as it
+  # was. Order matters: authenticate, then confine the token to its app, and only then parse the file and
+  # look the channel up (so another app's archived state is never revealed to a token that is not for it).
+  before_action :validate_app_token, if: :app_token_presented?
+  before_action :validate_user_token, unless: :app_token_presented?
+  before_action :require_channel_app_token, if: :app_token_presented?
   before_action :set_parser
   before_action :set_channel
 
@@ -11,9 +20,13 @@ class Api::Apps::UploadController < Api::BaseController
   #
   # POST /api/apps/upload
   #
-  # @param token         [String]   required  user token
+  # @param token         [String]   required  user token (not read when an `Authorization: Bearer zpa_...`
+  #                                              app token header is sent instead; see Api::AppTokenAuth)
   # @param file          [String]   required  file of app
-  # @param channel_key   [String]   optional  channel key of app
+  # @param channel_key   [String]   optional  channel key of app (REQUIRED with an app token: a token
+  #                                              uploads into its own app's channel, never creates an app)
+  # @param hold          [Boolean]  optional  true: create the release `held`, kept out of the catalog
+  #                                              index until it is released (Task 27f-a/b, 34a-5)
   # @param name          [String]   optional  name of app
   # @param password      [String]   optional  password to download app
   # @param release_type  [String]   optional  release type(debug, beta, adhoc, release, enterprise etc)
@@ -88,8 +101,24 @@ class Api::Apps::UploadController < Api::BaseController
   def create_release(channel)
     @release = channel.releases.upload_file(release_params, parser: @app_parser, source: 'api')
     authorize @release
+    @release.status = 'held' if hold_requested?
 
     @release.save!
+  end
+
+  # Task 34a-5: `hold=true` (also 1/t/yes, as Rails casts a boolean) creates the release `held`
+  # (27f-a), so it stays out of the signed index until it is released through the same transition
+  # table as the console (`Release::STATUS_TRANSITIONS`). Anything else, or no param, leaves the
+  # release `available` exactly as before.
+  def hold_requested?
+    ActiveModel::Type::Boolean.new.cast(params[:hold]) == true
+  end
+
+  # An app token is for ONE existing app. No channel found (a first upload, which would create an app
+  # and a scheme) is refused the same way as another app's channel: 403, never a new app. Only runs
+  # when an app token was presented (see the before_action above).
+  def require_channel_app_token
+    require_app_token_for!(Channel.find_by(key: params[:channel_key])&.app)
   end
 
   def with_channel(scheme)

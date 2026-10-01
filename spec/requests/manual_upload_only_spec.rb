@@ -22,7 +22,7 @@ RSpec.describe 'Manual upload only (f.viii)', type: :request do
   def upload_doors
     {
       'app/controllers/releases_controller.rb' => 'before_action :authenticate_login!',
-      'app/controllers/api/apps/upload_controller.rb' => 'before_action :validate_user_token'
+      'app/controllers/api/apps/upload_controller.rb' => 'before_action :validate_user_token, unless: :app_token_presented?'
     }
   end
 
