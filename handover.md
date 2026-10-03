@@ -187,6 +187,16 @@ manual-only as well, it is the same one-line trigger change.)
    REST API is rate-limited from the sandbox). Each run page states the
    workflow file, status, and job list.
 
+## Debug fixes (operator-directed, no task number)
+
+### 2026-10-03 — production boot crash: `Unknown validator: 'MessageValidator'` (Render deploy `dep-db08doad0e5s73ahd1ag`, image `deploy-0669b07`)
+
+**Read from the operator's uploaded log** (`render-deploy-dep-db08doad0e5s73ahd1ag.log`, saved with D-Store's `scripts/fetch-ci-log.sh`), not guessed. The migrations are fine: `30-zealot-upgrade` printed "Zealot database is up to date: 20261001100000" and every init script exited 0. What fails is Puma loading the app: `ArgumentError: Unknown validator: 'MessageValidator'` at `app/models/listing_edit.rb:37`, repeated about every 65 seconds (the supervisor restarts Zealot each time) until Render gives up after about 15 minutes and marks the deploy `update_failed`. Production eager-loads every model at boot, so a model that cannot load stops the whole app.
+
+**Cause:** `validates :app_id, uniqueness: {...}, if: ..., message: '...'` has `message:` at the top level of `validates`, where Rails reads every unknown key as a validator name. Written in task 30a (2026-09-27, commit `010fc333`) and never loaded by Rails until a production boot, because 30a's code was "written, not run". **Fix:** `message:` moved inside the `uniqueness` hash; `spec/models/listing_edit_spec.rb` now checks the message. A scan of every `validates` call under `app/` found no other top-level `message:`, `minimum`, `in`, `with` or `scope` keys; that scan was a text pattern, not Rails, so it does not prove the app loads. **Not run** (no Ruby here, no-testing instruction): the first proof is the next Render deploy reaching `live`; if the log shows another boot error, upload it the same way.
+
+**Also in that log, not causes:** `fix-attrs.d 11-crontab-dir: exited 1` (harmless as the boot continues), `SMTP is not configure, skip`, and the `No open ports detected` lines, which only mean Puma had not bound yet. `warning: already initialized constant ListingEdit::LISTING_FIELDS` appears once per attempt, a side effect of the failed load being retried. Every earlier `update_failed` deploy back to 2026-09-29 may share this cause; their logs were not read.
+
 ## Task board
 
 ### 🧭 Play-parity program — Tasks 28–37 (Task 37 added this session; docs only; nothing below is built)

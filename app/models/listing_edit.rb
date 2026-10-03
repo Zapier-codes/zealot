@@ -34,9 +34,12 @@ class ListingEdit < ApplicationRecord
   # discarded rows are history, not drafts, and are exempt (this
   # validation only ever looks at other *draft* rows), and a partial
   # unique index in the migration backs this up at the database layer.
-  validates :app_id, uniqueness: { conditions: -> { where(status: 'draft') } },
-            if: :status_draft?,
-            message: 'already has a draft listing edit for this app'
+  # `message:` belongs INSIDE the uniqueness hash. Left at the top level of `validates` Rails reads it
+  # as a validator name and raises "Unknown validator: 'MessageValidator'" the moment the class loads,
+  # which in production (eager loading) stops the app from booting.
+  validates :app_id, uniqueness: { conditions: -> { where(status: 'draft') },
+                                   message: 'already has a draft listing edit for this app' },
+            if: :status_draft?
 
   validate :staged_attributes_keys_allowed
   validate :staged_attributes_valid_against_app

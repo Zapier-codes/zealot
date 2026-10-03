@@ -89,6 +89,9 @@ RSpec.describe ListingEdit do
 
       expect(second).not_to be_valid
       expect(second.errors[:app_id]).to be_present
+      # The custom message is the proof the option sits inside the uniqueness hash (a top-level
+      # `message:` stops the whole app booting with "Unknown validator: 'MessageValidator'").
+      expect(second.errors[:app_id].join).to include('already has a draft listing edit')
     end
 
     it 'does not count a committed or discarded edit against the limit' do
