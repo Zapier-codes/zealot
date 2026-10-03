@@ -1,11 +1,21 @@
 #!/usr/bin/env bash
-# bin/bootstrap-publishing  (Task 34d-3, D-Store leaf 37, `7.a.xii.zi`; written, NOT run)
+# bin/bootstrap-publishing  (Task 34d-3, D-Store leaf 37, `7.a.xii.zi`; two-identity split: Task 34d-5, D-Store leaf 39,
+# `7.a.xiii.zi`; written, NOT run)
 #
-# Does, through Zealot's API, the setup that D-Store HANDOVER leaf 16 listed as the operator's steps 3 and 4:
+# Does, through Zealot's API, the setup that D-Store HANDOVER leaf 16 listed as the operator's steps 3 and 4.
+# It is run TWICE, once per identity, because the two halves belong to different people (least privilege):
 #
-#   3. the org-wide Android signing key exists            (Task 34d-1: /api/android_signing_key)
-#   4. the app, its scheme and an Android channel exist   (the long-standing /api/apps, schemes, channels)
-#      a per-app CI token exists and is stored where the build job reads it   (Task 34d-2: /api/apps/:id/api_tokens)
+#   --only signing-key   run as the PLATFORM ADMIN (the organisation). The org-wide Android signing key exists.
+#                        (Task 34d-1: /api/android_signing_key). The admin does not own or publish any app.
+#   --only app           run as a DEVELOPER account (never the admin). The app, its scheme and an Android channel
+#                        exist, and a per-app CI token exists and is stored where the build job reads it
+#                        (Task 34d-2: /api/apps/:id/api_tokens). That developer owns the app and the token acts
+#                        as that developer (decision 34-2), with the one scope `publish`.
+#
+# Signing is not done by the developer or by the CI job. The CI builds an UNSIGNED bundle and uploads it; Zealot
+# splits it into APKs and signs them with the organisation's key when it processes the upload
+# (AnthropicAssetDeliveryJob -> AndroidSigningKey.current). So one org key signs every developer's app, and a
+# developer's token can only upload, never read or change that key.
 #
 # Safe to run again: every step looks first and only creates what is missing. It never replaces an existing
 # signing key (rotating that key changes the signature of every future release; it is a deliberate act, see
@@ -15,26 +25,32 @@
 # permission to write that repository's Actions secrets and variables.
 #
 # Credentials, never on the command line (argv shows in `ps`, shell history and CI logs):
-#   the admin's Zealot user token      env ZEALOT_ADMIN_TOKEN, or --admin-token-file, or a hidden prompt;
+#   the run's Zealot user token        env ZEALOT_ADMIN_TOKEN, or --admin-token-file, or a hidden prompt (the
+#                                      admin's for --only signing-key, the developer's for --only app);
 #                                      OR let this script sign in and read it (--sign-in, below)
 # --sign-in EMAIL signs in with Zealot's own login form (the same two page loads a browser makes) and reads the
 # account's API token off its profile page, so no token is copied by hand. The password comes from env
 # ZEALOT_PASSWORD, --password-file, a hidden prompt, or is made here: --new-password-file F writes a random
 # 48-character password (36 bytes from the system's secure random source) to the new file F, mode 0600.
 # Zealot's login form REGISTERS an email it does not know, so a mistyped address makes a stray account, and it
-# makes ordinary accounts only: the org signing key needs a PLATFORM ADMIN, and the one email that can be the
-# admin is the server's ZEALOT_ADMIN_SIGNUP_EMAIL, created only through the admin entry (--admin-entry). One
-# attempt only, never retried: Devise locks an account after 5 wrong passwords.
+# makes ordinary DEVELOPER accounts (when the server allows registrations): that is how the developer account for
+# --only app is created. The org signing key needs a PLATFORM ADMIN, and the one email that can be the admin is
+# the server's ZEALOT_ADMIN_SIGNUP_EMAIL, created only through the admin entry (--admin-entry), which only
+# --only signing-key accepts. One attempt only, never retried: Devise locks an account after 5 wrong passwords.
 #   the keystore passwords             env KEYSTORE_PASSWORD / KEY_PASSWORD, or --keystore-password-file /
 #                                      --key-password-file, or a hidden prompt (only asked when a key is to be added)
 # The new CI token is never printed. It goes to the GitHub repository's secret ZEALOT_APP_TOKEN (--github-repo)
 # and/or a new file with mode 0600 (--secret-out). One of the two is required when a token is to be made.
 #
-# Example (Termux), Storeapp:
+# Example (Termux), Storeapp, two runs:
 #   export ZEALOT_URL=https://<your zealot host>
-#   bash ~/zealot/bin/bootstrap-publishing \
+#   # 1. the organisation: the signing key (skip when the key is already in Zealot)
+#   bash ~/zealot/bin/bootstrap-publishing --only signing-key \
+#     --sign-in <admin email> --admin-entry --keystore ~/storage/downloads/release.jks --key-alias release
+#   # 2. the developer account that owns and publishes Storeapp (made on the spot if it does not exist)
+#   bash ~/zealot/bin/bootstrap-publishing --only app \
+#     --sign-in <developer email> --new-password-file ~/zealot-dev.pw \
 #     --app-name Storeapp --bundle-id com.vythera.vyxelapps \
-#     --keystore ~/storage/downloads/release.jks --key-alias release \
 #     --github-repo Zapier-codes/Storeapp --secret-out ~/storeapp-zealot.token
 # (--secret-out as well, because GitHub will not hand the secret back and the first held upload by hand, leaf 16
 # step 6, needs it; delete that file when the workflow publishes by itself.)
@@ -49,16 +65,20 @@ usage() {
   cat <<'EOF'
 
 Options:
+  --only signing-key|app       required: which half to do, as which identity (see the top of this help)
   --url URL                    Zealot's address (or env ZEALOT_URL); must be https (http only for localhost)
-  --app-name NAME              required: the app's name in Zealot (matched exactly)
-  --bundle-id ID               required: the Android application id; must equal the .aab's, or uploads are refused
+  --app-name NAME              required with --only app: the app's name in Zealot (matched exactly)
+  --bundle-id ID               required with --only app: the Android application id; must equal the .aab's, or
+                               uploads are refused
   --scheme-name NAME           default: Release
   --channel-name NAME          default: Android
-  --keystore FILE              add this keystore as the org signing key when none exists (never replaces one)
+  --keystore FILE              --only signing-key: add this keystore as the org signing key when none exists
+                               (never replaces one)
   --key-alias ALIAS            required with --keystore
   --keystore-password-file F   --key-password-file F   --admin-token-file F
   --sign-in EMAIL              sign in as this account and read its user token (instead of --admin-token-file)
-  --admin-entry                with --sign-in: use the admin entry, the only way the admin email can be created
+  --admin-entry                --only signing-key with --sign-in: use the admin entry, the only way the admin email
+                               can be created; refused with --only app
   --password-file F            with --sign-in: the account's existing password (or env ZEALOT_PASSWORD, or a prompt)
   --new-password-file F        with --sign-in: make a random password, save it to the NEW file F (mode 0600), and
                                use it; if the account already exists it is not accepted and F is removed again
@@ -78,13 +98,14 @@ need() { command -v "$1" >/dev/null 2>&1 || die "$1 is required but is not insta
 
 # ---- arguments ------------------------------------------------------------------------------------------
 ZEALOT_URL="${ZEALOT_URL:-}"
-APP_NAME="" BUNDLE_ID="" SCHEME_NAME="Release" CHANNEL_NAME="Android"
+ONLY="" APP_NAME="" BUNDLE_ID="" SCHEME_NAME="Release" CHANNEL_NAME="Android"
 KEYSTORE="" KEY_ALIAS="" KEYSTORE_PASSWORD_FILE="" KEY_PASSWORD_FILE="" ADMIN_TOKEN_FILE=""
 SIGN_IN_EMAIL="" PASSWORD_FILE="" NEW_PASSWORD_FILE="" ADMIN_ENTRY=0
 TOKEN_NAME="github-actions" EXPIRY="90" ROTATE=0 GITHUB_REPO="" SECRET_OUT="" DRY_RUN=0
 
 while (($#)); do
   case "$1" in
+    --only) ONLY="${2:?--only needs signing-key or app}"; shift 2 ;;
     --url) ZEALOT_URL="${2:?--url needs a value}"; shift 2 ;;
     --app-name) APP_NAME="${2:?--app-name needs a value}"; shift 2 ;;
     --bundle-id) BUNDLE_ID="${2:?--bundle-id needs a value}"; shift 2 ;;
@@ -112,8 +133,23 @@ done
 
 need curl
 need jq
-[[ -n $APP_NAME ]] || die "--app-name is required"
-[[ -n $BUNDLE_ID ]] || die "--bundle-id is required"
+case "$ONLY" in
+  signing-key)
+    # The organisation's half: nothing about an app, a token or a repository belongs here.
+    [[ -z $APP_NAME && -z $BUNDLE_ID && -z $GITHUB_REPO && -z $SECRET_OUT ]] ||
+      die "--app-name, --bundle-id, --github-repo and --secret-out belong to --only app, not to the signing key run"
+    ((!ROTATE)) || die "--rotate belongs to --only app"
+    ;;
+  app)
+    # The developer's half: never the admin, and never the key.
+    [[ -n $APP_NAME ]] || die "--app-name is required with --only app"
+    [[ -n $BUNDLE_ID ]] || die "--bundle-id is required with --only app"
+    ((!ADMIN_ENTRY)) || die "--admin-entry is the admin's way in; the app and its token belong to a developer account (--only app)"
+    [[ -z $KEYSTORE && -z $KEY_ALIAS && -z $KEYSTORE_PASSWORD_FILE && -z $KEY_PASSWORD_FILE ]] ||
+      die "the keystore options belong to --only signing-key, run as the admin"
+    ;;
+  *) die "--only is required: signing-key (run as the admin) or app (run as a developer); see --help" ;;
+esac
 [[ -n $ZEALOT_URL ]] || die "set ZEALOT_URL or pass --url"
 ZEALOT_URL="${ZEALOT_URL%/}"
 case "$ZEALOT_URL" in
@@ -447,7 +483,13 @@ step_variables() {
 
 # ---- run -------------------------------------------------------------------------------------------------
 if ((DRY_RUN)); then log "dry run: reading only, nothing will be changed"; fi
-step_signing_key
+
+if [[ $ONLY == signing-key ]]; then
+  step_signing_key
+  log "done: the organisation's signing key is in place. Next, as a developer account: --only app"
+  exit 0
+fi
+
 step_app_scheme_channel
 step_token
 step_variables
