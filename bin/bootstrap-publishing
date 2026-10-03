@@ -15,7 +15,16 @@
 # permission to write that repository's Actions secrets and variables.
 #
 # Credentials, never on the command line (argv shows in `ps`, shell history and CI logs):
-#   the admin's Zealot user token      env ZEALOT_ADMIN_TOKEN, or --admin-token-file, or a hidden prompt
+#   the admin's Zealot user token      env ZEALOT_ADMIN_TOKEN, or --admin-token-file, or a hidden prompt;
+#                                      OR let this script sign in and read it (--sign-in, below)
+# --sign-in EMAIL signs in with Zealot's own login form (the same two page loads a browser makes) and reads the
+# account's API token off its profile page, so no token is copied by hand. The password comes from env
+# ZEALOT_PASSWORD, --password-file, a hidden prompt, or is made here: --new-password-file F writes a random
+# 48-character password (36 bytes from the system's secure random source) to the new file F, mode 0600.
+# Zealot's login form REGISTERS an email it does not know, so a mistyped address makes a stray account, and it
+# makes ordinary accounts only: the org signing key needs a PLATFORM ADMIN, and the one email that can be the
+# admin is the server's ZEALOT_ADMIN_SIGNUP_EMAIL, created only through the admin entry (--admin-entry). One
+# attempt only, never retried: Devise locks an account after 5 wrong passwords.
 #   the keystore passwords             env KEYSTORE_PASSWORD / KEY_PASSWORD, or --keystore-password-file /
 #                                      --key-password-file, or a hidden prompt (only asked when a key is to be added)
 # The new CI token is never printed. It goes to the GitHub repository's secret ZEALOT_APP_TOKEN (--github-repo)
@@ -48,6 +57,11 @@ Options:
   --keystore FILE              add this keystore as the org signing key when none exists (never replaces one)
   --key-alias ALIAS            required with --keystore
   --keystore-password-file F   --key-password-file F   --admin-token-file F
+  --sign-in EMAIL              sign in as this account and read its user token (instead of --admin-token-file)
+  --admin-entry                with --sign-in: use the admin entry, the only way the admin email can be created
+  --password-file F            with --sign-in: the account's existing password (or env ZEALOT_PASSWORD, or a prompt)
+  --new-password-file F        with --sign-in: make a random password, save it to the NEW file F (mode 0600), and
+                               use it; if the account already exists it is not accepted and F is removed again
   --token-name NAME            default: github-actions (a live token with this name is reused unless --rotate)
   --expiry 30|90|365|none      default: 90 (days)
   --rotate                     make a new token and, once it is stored, revoke the older live ones of that name
@@ -66,6 +80,7 @@ need() { command -v "$1" >/dev/null 2>&1 || die "$1 is required but is not insta
 ZEALOT_URL="${ZEALOT_URL:-}"
 APP_NAME="" BUNDLE_ID="" SCHEME_NAME="Release" CHANNEL_NAME="Android"
 KEYSTORE="" KEY_ALIAS="" KEYSTORE_PASSWORD_FILE="" KEY_PASSWORD_FILE="" ADMIN_TOKEN_FILE=""
+SIGN_IN_EMAIL="" PASSWORD_FILE="" NEW_PASSWORD_FILE="" ADMIN_ENTRY=0
 TOKEN_NAME="github-actions" EXPIRY="90" ROTATE=0 GITHUB_REPO="" SECRET_OUT="" DRY_RUN=0
 
 while (($#)); do
@@ -80,6 +95,10 @@ while (($#)); do
     --keystore-password-file) KEYSTORE_PASSWORD_FILE="${2:?needs a value}"; shift 2 ;;
     --key-password-file) KEY_PASSWORD_FILE="${2:?needs a value}"; shift 2 ;;
     --admin-token-file) ADMIN_TOKEN_FILE="${2:?needs a value}"; shift 2 ;;
+    --sign-in) SIGN_IN_EMAIL="${2:?--sign-in needs an email address}"; shift 2 ;;
+    --admin-entry) ADMIN_ENTRY=1; shift ;;
+    --password-file) PASSWORD_FILE="${2:?--password-file needs a value}"; shift 2 ;;
+    --new-password-file) NEW_PASSWORD_FILE="${2:?--new-password-file needs a value}"; shift 2 ;;
     --token-name) TOKEN_NAME="${2:?--token-name needs a value}"; shift 2 ;;
     --expiry) EXPIRY="${2:?--expiry needs a value}"; shift 2 ;;
     --rotate) ROTATE=1; shift ;;
@@ -106,6 +125,18 @@ case "$EXPIRY" in 30 | 90 | 365 | none) ;; *) die "--expiry must be 30, 90, 365 
 [[ -z $KEYSTORE || -r $KEYSTORE ]] || die "cannot read the keystore file: $KEYSTORE"
 [[ -z $GITHUB_REPO ]] || need gh
 [[ -z $SECRET_OUT || ! -e $SECRET_OUT ]] || die "$SECRET_OUT already exists; choose a new file name"
+if [[ -n $SIGN_IN_EMAIL ]]; then
+  email_re='^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'
+  [[ $SIGN_IN_EMAIL =~ $email_re ]] || die "--sign-in needs an email address"
+  [[ -z $ADMIN_TOKEN_FILE ]] || die "use either --sign-in or --admin-token-file, not both"
+  [[ -z $NEW_PASSWORD_FILE || -z $PASSWORD_FILE ]] || die "use either --password-file or --new-password-file, not both"
+  [[ -z $NEW_PASSWORD_FILE || ! -e $NEW_PASSWORD_FILE ]] || die "$NEW_PASSWORD_FILE already exists; choose a new file name"
+  if ((DRY_RUN)) && [[ -n $NEW_PASSWORD_FILE ]]; then
+    die "a dry run must not create an account: sign in with an existing password (--password-file, ZEALOT_PASSWORD or the prompt)"
+  fi
+elif [[ -n $PASSWORD_FILE || -n $NEW_PASSWORD_FILE ]] || ((ADMIN_ENTRY)); then
+  die "--password-file, --new-password-file and --admin-entry only work together with --sign-in"
+fi
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -147,10 +178,85 @@ reason() {
   printf '%s' "$text"
 }
 
+# ---- step 0 (optional): sign in with a password and read the user token off the profile page --------------
+# Zealot has no password-to-token API. Its login form (Users::SessionsController#create) signs a known email in
+# and registers an unknown one, and the signed-in profile page (/users/edit, the "API Token" card) shows the
+# account's user token. This makes those page loads with a throwaway cookie jar. The password and the token live
+# only in files inside $WORK (mode 0600, removed on exit) and never in argv, a URL or the output.
+GENERATED_PASSWORD=0
+
+sign_in_failed() {
+  if ((GENERATED_PASSWORD)); then
+    rm -f "$NEW_PASSWORD_FILE"
+    log "password: removed $NEW_PASSWORD_FILE, the generated password was never accepted"
+  fi
+  die "$1"
+}
+
+generate_password() {
+  local pw
+  if command -v openssl >/dev/null 2>&1; then
+    pw="$(openssl rand -base64 36 | tr -d '\n')"
+  else
+    pw="$(head -c 36 /dev/urandom | base64 | tr -d '\n')"
+  fi
+  [[ ${#pw} -ge 48 ]] || die "could not make a random password"
+  printf '%s' "$pw" >"$WORK/password"
+  (set -C; printf '%s\n' "$pw" >"$NEW_PASSWORD_FILE") 2>/dev/null ||
+    die "could not create $NEW_PASSWORD_FILE (the folder must exist and the file must not)"
+  GENERATED_PASSWORD=1
+  log "password: made a random 48-character password and saved it to $NEW_PASSWORD_FILE (mode 600); put it in a password manager, then delete the file"
+}
+
+sign_in_for_token() {
+  local jar="$WORK/cookies" csrf="" token=""
+
+  if [[ -n $NEW_PASSWORD_FILE ]]; then
+    generate_password
+  else
+    load_secret "$WORK/password" ZEALOT_PASSWORD "$PASSWORD_FILE" "Zealot password for $SIGN_IN_EMAIL"
+  fi
+
+  # The login page gives the session cookie, and a CSRF token if the app checks one (it may not today).
+  api GET /users/sign_in -c "$jar" -b "$jar"
+  [[ $STATUS == 200 ]] || sign_in_failed "the login page answered $STATUS (is $ZEALOT_URL Zealot's own address, not a redirect?)"
+  csrf="$(tr '\n' ' ' <"$WORK/body" | grep -oE '<meta[^>]*name="csrf-token"[^>]*>' | grep -oE 'content="[^"]+"' | head -1 | sed -E 's/^content="//; s/"$//' || true)"
+
+  local -a form=(--data-urlencode "user%5Bemail%5D=$SIGN_IN_EMAIL" --data-urlencode "user%5Bpassword%5D@$WORK/password" --data-urlencode "tab=normal")
+  if ((ADMIN_ENTRY)); then form+=(--data-urlencode "admin_entry=1"); fi
+  if [[ -n $csrf ]]; then
+    printf '%s' "$csrf" >"$WORK/csrf"
+    form+=(--data-urlencode "authenticity_token@$WORK/csrf")
+  fi
+
+  # One attempt. A wrong password is a redirect back to the login page, not an error status, so success is
+  # decided by the next request, not by this answer.
+  api POST /users/sign_in -c "$jar" -b "$jar" "${form[@]}"
+  case "$STATUS" in
+    422) sign_in_failed "Zealot refused the sign-in form (422): the email is not valid or the password is outside 6 to 128 characters" ;;
+    429 | 5??) sign_in_failed "Zealot answered $STATUS to the sign-in; try again later" ;;
+  esac
+
+  api GET /users/edit -c "$jar" -b "$jar"
+  if [[ $STATUS == 200 ]]; then
+    token="$(tr '\n' ' ' <"$WORK/body" | grep -oE '<input[^>]*clipboard-center-target="source"[^>]*>' | grep -oE 'value="[0-9a-f]{32}"' | head -1 | sed -E 's/^value="//; s/"$//' || true)"
+  fi
+  rm -f "$WORK/body" "$WORK/password" "$WORK/csrf" "$jar"
+  [[ $token =~ ^[0-9a-f]{32}$ ]] ||
+    sign_in_failed "not signed in as $SIGN_IN_EMAIL (one attempt made): the password was not accepted, the account is locked, the email already has an account while a new password was generated, or registrations are off. Only the server's admin email can be created, and only with --admin-entry."
+  printf '%s' "$token" >"$WORK/utoken"
+  token=""
+  log "sign-in: signed in as $SIGN_IN_EMAIL; its user token was read from the profile page and is kept only in a temporary file"
+}
+
 # The user token. The two newer doors (signing key, tokens) want it in an Authorization header, the older
 # /api/apps, schemes and channels want it as a `token` field: in the BODY for POST, and for the two GETs the
 # only place is the query string (the weakness decision 34-1 records). Kept out of argv either way.
-load_secret "$WORK/utoken" ZEALOT_ADMIN_TOKEN "$ADMIN_TOKEN_FILE" "Zealot admin user token"
+if [[ -n $SIGN_IN_EMAIL ]]; then
+  sign_in_for_token
+else
+  load_secret "$WORK/utoken" ZEALOT_ADMIN_TOKEN "$ADMIN_TOKEN_FILE" "Zealot admin user token"
+fi
 printf 'Authorization: Bearer %s\n' "$(cat "$WORK/utoken")" >"$WORK/auth"
 AUTH=(-H "@$WORK/auth")
 OLD_TOKEN=(--data-urlencode "token@$WORK/utoken")
