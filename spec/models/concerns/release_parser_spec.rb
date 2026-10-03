@@ -115,4 +115,104 @@ RSpec.describe ReleaseParser do
       expect(release.permissions).to eq([])
     end
   end
+
+  # D-Store leaf 7.a.ii.zi. NOT run (no Ruby in the sandbox that wrote it). `file` is stubbed with a
+  # double that only has a path, because a real Release needs a CarrierWave upload and this repo
+  # carries no .aab fixture; the real upload route is covered by the request spec in
+  # spec/requests/api_app_token_upload_spec.rb, which is also unrun.
+  describe '#manifest_unreadable_reason and Release#manifest_readable' do
+    def release_with_file(path)
+      release = build_release
+      allow(release).to receive(:file).and_return(double('file', path: path))
+      release
+    end
+
+    def aab_parser(bundle_id: 'com.example.app', build_version: '42', release_version: '1.0')
+      double('parser', platform: AppInfo::Platform::ANDROID, name: 'Example', bundle_id: bundle_id,
+                       release_version: release_version, build_version: build_version,
+                       device: 'Android', icons: [], min_sdk_version: 21, target_sdk_version: 34,
+                       zip: nil, use_features: [], use_permissions: [])
+    end
+
+    it 'is nil for a release that was never parsed, even an .aab with no package name' do
+      release = release_with_file('/tmp/app.aab')
+      release.bundle_id = nil
+      release.build_version = nil
+
+      expect(release.manifest_unreadable_reason).to be_nil
+    end
+
+    it 'is nil when the bundle was read and has a package name and a version code' do
+      release = release_with_file('/tmp/app.aab')
+      release.parse!(aab_parser, 'api')
+
+      expect(release.manifest_unreadable_reason).to be_nil
+    end
+
+    it 'does not need a versionName, which Android does not require' do
+      release = release_with_file('/tmp/app.aab')
+      release.release_version = nil
+      release.parse!(aab_parser(release_version: nil), 'api')
+      release.release_version = nil
+
+      expect(release.manifest_unreadable_reason).to be_nil
+    end
+
+    it 'is :unknown_format when AppInfo does not recognise the file' do
+      allow(AppInfo).to receive(:parse).and_raise(AppInfo::UnknownFormatError)
+      release = release_with_file('/tmp/app.aab')
+      release.bundle_id = nil
+      release.build_version = nil
+      release.parse!(nil, 'api')
+
+      expect(release.manifest_unreadable_reason).to eq(:unknown_format)
+    end
+
+    it 'is :read_failed when AppInfo raises while reading, and the parse itself still does not raise' do
+      parser = aab_parser
+      allow(parser).to receive(:name).and_raise(StandardError, 'bad resources.pb')
+      release = release_with_file('/tmp/app.aab')
+      release.bundle_id = nil
+      release.build_version = nil
+
+      expect { release.parse!(parser, 'api') }.not_to raise_error
+      expect(release.manifest_unreadable_reason).to eq(:read_failed)
+    end
+
+    it 'is :identity_missing when the read gives no error but no version code' do
+      release = release_with_file('/tmp/app.aab')
+      release.build_version = nil
+      release.parse!(aab_parser(build_version: nil), 'api')
+
+      expect(release.manifest_unreadable_reason).to eq(:identity_missing)
+    end
+
+    it 'is nil for an .apk that could not be read: only an App Bundle is refused (a separate decision)' do
+      allow(AppInfo).to receive(:parse).and_raise(AppInfo::UnknownFormatError)
+      release = release_with_file('/tmp/app.apk')
+      release.bundle_id = nil
+      release.build_version = nil
+      release.parse!(nil, 'api')
+
+      expect(release.manifest_unreadable_reason).to be_nil
+    end
+
+    it 'adds one error on :file carrying the fixed reason word, and none for a readable bundle' do
+      allow(AppInfo).to receive(:parse).and_raise(AppInfo::UnknownFormatError)
+      broken = release_with_file('/tmp/app.aab')
+      broken.bundle_id = nil
+      broken.build_version = nil
+      broken.parse!(nil, 'api')
+      broken.send(:manifest_readable)
+
+      expect(broken.errors[:file].size).to eq(1)
+      expect(broken.errors[:file].first).to include('unknown_format')
+
+      fine = release_with_file('/tmp/app.aab')
+      fine.parse!(aab_parser, 'api')
+      fine.send(:manifest_readable)
+
+      expect(fine.errors[:file]).to be_empty
+    end
+  end
 end

@@ -196,6 +196,7 @@ class Release < ApplicationRecord
   validates :rollout_percentage, numericality: {
     only_integer: true, greater_than_or_equal_to: 0, less_than_or_equal_to: 100
   }
+  validate :manifest_readable, on: :create
   validate :bundle_id_matched, on: :create
   validate :determine_file_exist, on: :create
   validate :play_target_bundle_valid, on: :create, if: :play_store_target?
@@ -383,8 +384,20 @@ class Release < ApplicationRecord
     return lastest if lastest.id > id
   end
 
+  # D-Store leaf 7.a.ii.zi: an Android App Bundle whose manifest could not be read is refused,
+  # not saved with a blank package name and version code (see ReleaseParser#manifest_unreadable_reason
+  # for the reasons and for what is deliberately not covered). Runs before #bundle_id_matched, which
+  # skips itself for the same upload so the cause is reported once.
+  def manifest_readable
+    reason = manifest_unreadable_reason
+    return unless reason
+
+    errors.add(:file, I18n.t('releases.messages.errors.manifest_unreadable', reason: reason))
+  end
+
   def bundle_id_matched
     return if file.blank? || channel&.bundle_id.blank?
+    return if manifest_unreadable_reason
     return if channel.bundle_id_matched?(self.bundle_id)
 
     message = I18n.t('releases.messages.errors.bundle_id_not_matched', got: self.bundle_id,

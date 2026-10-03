@@ -850,6 +850,7 @@ en:
         not_found_really: Not found this build.
         invalid_password: Invalid password
         bundle_id_not_matched: "Bundle id or package name not matched between release %{got} and rule %{expect}"
+        manifest_unreadable: "The manifest of the uploaded bundle could not be read (%{reason}), so no release was created. Check that the file is a complete .aab built by bundletool or Gradle."
         play_target_unsupported: "Not supported for Google Play: only Android App Bundles (.aab) can be published there. .apk and other file types are not supported. The build was uploaded and is available on our stores."
         play_package_name_taken: "applicationId %{got} already belongs to another app in Zealot. Upload this bundle to that app instead."
         upload_to_archived_app: "App %{app} is archived, so new releases can not be uploaded."

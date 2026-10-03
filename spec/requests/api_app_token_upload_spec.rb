@@ -62,6 +62,25 @@ RSpec.describe 'API upload with a per-app token', type: :request do
     expect(response).to have_http_status(:forbidden)
   end
 
+  # D-Store leaf 7.a.ii.zi. NOT run. A file that is not a bundle at all is enough to exercise the
+  # refusal (AppInfo cannot open it), so no real .aab fixture is needed for this case; the success
+  # path with a real bundle is still not covered by any spec.
+  it 'refuses an .aab whose manifest cannot be read and creates no release' do
+    file = Tempfile.new([ 'broken', '.aab' ])
+    file.binmode
+    file.write('this is not a zip file')
+    file.flush
+    upload_file = Rack::Test::UploadedFile.new(file.path, 'application/octet-stream', true,
+                                               original_filename: 'broken.aab')
+
+    expect { upload(secret: issued.secret, channel_key: channel.key, file: upload_file) }
+      .not_to change(Release, :count)
+
+    expect(response).to have_http_status(:unprocessable_entity)
+  ensure
+    file&.close!
+  end
+
   it 'refuses a revoked token' do
     secret = issued.secret
     issued.token.revoke!

@@ -4,20 +4,51 @@ module ReleaseParser
   extend ActiveSupport::Concern
 
   def parse!(parser, default_source)
+    @manifest_parse_attempted = true
     parse_app(parser, default_source)
 
     self
   end
 
+  # D-Store leaf 7.a.ii.zi (Storeapp uploads its release bundle here). #parse_app has always
+  # rescued every error and carried on, so an upload whose manifest could not be read became a
+  # release with a blank package name and version code and no message at all. For an Android App
+  # Bundle that is now refused (see Release#manifest_readable, a validation on create), and this
+  # says why: one of the fixed words below, never text from the file or from the exception.
+  #
+  #   :unknown_format    AppInfo did not recognise the file as any package it can open
+  #   :read_failed       AppInfo recognised it, then raised while reading it
+  #   :identity_missing  it read without raising but gave no package name or no version code
+  #
+  # nil when the manifest was read, when the file is not an .aab, and for a Release that was not
+  # built through #parse! (specs and the console build releases directly), so none of those is
+  # ever judged. Only .aab, on purpose: an .apk that AppInfo cannot read is accepted today and
+  # refusing it is a separate decision (it could turn away uploads that work now). versionName is
+  # not required (Android does not require it); the package name and versionCode are.
+  def manifest_unreadable_reason
+    return unless @manifest_parse_attempted
+    return unless android_app_bundle?
+    return unless bundle_id.blank? || build_version.blank?
+
+    @manifest_parse_error || :identity_missing
+  end
+
   private
+
+  def android_app_bundle?
+    file&.path.to_s.downcase.end_with?('.aab')
+  end
 
   def parse_app(parser, default_source)
     parser ||= AppInfo.parse(self.file.path)
     build_metadata(parser, default_source)
     relates_to_devices(parser)
   rescue AppInfo::UnknownFormatError
-    # ignore
+    # Not fatal here (an .apk or another file type still uploads as before); the .aab refusal
+    # is Release#manifest_readable, which reads this.
+    @manifest_parse_error = :unknown_format
   rescue => e
+    @manifest_parse_error = :read_failed
     logger.error e.full_message
   ensure
     parser&.clear! if parser&.respond_to?(:clear!)
