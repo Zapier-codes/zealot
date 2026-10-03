@@ -182,7 +182,6 @@ case "$ZEALOT_URL" in
 esac
 case "$EXPIRY" in 30 | 90 | 365 | none) ;; *) die "--expiry must be 30, 90, 365 or none" ;; esac
 [[ -z $KEYSTORE || -n $KEY_ALIAS ]] || die "--key-alias is required with --keystore"
-[[ -z $KEYSTORE || -r $KEYSTORE ]] || die "cannot read the keystore file: $KEYSTORE"
 [[ -z $GITHUB_REPO ]] || need gh
 [[ -z $SECRET_OUT || ! -e $SECRET_OUT ]] || die "$SECRET_OUT already exists; choose a new file name"
 if [[ -n $SIGN_IN_EMAIL ]]; then
@@ -372,7 +371,7 @@ step_signing_key() {
       local checksum
       checksum="$(jq -r '.checksum' "$WORK/body")"
       log "signing key: present ($(jq -r '"\(.filename), alias \(.key_alias), checksum \(.checksum)"' "$WORK/body")); left alone"
-      if [[ -n $KEYSTORE ]] && command -v sha1sum >/dev/null 2>&1 && [[ "$(sha1sum <"$KEYSTORE" | cut -d' ' -f1)" != "$checksum" ]]; then
+      if [[ -n $KEYSTORE && -r $KEYSTORE ]] && command -v sha1sum >/dev/null 2>&1 && [[ "$(sha1sum <"$KEYSTORE" | cut -d' ' -f1)" != "$checksum" ]]; then
         log "  note: the keystore you gave is a different file from the key Zealot holds; nothing was replaced"
       fi
       return 0
@@ -382,6 +381,8 @@ step_signing_key() {
   esac
 
   [[ -n $KEYSTORE ]] || die "no signing key is configured in Zealot: pass --keystore and --key-alias"
+  [[ -r $KEYSTORE ]] || die "no signing key is configured in Zealot and the keystore file cannot be read: $KEYSTORE"
+  [[ -n $KEY_ALIAS ]] || die "--key-alias is required with --keystore"
   if ((DRY_RUN)); then
     log "signing key: none; would add $KEYSTORE (alias $KEY_ALIAS)"
     return 0
@@ -393,7 +394,7 @@ step_signing_key() {
   # A copy under a plain name, so an odd path cannot be misread as curl form syntax; the name sent is cleaned.
   cp "$KEYSTORE" "$WORK/upload.jks"
   local fname
-  fname="$(basename "$KEYSTORE" | tr -c 'A-Za-z0-9._-' '_')"
+  fname="$(printf '%s' "$(basename "$KEYSTORE")" | tr -c 'A-Za-z0-9._-' '_')"
 
   api POST /api/android_signing_key "${AUTH[@]}" \
     -F "keystore=@$WORK/upload.jks;filename=$fname" \
