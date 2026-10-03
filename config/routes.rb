@@ -372,6 +372,10 @@ Rails.application.routes.draw do
       resource :listing_edit, only: %i[show update destroy], controller: 'apps/listing_edits' do
         post :commit
       end
+
+      # Task 34d-2: create, list and revoke the app's per-app API tokens. User token in the Authorization
+      # header ONLY; a per-app token can never open this (decision 34-4). See Api::Apps::ApiTokensController.
+      resources :api_tokens, only: %i[index create destroy], controller: 'apps/api_tokens'
     end
     resources :releases, only: %i[update destroy] do
       # Task 34a-6: POST /api/releases/:id/release (held -> available; user token or per-app token).
@@ -383,6 +387,10 @@ Rails.application.routes.draw do
     # and PlayCredentialPolicy for why admin-only is enforced explicitly here
     # rather than relying on routing-level gating the way the admin namespace does.
     resource :play_credential, only: %i[ show create destroy ]
+
+    # Task 34d-1: the org-wide Android signing key, platform-admin only, user token in the Authorization
+    # header ONLY. See Api::AndroidSigningKeysController and AndroidSigningKeyPolicy.
+    resource :android_signing_key, only: %i[ show create destroy ]
 
     # Task 19f: token-authenticated, admin-only interface between Rails and
     # the GitHub Actions Telegram-archive batch (mtproto-worker/src/archive_batch.ts).

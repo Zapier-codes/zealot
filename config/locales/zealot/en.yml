@@ -1226,6 +1226,12 @@ en:
     channel_track_invalid: "Unknown track. Use one of: %{tracks}"
     release_app_archived: This app is archived, so its releases cannot be changed
     release_not_held: Only a held release can be released this way (this release is %{status})
+    api_token_params_invalid: "A token needs a name (text) and an expiry of one of: %{choices}"
+    signing_key_already_configured: A signing key is already configured. Remove it (with its checksum) before adding another
+    signing_key_checksum_mismatch: The checksum does not match the current signing key, so nothing was removed
+    signing_key_keystore_missing: "Send the keystore as a file in the multipart field \"keystore\""
+    signing_key_keystore_too_large: "The keystore is larger than %{max} bytes"
+    signing_key_keytool_unavailable: The server cannot check the keystore because keytool is not installed, so it was not saved
     unauthorized_app_token: Unauthorized
     unauthorized_channel_key: Unauthorized channel key
     unauthorized_token: Unauthorized user token

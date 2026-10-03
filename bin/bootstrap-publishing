@@ -1,0 +1,351 @@
+#!/usr/bin/env bash
+# bin/bootstrap-publishing  (Task 34d-3, D-Store leaf 37, `7.a.xii.zi`; written, NOT run)
+#
+# Does, through Zealot's API, the setup that D-Store HANDOVER leaf 16 listed as the operator's steps 3 and 4:
+#
+#   3. the org-wide Android signing key exists            (Task 34d-1: /api/android_signing_key)
+#   4. the app, its scheme and an Android channel exist   (the long-standing /api/apps, schemes, channels)
+#      a per-app CI token exists and is stored where the build job reads it   (Task 34d-2: /api/apps/:id/api_tokens)
+#
+# Safe to run again: every step looks first and only creates what is missing. It never replaces an existing
+# signing key (rotating that key changes the signature of every future release; it is a deliberate act, see
+# the notes in the API) and it makes a new CI token only when none with that name is live, or with --rotate.
+#
+# Needs: bash 4+, curl 7.55+, jq. With --github-repo also the GitHub CLI (`gh`), already logged in with
+# permission to write that repository's Actions secrets and variables.
+#
+# Credentials, never on the command line (argv shows in `ps`, shell history and CI logs):
+#   the admin's Zealot user token      env ZEALOT_ADMIN_TOKEN, or --admin-token-file, or a hidden prompt
+#   the keystore passwords             env KEYSTORE_PASSWORD / KEY_PASSWORD, or --keystore-password-file /
+#                                      --key-password-file, or a hidden prompt (only asked when a key is to be added)
+# The new CI token is never printed. It goes to the GitHub repository's secret ZEALOT_APP_TOKEN (--github-repo)
+# and/or a new file with mode 0600 (--secret-out). One of the two is required when a token is to be made.
+#
+# Example (Termux), Storeapp:
+#   export ZEALOT_URL=https://<your zealot host>
+#   bash ~/zealot/bin/bootstrap-publishing \
+#     --app-name Storeapp --bundle-id com.vythera.vyxelapps \
+#     --keystore ~/storage/downloads/release.jks --key-alias release \
+#     --github-repo Zapier-codes/Storeapp --secret-out ~/storeapp-zealot.token
+# (--secret-out as well, because GitHub will not hand the secret back and the first held upload by hand, leaf 16
+# step 6, needs it; delete that file when the workflow publishes by itself.)
+#
+# Exit status: 0 done (or --dry-run finished), 1 anything else. Nothing here prints a secret.
+
+set -euo pipefail
+umask 077
+
+usage() {
+  sed -n '2,/^set -euo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'
+  cat <<'EOF'
+
+Options:
+  --url URL                    Zealot's address (or env ZEALOT_URL); must be https (http only for localhost)
+  --app-name NAME              required: the app's name in Zealot (matched exactly)
+  --bundle-id ID               required: the Android application id; must equal the .aab's, or uploads are refused
+  --scheme-name NAME           default: Release
+  --channel-name NAME          default: Android
+  --keystore FILE              add this keystore as the org signing key when none exists (never replaces one)
+  --key-alias ALIAS            required with --keystore
+  --keystore-password-file F   --key-password-file F   --admin-token-file F
+  --token-name NAME            default: github-actions (a live token with this name is reused unless --rotate)
+  --expiry 30|90|365|none      default: 90 (days)
+  --rotate                     make a new token and, once it is stored, revoke the older live ones of that name
+  --github-repo OWNER/REPO     store ZEALOT_APP_TOKEN (secret), ZEALOT_URL and ZEALOT_CHANNEL_KEY (variables)
+  --secret-out FILE            write the new token to this new file (mode 0600); refuses to overwrite
+  --dry-run                    only read from Zealot and say what would be done
+  -h, --help
+EOF
+}
+
+log() { printf '%s\n' "$*" >&2; }
+die() { log "error: $*"; exit 1; }
+need() { command -v "$1" >/dev/null 2>&1 || die "$1 is required but is not installed"; }
+
+# ---- arguments ------------------------------------------------------------------------------------------
+ZEALOT_URL="${ZEALOT_URL:-}"
+APP_NAME="" BUNDLE_ID="" SCHEME_NAME="Release" CHANNEL_NAME="Android"
+KEYSTORE="" KEY_ALIAS="" KEYSTORE_PASSWORD_FILE="" KEY_PASSWORD_FILE="" ADMIN_TOKEN_FILE=""
+TOKEN_NAME="github-actions" EXPIRY="90" ROTATE=0 GITHUB_REPO="" SECRET_OUT="" DRY_RUN=0
+
+while (($#)); do
+  case "$1" in
+    --url) ZEALOT_URL="${2:?--url needs a value}"; shift 2 ;;
+    --app-name) APP_NAME="${2:?--app-name needs a value}"; shift 2 ;;
+    --bundle-id) BUNDLE_ID="${2:?--bundle-id needs a value}"; shift 2 ;;
+    --scheme-name) SCHEME_NAME="${2:?--scheme-name needs a value}"; shift 2 ;;
+    --channel-name) CHANNEL_NAME="${2:?--channel-name needs a value}"; shift 2 ;;
+    --keystore) KEYSTORE="${2:?--keystore needs a value}"; shift 2 ;;
+    --key-alias) KEY_ALIAS="${2:?--key-alias needs a value}"; shift 2 ;;
+    --keystore-password-file) KEYSTORE_PASSWORD_FILE="${2:?needs a value}"; shift 2 ;;
+    --key-password-file) KEY_PASSWORD_FILE="${2:?needs a value}"; shift 2 ;;
+    --admin-token-file) ADMIN_TOKEN_FILE="${2:?needs a value}"; shift 2 ;;
+    --token-name) TOKEN_NAME="${2:?--token-name needs a value}"; shift 2 ;;
+    --expiry) EXPIRY="${2:?--expiry needs a value}"; shift 2 ;;
+    --rotate) ROTATE=1; shift ;;
+    --github-repo) GITHUB_REPO="${2:?--github-repo needs a value}"; shift 2 ;;
+    --secret-out) SECRET_OUT="${2:?--secret-out needs a value}"; shift 2 ;;
+    --dry-run) DRY_RUN=1; shift ;;
+    -h | --help) usage; exit 0 ;;
+    *) die "unknown option: $1 (see --help)" ;;
+  esac
+done
+
+need curl
+need jq
+[[ -n $APP_NAME ]] || die "--app-name is required"
+[[ -n $BUNDLE_ID ]] || die "--bundle-id is required"
+[[ -n $ZEALOT_URL ]] || die "set ZEALOT_URL or pass --url"
+ZEALOT_URL="${ZEALOT_URL%/}"
+case "$ZEALOT_URL" in
+  https://* | http://localhost | http://localhost:* | http://127.0.0.1 | http://127.0.0.1:*) ;;
+  *) die "the address must start with https:// (a token must not cross the network in clear text)" ;;
+esac
+case "$EXPIRY" in 30 | 90 | 365 | none) ;; *) die "--expiry must be 30, 90, 365 or none" ;; esac
+[[ -z $KEYSTORE || -n $KEY_ALIAS ]] || die "--key-alias is required with --keystore"
+[[ -z $KEYSTORE || -r $KEYSTORE ]] || die "cannot read the keystore file: $KEYSTORE"
+[[ -z $GITHUB_REPO ]] || need gh
+[[ -z $SECRET_OUT || ! -e $SECRET_OUT ]] || die "$SECRET_OUT already exists; choose a new file name"
+
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+# load_secret DEST ENV_NAME SOURCE_FILE PROMPT: the value goes to the file DEST (no trailing newline), never to argv.
+load_secret() {
+  local dest="$1" var="$2" src="$3" prompt="$4" value
+  if [[ -n $src ]]; then
+    [[ -r $src ]] || die "cannot read $src"
+    tr -d '\r\n' <"$src" >"$dest"
+  elif [[ -n ${!var:-} ]]; then
+    printf '%s' "${!var}" >"$dest"
+  elif [[ -t 0 ]]; then
+    read -rsp "$prompt: " value
+    printf '\n' >&2
+    printf '%s' "$value" >"$dest"
+  else
+    die "$prompt: set $var, pass a file option, or run this on a terminal"
+  fi
+  [[ -s $dest ]] || die "$prompt is empty"
+}
+
+# ---- talking to Zealot ----------------------------------------------------------------------------------
+# api METHOD PATH [curl options...]: the answer's body is in $WORK/body, its HTTP status in $STATUS.
+# No automatic retry: a retried POST that had already worked would make a second app or token.
+STATUS=""
+api() {
+  local method="$1" path="$2"
+  shift 2
+  STATUS="$(curl -sS --max-time 120 -o "$WORK/body" -w '%{http_code}' -X "$method" "$ZEALOT_URL$path" "$@")" ||
+    die "no answer from $ZEALOT_URL ($method $path)"
+}
+
+# What Zealot said was wrong: its "error" text, else the start of the body. Never the request.
+reason() {
+  local text
+  text="$(jq -r '.error // empty' "$WORK/body" 2>/dev/null || true)"
+  [[ -n $text ]] || text="$(head -c 200 "$WORK/body" | tr '\n' ' ')"
+  printf '%s' "$text"
+}
+
+# The user token. The two newer doors (signing key, tokens) want it in an Authorization header, the older
+# /api/apps, schemes and channels want it as a `token` field: in the BODY for POST, and for the two GETs the
+# only place is the query string (the weakness decision 34-1 records). Kept out of argv either way.
+load_secret "$WORK/utoken" ZEALOT_ADMIN_TOKEN "$ADMIN_TOKEN_FILE" "Zealot admin user token"
+printf 'Authorization: Bearer %s\n' "$(cat "$WORK/utoken")" >"$WORK/auth"
+AUTH=(-H "@$WORK/auth")
+OLD_TOKEN=(--data-urlencode "token@$WORK/utoken")
+
+refused() {
+  case "$STATUS" in
+    401) die "Zealot refused the user token (401): wrong, locked, or not a user token" ;;
+    403) die "that user is not allowed to do this (403); the signing key needs a platform admin, the app and token calls an owner or admin" ;;
+  esac
+  die "unexpected answer $STATUS: $(reason)"
+}
+
+# ---- step 3: the org signing key ------------------------------------------------------------------------
+step_signing_key() {
+  api GET /api/android_signing_key "${AUTH[@]}"
+  case "$STATUS" in
+    200)
+      local checksum
+      checksum="$(jq -r '.checksum' "$WORK/body")"
+      log "signing key: present ($(jq -r '"\(.filename), alias \(.key_alias), checksum \(.checksum)"' "$WORK/body")); left alone"
+      if [[ -n $KEYSTORE ]] && command -v sha1sum >/dev/null 2>&1 && [[ "$(sha1sum <"$KEYSTORE" | cut -d' ' -f1)" != "$checksum" ]]; then
+        log "  note: the keystore you gave is a different file from the key Zealot holds; nothing was replaced"
+      fi
+      return 0
+      ;;
+    404) ;;
+    *) refused ;;
+  esac
+
+  [[ -n $KEYSTORE ]] || die "no signing key is configured in Zealot: pass --keystore and --key-alias"
+  if ((DRY_RUN)); then
+    log "signing key: none; would add $KEYSTORE (alias $KEY_ALIAS)"
+    return 0
+  fi
+
+  load_secret "$WORK/ks_pass" KEYSTORE_PASSWORD "$KEYSTORE_PASSWORD_FILE" "Keystore password"
+  load_secret "$WORK/key_pass" KEY_PASSWORD "$KEY_PASSWORD_FILE" "Key password"
+  printf '%s' "$KEY_ALIAS" >"$WORK/alias"
+  # A copy under a plain name, so an odd path cannot be misread as curl form syntax; the name sent is cleaned.
+  cp "$KEYSTORE" "$WORK/upload.jks"
+  local fname
+  fname="$(basename "$KEYSTORE" | tr -c 'A-Za-z0-9._-' '_')"
+
+  api POST /api/android_signing_key "${AUTH[@]}" \
+    -F "keystore=@$WORK/upload.jks;filename=$fname" \
+    -F "key_alias=<$WORK/alias" \
+    -F "keystore_password=<$WORK/ks_pass" \
+    -F "key_password=<$WORK/key_pass"
+  case "$STATUS" in
+    201) log "signing key: added ($(jq -r '"\(.filename), alias \(.key_alias), checksum \(.checksum)"' "$WORK/body"))" ;;
+    409) log "signing key: another request added one first; left alone" ;;
+    422) die "Zealot refused the keystore: $(reason) $(jq -c '.entry // empty' "$WORK/body" 2>/dev/null || true)" ;;
+    503) die "Zealot cannot check keystores right now (keytool missing on the server): $(reason)" ;;
+    *) refused ;;
+  esac
+}
+
+# ---- step 4a: the app, its scheme, an Android channel ---------------------------------------------------
+APP_ID="" SCHEME_ID="" CHANNEL_ID="" CHANNEL_KEY=""
+
+step_app_scheme_channel() {
+  api GET /api/apps -G --data-urlencode "scope=active" "${OLD_TOKEN[@]}"
+  [[ $STATUS == 200 ]] || refused
+
+  local matches
+  matches="$(jq -r --arg n "$APP_NAME" '[.[] | select(.name == $n)] | length' "$WORK/body")"
+  ((matches <= 1)) || die "$matches active apps are named \"$APP_NAME\"; rename one so the script can tell them apart"
+  APP_ID="$(jq -r --arg n "$APP_NAME" '[.[] | select(.name == $n)] | .[0].id // empty' "$WORK/body")"
+
+  if [[ -n $APP_ID ]]; then
+    SCHEME_ID="$(jq -r --arg a "$APP_ID" --arg s "$SCHEME_NAME" \
+      '[.[] | select((.id | tostring) == $a) | .schemes[]? | select(.name == $s)] | .[0].id // empty' "$WORK/body")"
+    if [[ -n $SCHEME_ID ]]; then
+      read -r CHANNEL_ID CHANNEL_KEY < <(jq -r --arg a "$APP_ID" --arg s "$SCHEME_ID" --arg b "$BUNDLE_ID" \
+        '[.[] | select((.id | tostring) == $a) | .schemes[]? | select((.id | tostring) == $s) | .channels[]?
+          | select((.bundle_id // "") == $b and ((.device_type // "") | ascii_downcase) == "android")]
+         | (.[0] // {}) | [(.id // "" | tostring), (.key // "")] | @tsv' "$WORK/body") || true
+    fi
+  fi
+
+  if [[ -n $APP_ID ]]; then log "app: \"$APP_NAME\" exists (id $APP_ID)"; fi
+  if [[ -n $SCHEME_ID ]]; then log "scheme: \"$SCHEME_NAME\" exists (id $SCHEME_ID)"; fi
+  if [[ -n $CHANNEL_ID ]]; then log "channel: Android $BUNDLE_ID exists (id $CHANNEL_ID)"; fi
+
+  if ((DRY_RUN)); then
+    [[ -n $APP_ID ]] || log "app: would create \"$APP_NAME\""
+    [[ -n $SCHEME_ID ]] || log "scheme: would create \"$SCHEME_NAME\""
+    [[ -n $CHANNEL_ID ]] || log "channel: would create \"$CHANNEL_NAME\" (Android, $BUNDLE_ID)"
+    return 0
+  fi
+
+  if [[ -z $APP_ID ]]; then
+    api POST /api/apps "${OLD_TOKEN[@]}" --data-urlencode "name=$APP_NAME"
+    [[ $STATUS == 201 ]] || refused
+    APP_ID="$(jq -r '.id' "$WORK/body")"
+    log "app: created \"$APP_NAME\" (id $APP_ID)"
+  fi
+  if [[ -z $SCHEME_ID ]]; then
+    api POST "/api/apps/$APP_ID/schemes" "${OLD_TOKEN[@]}" --data-urlencode "name=$SCHEME_NAME"
+    [[ $STATUS == 200 || $STATUS == 201 ]] || refused
+    SCHEME_ID="$(jq -r '.id' "$WORK/body")"
+    log "scheme: created \"$SCHEME_NAME\" (id $SCHEME_ID)"
+  fi
+  if [[ -z $CHANNEL_ID ]]; then
+    api POST "/api/schemes/$SCHEME_ID/channels" "${OLD_TOKEN[@]}" \
+      --data-urlencode "name=$CHANNEL_NAME" --data-urlencode "device_type=android" \
+      --data-urlencode "bundle_id=$BUNDLE_ID"
+    [[ $STATUS == 200 || $STATUS == 201 ]] || refused
+    CHANNEL_ID="$(jq -r '.id' "$WORK/body")"
+    CHANNEL_KEY="$(jq -r '.key' "$WORK/body")"
+    log "channel: created \"$CHANNEL_NAME\" (id $CHANNEL_ID)"
+  fi
+  [[ -n $CHANNEL_KEY && $CHANNEL_KEY != null ]] || die "Zealot did not return the channel's key"
+}
+
+# ---- step 4b: the per-app CI token, stored where the build job reads it ---------------------------------
+NEW_TOKEN_ID=""
+
+deliver_secret() {
+  if [[ -n $GITHUB_REPO ]]; then
+    gh secret set ZEALOT_APP_TOKEN --repo "$GITHUB_REPO" <"$WORK/app_token" || return 1
+  fi
+  if [[ -n $SECRET_OUT ]]; then
+    cat "$WORK/app_token" >"$SECRET_OUT" && chmod 600 "$SECRET_OUT" || return 1
+  fi
+  return 0
+}
+
+step_token() {
+  [[ -n $APP_ID ]] || { log "token: would be made once the app exists"; return 0; }
+
+  api GET "/api/apps/$APP_ID/api_tokens" "${AUTH[@]}"
+  [[ $STATUS == 200 ]] || refused
+  local live_ids live_count
+  live_ids="$(jq -r --arg n "$TOKEN_NAME" '.tokens[] | select(.name == $n and .live) | .id' "$WORK/body")"
+  live_count="$(printf '%s' "$live_ids" | grep -c . || true)"
+
+  if ((live_count > 0 && !ROTATE)); then
+    log "token: a live token named \"$TOKEN_NAME\" already exists; its secret cannot be read back. Use --rotate to replace it."
+    return 0
+  fi
+  [[ -n $GITHUB_REPO || -n $SECRET_OUT ]] || die "a new token's secret is shown once: pass --github-repo and/or --secret-out to say where it goes"
+  if ((DRY_RUN)); then
+    log "token: would make \"$TOKEN_NAME\" (expires: $EXPIRY)$( ((ROTATE && live_count > 0)) && printf ', then revoke %s older one(s)' "$live_count")"
+    return 0
+  fi
+
+  api POST "/api/apps/$APP_ID/api_tokens" "${AUTH[@]}" \
+    --data-urlencode "name=$TOKEN_NAME" --data-urlencode "expiry=$EXPIRY"
+  [[ $STATUS == 201 ]] || refused
+  jq -j '.secret' "$WORK/body" >"$WORK/app_token"
+  NEW_TOKEN_ID="$(jq -r '.id' "$WORK/body")"
+  rm -f "$WORK/body"
+  [[ -s $WORK/app_token ]] || die "Zealot's answer held no token secret"
+
+  if ! deliver_secret; then
+    log "token: could not store the secret; revoking the token just made so nothing is left behind"
+    api DELETE "/api/apps/$APP_ID/api_tokens/$NEW_TOKEN_ID" "${AUTH[@]}" || true
+    die "the token was not stored (is gh logged in with access to $GITHUB_REPO? does the --secret-out folder exist?)"
+  fi
+  log "token: made \"$TOKEN_NAME\" (id $NEW_TOKEN_ID) and stored it${GITHUB_REPO:+ as $GITHUB_REPO's secret ZEALOT_APP_TOKEN}${SECRET_OUT:+ in $SECRET_OUT (mode 600)}"
+
+  if ((ROTATE)); then
+    local id
+    for id in $live_ids; do
+      api DELETE "/api/apps/$APP_ID/api_tokens/$id" "${AUTH[@]}"
+      if [[ $STATUS == 200 ]]; then log "token: revoked the older token $id"; else log "token: could not revoke the older token $id ($STATUS)"; fi
+    done
+  fi
+}
+
+# ---- step 4c: the two non-secret values the workflow reads ----------------------------------------------
+step_variables() {
+  [[ -n $GITHUB_REPO && -n $CHANNEL_KEY ]] || return 0
+  if ((DRY_RUN)); then
+    log "github: would set variables ZEALOT_URL and ZEALOT_CHANNEL_KEY on $GITHUB_REPO"
+    return 0
+  fi
+  gh variable set ZEALOT_URL --repo "$GITHUB_REPO" --body "$ZEALOT_URL" || die "could not set ZEALOT_URL on $GITHUB_REPO"
+  gh variable set ZEALOT_CHANNEL_KEY --repo "$GITHUB_REPO" --body "$CHANNEL_KEY" || die "could not set ZEALOT_CHANNEL_KEY on $GITHUB_REPO"
+  log "github: set variables ZEALOT_URL and ZEALOT_CHANNEL_KEY on $GITHUB_REPO"
+}
+
+# ---- run -------------------------------------------------------------------------------------------------
+if ((DRY_RUN)); then log "dry run: reading only, nothing will be changed"; fi
+step_signing_key
+step_app_scheme_channel
+step_token
+step_variables
+
+# The summary is on stdout; none of it is secret.
+printf 'ZEALOT_URL=%s\n' "$ZEALOT_URL"
+printf 'ZEALOT_CHANNEL_KEY=%s\n' "$CHANNEL_KEY"
+printf 'app_id=%s scheme_id=%s channel_id=%s\n' "$APP_ID" "$SCHEME_ID" "$CHANNEL_ID"
+if [[ -n $SECRET_OUT && -s $SECRET_OUT ]]; then
+  printf 'next (leaf 16 step 6): curl -H "Authorization: Bearer $(cat %s)" -F channel_key=%s -F hold=true -F file=@storeapp.aab %s/api/apps/upload\n' \
+    "$SECRET_OUT" "$CHANNEL_KEY" "$ZEALOT_URL"
+fi

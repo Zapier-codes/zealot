@@ -843,6 +843,26 @@ Text reviews and replies (27g) stay parked; see the Task 27 note on ❓4.
   4. **No rate limit and no audit log** (34c), so a leaked token is only stopped by revoking it.
   5. **Expiry is checked, but nothing warns before it** (not in this cut, by decision 34-1).
 
+#### ✅ Task 34d: Bootstrapping publishing over the API (D-Store leaves 35 to 37; built, written, NOT run)
+
+Operator request (2026-10-03): D-Store leaf 16's steps 3 (org signing key) and 4 (app, channel, per-app token) must be doable by code, to industry standard. Read from `develop` @ `3e024faf`, not run.
+
+| ID | Goal (one behaviour) | Files | Acceptance check |
+|---|---|---|---|
+| 34d-1 ✅ | The org signing key over the API, platform admin only: `GET`/`POST`/`DELETE /api/android_signing_key` | `Api::AndroidSigningKeysController`, `Api::AndroidSigningKeySerializer`, `Api::UserTokenHeaderAuth`, `AndroidSigningKeyPolicy`, route, locale keys, `spec/requests/api_android_signing_key_spec.rb`, `spec/policies/android_signing_key_policy_spec.rb` | A script adds the key once, a second add is 409, a developer gets 403, no response holds the keystore or a password |
+| 34d-2 ✅ | Per-app tokens over the API: `GET`/`POST /api/apps/:app_id/api_tokens`, `DELETE .../:id` | `Api::Apps::ApiTokensController`, route, locale key, `spec/requests/api_app_api_tokens_spec.rb` | The secret is in the 201 answer only; a `zpa_` token gets 401 on every action |
+| 34d-3 ✅ | `bin/bootstrap-publishing`: signing key, app, scheme, Android channel, CI token, GitHub secret and variables, idempotent | `bin/bootstrap-publishing` | A second run changes nothing; `--dry-run` only reads |
+
+**Choices made, each overrulable.**
+1. **New door, header only.** `Api::UserTokenHeaderAuth` reads `Authorization: Bearer <user token>`, refuses a `zpa_` value and an `access_locked?` user, one generic 401. `?token=` is not read on these two endpoints (decision 34-1's weakness). The old `validate_user_token` is untouched (operator's call, decision 34-2).
+2. **`platform_admin?` not `admin?`.** `AndroidSigningKeyPolicy` now allows only an admin on the default host (4b-b). The policy is asked on the class before the key is looked up, so a non-admin cannot learn whether a key exists. The admin console behaves the same on the default host.
+3. **DELETE needs `checksum`** equal to the current key's. 1 MB keystore cap (a choice). Keytool missing is 503, a keystore keytool rejects is 422.
+4. **`filter_parameters` gains `keystore` and `service_account_json`.** Found: the Play credential API posts the service-account JSON as a body string, which no filter matched, so it could reach the log. One-word fix.
+5. **The expiry choices are read from `Apps::ApiTokensController`**, one definition. Token create, revoke and the signing key change each write one log line (who, which, never a secret) until 34c's audit log exists.
+6. **The script's two GET lookups** (`/api/apps`) still send the user token in the query string, because the old endpoint reads nothing else. Every other call and every secret avoids argv and URLs.
+
+**Not done, flagged.** No rate limit (34c). Two simultaneous signing-key creates could both pass `only_one_record` (no unique index; same as `PlayCredential`). Whether `keytool` is in the Render image is unchecked. **Not verified:** everything. Nothing was run, not even `ruby -c` or `bash -n`; the three new specs and the script have never executed. Only the two locale files were loaded as YAML.
+
 #### 🆕 Task 35: Scale and delivery (Phase 4)
 
 | ID | Goal | Depends on | Files (predicted) | Acceptance check | Risk |
@@ -6582,3 +6602,9 @@ them is already modernized.
 - **Not changed, flagged for a later slice:** (a) `extract_abis` and `extract_screen_densities` read `lib/<abi>/` and `res/` entry paths, which in a bundle are `base/lib/...` and `base/res/...`, so an `.aab` always gets empty `abis` and `screen_densities` in the catalog's `compatibility` block (harmless, but wrong for a bundle with native code; `AppInfo::AAB#native_codes` already knows the ABIs); (b) `set_parser` rescues only `UnknownFormatError`, so a `Zip::Error` from a truncated file is an unhandled 500, not a 422 (the new validation does not see it, because the controller raises before the release is built); (c) the first-upload path with no `channel_key` still dereferences a nil parser.
 - **Still owed (operator), unchanged:** apply the 34a migration (`app_api_tokens`) to the live database; create Storeapp's per-app token on the 34a-7 screen; run Storeapp's `release-aab.yml` once to get a real bundle; upload it with `hold=true` and read what Zealot did (does `bundletool` compile it, does the signed index show it, are `name`, `release_version` and `build_version` filled). Nothing in this change has run under Ruby.
 - **Suggested next session:** read the first `CI - RSpec` run, and if the two new specs fail on the CarrierWave assumption, adjust the request spec, not the model.
+
+### Session — Task 34d: signing key API, token API, bootstrap script (D-Store leaves 35 to 37)
+
+- **Built (written, NOT run, no testing by instruction):** 34d-1, 34d-2, 34d-3; see the Task 34d block for files and choices.
+- **Needs the operator:** apply the patch and push (the push redeploys Zealot, so do it before leaf 16 step 5, not between steps 5 and 6); then run `bin/bootstrap-publishing` with an admin user token, the keystore and its passwords, and `gh` logged in for Storeapp.
+- **First thing to look at if CI is red:** the three new specs and `config/routes.rb` (the nested `api_tokens` route).

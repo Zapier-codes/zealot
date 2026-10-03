@@ -1202,6 +1202,12 @@ zh-CN:
     channel_track_invalid: "未知的发布轨道。请使用以下之一：%{tracks}"
     release_app_archived: 该应用已归档，无法更改其版本
     release_not_held: 只有已暂缓的版本才能通过此方式发布（当前版本状态为 %{status}）
+    api_token_params_invalid: "令牌需要名称（文本）和有效期，有效期为以下之一：%{choices}"
+    signing_key_already_configured: 已配置签名密钥。请先（凭其校验和）移除，再添加新的
+    signing_key_checksum_mismatch: 校验和与当前签名密钥不一致，未移除任何内容
+    signing_key_keystore_missing: "请将密钥库作为文件放在 multipart 字段 \"keystore\" 中发送"
+    signing_key_keystore_too_large: "密钥库超过 %{max} 字节"
+    signing_key_keytool_unavailable: 服务器未安装 keytool，无法校验密钥库，因此未保存
     unauthorized_app_token: 未授权
     unauthorized_channel_key: 无效的应用渠道 Key
     unauthorized_token: 未授权用户 token
