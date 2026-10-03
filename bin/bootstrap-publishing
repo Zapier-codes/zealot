@@ -65,7 +65,8 @@ usage() {
   cat <<'EOF'
 
 Options:
-  --only signing-key|app       required: which half to do, as which identity (see the top of this help)
+  --only signing-key|app|developer  required: which half to do, as which identity (see the top of this help);
+                               developer = the admin resets a developer account's password (see --developer-email)
   --url URL                    Zealot's address (or env ZEALOT_URL); must be https (http only for localhost)
   --app-name NAME              required with --only app: the app's name in Zealot (matched exactly)
   --bundle-id ID               required with --only app: the Android application id; must equal the .aab's, or
@@ -88,6 +89,10 @@ Options:
   --rotate                     make a new token and, once it is stored, revoke the older live ones of that name
   --github-repo OWNER/REPO     store ZEALOT_APP_TOKEN (secret), ZEALOT_URL and ZEALOT_CHANNEL_KEY (variables)
   --secret-out FILE            write the new token to this new file (mode 0600); refuses to overwrite
+  --developer-email EMAIL      --only developer: the existing developer account whose password is replaced and which is
+                               unlocked; run as the admin (--sign-in <admin email> with --password-file or the prompt)
+  --developer-password-file F  --only developer: a NEW file; a random 48-character password is saved there (mode 0600)
+                               and set on that account; then run --only app --sign-in EMAIL --password-file F
   --dry-run                    only read from Zealot and say what would be done
   -h, --help
 EOF
@@ -103,10 +108,11 @@ ONLY="" APP_NAME="" BUNDLE_ID="" SCHEME_NAME="Release" CHANNEL_NAME="Android"
 KEYSTORE="" KEY_ALIAS="" KEYSTORE_PASSWORD_FILE="" KEY_PASSWORD_FILE="" ADMIN_TOKEN_FILE=""
 SIGN_IN_EMAIL="" PASSWORD_FILE="" NEW_PASSWORD_FILE="" ADMIN_ENTRY=0
 TOKEN_NAME="github-actions" EXPIRY="90" ROTATE=0 GITHUB_REPO="" SECRET_OUT="" DRY_RUN=0
+DEVELOPER_EMAIL="" DEVELOPER_PASSWORD_FILE=""
 
 while (($#)); do
   case "$1" in
-    --only) ONLY="${2:?--only needs signing-key or app}"; shift 2 ;;
+    --only) ONLY="${2:?--only needs signing-key, app or developer}"; shift 2 ;;
     --url) ZEALOT_URL="${2:?--url needs a value}"; shift 2 ;;
     --app-name) APP_NAME="${2:?--app-name needs a value}"; shift 2 ;;
     --bundle-id) BUNDLE_ID="${2:?--bundle-id needs a value}"; shift 2 ;;
@@ -126,6 +132,8 @@ while (($#)); do
     --rotate) ROTATE=1; shift ;;
     --github-repo) GITHUB_REPO="${2:?--github-repo needs a value}"; shift 2 ;;
     --secret-out) SECRET_OUT="${2:?--secret-out needs a value}"; shift 2 ;;
+    --developer-email) DEVELOPER_EMAIL="$(printf '%s' "${2:?--developer-email needs an email address}" | tr '[:upper:]' '[:lower:]')"; shift 2 ;;
+    --developer-password-file) DEVELOPER_PASSWORD_FILE="${2:?--developer-password-file needs a value}"; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h | --help) usage; exit 0 ;;
     *) die "unknown option: $1 (see --help)" ;;
@@ -149,8 +157,23 @@ case "$ONLY" in
     [[ -z $KEYSTORE && -z $KEY_ALIAS && -z $KEYSTORE_PASSWORD_FILE && -z $KEY_PASSWORD_FILE ]] ||
       die "the keystore options belong to --only signing-key, run as the admin"
     ;;
-  *) die "--only is required: signing-key (run as the admin) or app (run as a developer); see --help" ;;
+  developer)
+    # The operator's tool: the admin replaces the password of a developer account that already exists. It never
+    # creates an account (a typo would register a stray one).
+    [[ -n $DEVELOPER_EMAIL ]] || die "--developer-email is required with --only developer"
+    [[ -n $SIGN_IN_EMAIL || -n $ADMIN_TOKEN_FILE ]] || die "--only developer is run as the admin: pass --sign-in <admin email> (or --admin-token-file)"
+    [[ -z $NEW_PASSWORD_FILE ]] || die "--new-password-file would register the admin email if it were mistyped; sign in as the admin with --password-file or the prompt"
+    [[ -n $DEVELOPER_PASSWORD_FILE ]] || ((DRY_RUN)) || die "--developer-password-file is required with --only developer (a new file; the new password is saved there)"
+    [[ -z $DEVELOPER_PASSWORD_FILE || ! -e $DEVELOPER_PASSWORD_FILE ]] || die "$DEVELOPER_PASSWORD_FILE already exists; choose a new file name"
+    [[ -z $APP_NAME && -z $BUNDLE_ID && -z $GITHUB_REPO && -z $SECRET_OUT && -z $KEYSTORE && -z $KEY_ALIAS ]] ||
+      die "the app, token, repository and keystore options do not belong to --only developer"
+    ((!ROTATE)) || die "--rotate belongs to --only app"
+    ;;
+  *) die "--only is required: signing-key (run as the admin), app (run as a developer) or developer (the admin resets a developer's password); see --help" ;;
 esac
+if [[ $ONLY != developer ]]; then
+  [[ -z $DEVELOPER_EMAIL && -z $DEVELOPER_PASSWORD_FILE ]] || die "--developer-email and --developer-password-file belong to --only developer"
+fi
 [[ -n $ZEALOT_URL ]] || die "set ZEALOT_URL or pass --url"
 ZEALOT_URL="${ZEALOT_URL%/}"
 case "$ZEALOT_URL" in
@@ -517,8 +540,69 @@ step_variables() {
   log "github: set variables ZEALOT_URL and ZEALOT_CHANNEL_KEY on $GITHUB_REPO"
 }
 
+# ---- the admin resets a developer's password (--only developer) -----------------------------------------
+# Uses Zealot's existing admin-only user API (Api::UsersController: search, update, unlock; the older door, so the
+# token is a `token` field, as for /api/apps). Never creates an account. The
+# login form is NOT used for this: it must never overwrite an existing account's password.
+step_developer() {
+  local id pw
+  api GET /api/users/search -G --data-urlencode "email=$DEVELOPER_EMAIL" "${OLD_TOKEN[@]}"
+  case "$STATUS" in
+    200) ;;
+    404)
+      log "developer: there is no account for $DEVELOPER_EMAIL, so nothing was changed. Run --only app --sign-in $DEVELOPER_EMAIL --new-password-file <a new file> and the login form registers it."
+      return 0
+      ;;
+    *) refused ;;
+  esac
+  id="$(jq -r '.id // empty' "$WORK/body")"
+  [[ $id =~ ^[0-9]+$ ]] || die "Zealot's answer for $DEVELOPER_EMAIL has no account id; nothing was changed"
+  # The user JSON carries no role (UserSerializer: id, username, email, locale, appearance, timezone), so a role
+  # check is not possible here; the one slip this can catch is the admin's own email.
+  if [[ -n $SIGN_IN_EMAIL && $DEVELOPER_EMAIL == "$(printf '%s' "$SIGN_IN_EMAIL" | tr '[:upper:]' '[:lower:]')" ]]; then
+    die "refusing: $DEVELOPER_EMAIL is the account you signed in with; this step resets a developer's password"
+  fi
+  log "developer: found the account for $DEVELOPER_EMAIL (id $id)"
+  if ((DRY_RUN)); then
+    log "developer: would set a new random password on it and unlock it"
+    return 0
+  fi
+
+  if command -v openssl >/dev/null 2>&1; then
+    pw="$(openssl rand -base64 36 | tr -d '\n')"
+  else
+    pw="$(head -c 36 /dev/urandom | base64 | tr -d '\n')"
+  fi
+  [[ ${#pw} -ge 48 ]] || die "could not make a random password"
+  printf '%s' "$pw" >"$WORK/devpass"
+  pw=""
+  (set -C; printf '%s\n' "$(cat "$WORK/devpass")" >"$DEVELOPER_PASSWORD_FILE") 2>/dev/null ||
+    die "could not create $DEVELOPER_PASSWORD_FILE (the folder must exist and the file must not)"
+
+  api PUT "/api/users/$id" "${OLD_TOKEN[@]}" --data-urlencode "password@$WORK/devpass"
+  if [[ $STATUS != 200 ]]; then
+    rm -f "$DEVELOPER_PASSWORD_FILE"
+    case "$STATUS" in 401 | 403) refused ;; esac
+    die "Zealot did not accept the new password ($STATUS: $(reason)); nothing was changed and $DEVELOPER_PASSWORD_FILE was removed"
+  fi
+  log "developer: set a new random password on $DEVELOPER_EMAIL and saved it in $DEVELOPER_PASSWORD_FILE (mode 600); put it in a password manager, then delete the file"
+
+  api DELETE "/api/users/$id/unlock" -G "${OLD_TOKEN[@]}"
+  if [[ $STATUS == 202 || $STATUS == 200 ]]; then
+    log "developer: unlocked the account (a lock from wrong passwords is cleared)"
+  else
+    log "developer: the account could not be unlocked ($STATUS); if the next sign-in says it is locked, wait an hour"
+  fi
+}
+
 # ---- run -------------------------------------------------------------------------------------------------
 if ((DRY_RUN)); then log "dry run: reading only, nothing will be changed"; fi
+
+if [[ $ONLY == developer ]]; then
+  step_developer
+  log "done. Next, as that developer: --only app --sign-in $DEVELOPER_EMAIL --password-file ${DEVELOPER_PASSWORD_FILE:-<the file>}"
+  exit 0
+fi
 
 if [[ $ONLY == signing-key ]]; then
   step_signing_key
