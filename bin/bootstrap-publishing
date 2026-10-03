@@ -244,16 +244,20 @@ generate_password() {
   log "password: made a random 48-character password and saved it to $NEW_PASSWORD_FILE (mode 600); put it in a password manager, then delete the file"
 }
 
-# What the login form really said when it answered 422. Two different pages come back with that status: the
-# anti-forgery refusal (raised before the form reaches the account code, so no account was touched) and the
-# login page again with the new account's validation errors. Only matched phrases are printed, never the page.
+# What the login page said when it answered 422. Devise is set to answer a FAILED sign-in with 422 too
+# (config.responder.error_status), so 422 is not only a refused form: it is also a wrong password for an
+# account that already exists, or a refused anti-forgery token, or the new account failing validation. The page
+# title and the flash message tell them apart, and the server may speak Chinese (its default), so both are
+# printed as the page shows them. Nothing else from the page is printed, and the request never is.
 explain_sign_in_422() {
-  local text
-  text="$(sed -E 's/<[^>]*>/ /g' "$WORK/body" | tr '\n' ' ' | tr -s ' ' || true)"
-  if grep -qiE 'verify CSRF|authenticity' <<<"$text"; then
+  local flat title msg
+  flat="$(tr '\n' ' ' <"$WORK/body" || true)"
+  title="$(grep -oE '<title>[^<]*</title>' <<<"$flat" | head -1 | sed -E 's/<[^>]*>//g' || true)"
+  msg="$(grep -oE 'data-controller="notification"[^>]*>.{0,600}' <<<"$flat" | head -1 | sed -E 's/<[^>]*>/ /g' | tr -s ' ' | head -c 240 || true)"
+  if grep -qiE 'verify CSRF|authenticity' <<<"$flat"; then
     printf '%s' "the anti-forgery (CSRF) token was refused before any account was touched, so nothing was created and nothing counts toward the lockout"
   else
-    grep -oE '(Email|Password|Username|Role)[^.]{0,80}(blank|invalid|taken|short|long|match)[^.]{0,20}' <<<"$text" | sort -u | head -5 | tr '\n' ';' || true
+    printf '%s' "page title: ${title:-none}; message on the page: ${msg:-none}. A 422 here means a wrong password for an account that already exists, or the new account failed validation"
   fi
 }
 
@@ -283,8 +287,8 @@ sign_in_for_token() {
     form+=(--data-urlencode "authenticity_token@$WORK/csrf")
   fi
 
-  # One attempt. A wrong password is a redirect back to the login page, not an error status, so success is
-  # decided by the next request, not by this answer.
+  # One attempt. A wrong password is answered 422 (Devise responder.error_status) and the login page again, so
+  # success is decided by the next request; 422 here is explained by explain_sign_in_422.
   api POST /users/sign_in -c "$jar" -b "$jar" "${form[@]}"
   case "$STATUS" in
     422) why="$(explain_sign_in_422 || true)"
