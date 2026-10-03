@@ -244,6 +244,19 @@ generate_password() {
   log "password: made a random 48-character password and saved it to $NEW_PASSWORD_FILE (mode 600); put it in a password manager, then delete the file"
 }
 
+# What the login form really said when it answered 422. Two different pages come back with that status: the
+# anti-forgery refusal (raised before the form reaches the account code, so no account was touched) and the
+# login page again with the new account's validation errors. Only matched phrases are printed, never the page.
+explain_sign_in_422() {
+  local text
+  text="$(sed -E 's/<[^>]*>/ /g' "$WORK/body" | tr '\n' ' ' | tr -s ' ' || true)"
+  if grep -qiE 'verify CSRF|authenticity' <<<"$text"; then
+    printf '%s' "the anti-forgery (CSRF) token was refused before any account was touched, so nothing was created and nothing counts toward the lockout"
+  else
+    grep -oE '(Email|Password|Username|Role)[^.]{0,80}(blank|invalid|taken|short|long|match)[^.]{0,20}' <<<"$text" | sort -u | head -5 | tr '\n' ';' || true
+  fi
+}
+
 sign_in_for_token() {
   local jar="$WORK/cookies" csrf="" token=""
 
@@ -258,6 +271,11 @@ sign_in_for_token() {
   [[ $STATUS == 200 ]] || sign_in_failed "the login page answered $STATUS (is $ZEALOT_URL Zealot's own address, not a redirect?)"
   csrf="$(tr '\n' ' ' <"$WORK/body" | grep -oE '<meta[^>]*name="csrf-token"[^>]*>' | grep -oE 'content="[^"]+"' | head -1 | sed -E 's/^content="//; s/"$//' || true)"
 
+  if [[ -z $csrf ]]; then
+    csrf="$(tr '\n' ' ' <"$WORK/body" | grep -oE '<input[^>]*name="authenticity_token"[^>]*>' | grep -oE 'value="[^"]+"' | head -1 | sed -E 's/^value="//; s/"$//' || true)"
+  fi
+  [[ -n $csrf ]] || log "sign-in: no CSRF token was found on the login page; the form will probably be refused"
+
   local -a form=(--data-urlencode "user%5Bemail%5D=$SIGN_IN_EMAIL" --data-urlencode "user%5Bpassword%5D@$WORK/password" --data-urlencode "tab=normal")
   if ((ADMIN_ENTRY)); then form+=(--data-urlencode "admin_entry=1"); fi
   if [[ -n $csrf ]]; then
@@ -269,7 +287,8 @@ sign_in_for_token() {
   # decided by the next request, not by this answer.
   api POST /users/sign_in -c "$jar" -b "$jar" "${form[@]}"
   case "$STATUS" in
-    422) sign_in_failed "Zealot refused the sign-in form (422): the email is not valid or the password is outside 6 to 128 characters" ;;
+    422) why="$(explain_sign_in_422 || true)"
+      sign_in_failed "Zealot refused the sign-in form (422): ${why:-the page gave no reason that could be read}" ;;
     429 | 5??) sign_in_failed "Zealot answered $STATUS to the sign-in; try again later" ;;
   esac
 
