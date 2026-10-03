@@ -40,6 +40,12 @@ module Anthropic
     # split APK *set* generated for our own internal distribution; this
     # one signs the *bundle itself* for Google). Not runnable in this
     # sandbox (no JDK) — same caveat as #verify_keystore! below.
+    # Task 36b-4: the SHA-256 fingerprint of the key's certificate, as the lower-case hex string Google's
+    # Android Developer Console API wants (no colons). See AndroidSigningKey#certificate_sha256.
+    def self.certificate_sha256(**kwargs)
+      new.certificate_sha256(**kwargs)
+    end
+
     def self.sign_bundle!(bundle_path:, keystore_bytes:, keystore_password:, key_alias:, key_password:)
       new.sign_bundle!(
         bundle_path: bundle_path,
@@ -106,6 +112,33 @@ module Anthropic
       end
 
       true
+    end
+
+    # Exports the certificate with `keytool -exportcert -rfc` (PEM text on stdout, so no binary pipe)
+    # and hashes its DER form in Ruby, rather than parsing keytool's human-readable `-list -v`
+    # output, whose wording varies by JDK version and locale.
+    #
+    # @raise [InvalidKeystoreError] if keytool cannot open the keystore or export the alias
+    def certificate_sha256(keystore_bytes:, keystore_password:, key_alias:)
+      ensure_keytool_available!
+
+      Tempfile.create(['android-signing-cert', '.jks'], binmode: true) do |file|
+        file.write(keystore_bytes)
+        file.flush
+
+        write_secret_file(keystore_password) do |storepass_path|
+          cmd = [
+            @keytool_path, '-exportcert', '-rfc',
+            '-keystore', file.path,
+            '-alias', key_alias,
+            '-storepass:file', storepass_path
+          ]
+          stdout, stderr, status = Open3.capture3(*cmd)
+          raise InvalidKeystoreError, "certificate export failed: #{stderr.presence}" unless status.success?
+
+          Digest::SHA256.hexdigest(OpenSSL::X509::Certificate.new(stdout).to_der)
+        end
+      end
     end
 
     private

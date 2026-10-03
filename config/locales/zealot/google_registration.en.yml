@@ -1,0 +1,16 @@
+en:
+  apps:
+    show:
+      google_registration:
+        title: Google registration
+        checked: "checked %{time}"
+        states:
+          pending: Pending
+          registered: Registered
+          needs_review: Needs review
+          failed: Failed
+        explain:
+          pending: Google has the package name and is still processing the organisation's signing key.
+          registered: This package name and the organisation's signing key are registered with Google under the organisation's verified developer account.
+          needs_review: Google needs more than Zealot may do on its own (for example, proof that the organisation owns a package name that already exists). An administrator will look at it.
+          failed: Google refused the registration and retrying will not help. The reason is shown below.

@@ -1,0 +1,16 @@
+zh-CN:
+  apps:
+    show:
+      google_registration:
+        title: Google 注册
+        checked: "检查于 %{time}"
+        states:
+          pending: 处理中
+          registered: 已注册
+          needs_review: 需要人工审核
+          failed: 失败
+        explain:
+          pending: Google 已收到该包名，仍在处理组织的签名密钥。
+          registered: 该包名和组织的签名密钥已在组织的已验证开发者账号下向 Google 注册。
+          needs_review: Google 要求的超出了 Zealot 可自动完成的范围（例如证明组织拥有一个已存在的包名）。管理员会进行处理。
+          failed: Google 拒绝了此次注册，重试也不会成功。原因显示在下方。

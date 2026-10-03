@@ -172,6 +172,10 @@ class App < ApplicationRecord
   # suspended (later slice: unverified company past its deadline).
   belongs_to :publisher_profile, optional: true
 
+  # Task 36b-7: the record of this app's package name being registered with Google, if one exists.
+  # `nullify` keeps the record when the app goes: it is the organisation's registration, not the app's.
+  has_one :android_package_registration, dependent: :nullify
+
   # Task 37b-iii-s2: exclusive ownership by one tenant (operator's resolved ❓1). NULL means the
   # DEFAULT tenant's catalog, so every app that existed before this column stays where it was.
   # Nothing assigns it yet; `App.for_tenant` (s3) is the only reader.

@@ -48,6 +48,10 @@
 
   = render 'schemes', app: @app
 
+  / Task 36b-7: the Google registration status of this app's package name, for the owner and admins.
+  - if !@app.archived && policy(@app).view_store_listing?
+    = render 'google_registration', app: @app
+
   / Task 27d-e2-b: store-listing graphics, for whoever may change them (the same rule the endpoints use).
   - if !@app.archived && policy(ListingGraphic.new(app: @app)).create?
     = render 'listing_graphics', app: @app

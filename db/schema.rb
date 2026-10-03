@@ -10,10 +10,28 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_01_100000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_03_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
+
+  create_table "android_package_registrations", force: :cascade do |t|
+    t.bigint "app_id"
+    t.datetime "created_at", null: false
+    t.string "developer_account"
+    t.string "google_package_state"
+    t.string "key_fingerprint_sha256"
+    t.string "key_state"
+    t.datetime "last_checked_at"
+    t.text "last_error"
+    t.string "package_name", null: false
+    t.string "policy_strategy"
+    t.string "state", default: "pending", null: false
+    t.bigint "tenant_id"
+    t.datetime "updated_at", null: false
+    t.index ["app_id"], name: "index_android_package_registrations_on_app_id"
+    t.index ["package_name"], name: "index_android_package_registrations_on_package_name", unique: true
+  end
 
   create_table "android_signing_keys", force: :cascade do |t|
     t.string "filename", null: false
@@ -656,6 +674,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_01_100000) do
     t.index ["url"], name: "index_web_hooks_on_url"
   end
 
+  add_foreign_key "android_package_registrations", "apps", on_delete: :nullify
   add_foreign_key "app_api_tokens", "apps", on_delete: :cascade
   add_foreign_key "app_api_tokens", "users", column: "created_by_id", on_delete: :nullify
   add_foreign_key "apple_teams", "apple_keys", on_delete: :cascade

@@ -60,6 +60,10 @@ class AnthropicAssetDeliveryJob < ApplicationJob
       signed: signing_key.present?,
       signing_key_checksum: signing_key&.checksum
     )
+
+    # Task 36b-6: register the package name with Google. Off unless ADC_AUTO_REGISTER=true, and the
+    # job itself re-checks everything; a failure to enqueue must never undo the signing above.
+    GoogleAdcRegisterJob.perform_later(release.id) if signing_key.present? && GoogleAdc.auto_register?
   end
 
   # Best-effort single label for the release's dominant pack type, since

@@ -1,0 +1,19 @@
+/ Task 36b-7: where this app's Android package name stands with Google. Advice for the owner and admins,
+/ never a gate: nothing here blocks an upload or going live. Shown only once a registration row exists
+/ (GoogleAdc::Registrar writes it, and only when the operator has switched registration on).
+- registration = app.android_package_registration
+- base = 'apps.show.google_registration'
+- badge = { 'registered' => 'd-badge-success', 'pending' => 'd-badge-info', 'needs_review' => 'd-badge-warning', 'failed' => 'd-badge-error' }[registration&.state]
+- if registration
+  .mb-4#google-registration data-state=registration.state
+    h4.text-sm.font-semibold.mb-1
+      = t("#{base}.title")
+      small class="d-badge d-badge-sm py-1 ms-2 #{badge}"
+        = t("#{base}.states.#{registration.state}")
+    p.text-sm.opacity-80 = t("#{base}.explain.#{registration.state}")
+    - if registration.last_error.present? && !registration.registered?
+      p.text-xs.opacity-65.mt-1 = registration.last_error.truncate(300)
+    p.text-xs.opacity-65.mt-1
+      = registration.package_name
+      - if registration.last_checked_at
+        span.ml-2 = t("#{base}.checked", time: l(registration.last_checked_at, format: :short))

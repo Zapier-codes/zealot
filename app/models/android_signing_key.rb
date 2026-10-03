@@ -52,6 +52,18 @@ class AndroidSigningKey < ApplicationRecord
     )
   end
 
+  # Task 36b-4: the SHA-256 fingerprint of this key's certificate, lower-case hex without colons, the
+  # form Google's Android Developer Console API takes when a package name's signing key is
+  # registered. Computed on demand through `keytool` and never stored: the certificate is public but
+  # recomputing keeps it correct if the keystore is rotated in place. Needs the JDK (like #verify!).
+  def certificate_sha256
+    Anthropic::ApkSigningService.certificate_sha256(
+      keystore_bytes: keystore,
+      keystore_password: keystore_password,
+      key_alias: key_alias
+    )
+  end
+
   # Yields local paths for the decrypted keystore and both passwords, each
   # written to a mode-0600 tempfile for the duration of the block, then
   # removed. Callers pass these to bundletool via its `--ks-pass file:...`
