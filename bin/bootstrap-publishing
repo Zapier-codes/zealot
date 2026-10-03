@@ -311,7 +311,12 @@ step_token() {
     api DELETE "/api/apps/$APP_ID/api_tokens/$NEW_TOKEN_ID" "${AUTH[@]}" || true
     die "the token was not stored (is gh logged in with access to $GITHUB_REPO? does the --secret-out folder exist?)"
   fi
-  log "token: made \"$TOKEN_NAME\" (id $NEW_TOKEN_ID) and stored it${GITHUB_REPO:+ as $GITHUB_REPO's secret ZEALOT_APP_TOKEN}${SECRET_OUT:+ in $SECRET_OUT (mode 600)}"
+  # Built from plain strings: an apostrophe inside a double-quoted ${VAR:+...} made bash look for a closing
+  # single quote to the end of the file (unexpected EOF), found on the first run.
+  local where=""
+  [[ -z $GITHUB_REPO ]] || where=" as the secret ZEALOT_APP_TOKEN on $GITHUB_REPO"
+  [[ -z $SECRET_OUT ]] || where="$where, and in $SECRET_OUT (mode 600)"
+  log "token: made \"$TOKEN_NAME\" (id $NEW_TOKEN_ID) and stored it$where"
 
   if ((ROTATE)); then
     local id

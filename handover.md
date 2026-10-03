@@ -863,6 +863,8 @@ Operator request (2026-10-03): D-Store leaf 16's steps 3 (org signing key) and 4
 
 **Not done, flagged.** No rate limit (34c). Two simultaneous signing-key creates could both pass `only_one_record` (no unique index; same as `PlayCredential`). Whether `keytool` is in the Render image is unchecked. **Not verified:** everything. Nothing was run, not even `ruby -c` or `bash -n`; the three new specs and the script have never executed. Only the two locale files were loaded as YAML.
 
+**Debug run (2026-10-03, operator-directed, no task; first run of `bin/bootstrap-publishing`, a `--dry-run` in Termux).** Bash stopped with "line 349: unexpected EOF while looking for matching" a single quote, before any call to Zealot, so nothing was read or changed. Cause, read from the file and not run: the log line after a token is stored had an apostrophe inside a double-quoted alternate expansion (`${GITHUB_REPO:+ as $GITHUB_REPO's secret ...}`); bash 5 takes it as an opening single quote and reads to the end of the file. Every other apostrophe in the script is inside plain double quotes, a comment or the quoted `EOF` heredoc, which are safe. **Fix:** that line now builds a `where` string from plain assignments; same output, slightly different wording. **Still not run, no `bash -n`:** a second syntax or runtime error would only show on the next run.
+
 #### 🆕 Task 35: Scale and delivery (Phase 4)
 
 | ID | Goal | Depends on | Files (predicted) | Acceptance check | Risk |
