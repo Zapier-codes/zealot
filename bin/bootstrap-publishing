@@ -81,7 +81,8 @@ Options:
                                can be created; refused with --only app
   --password-file F            with --sign-in: the account's existing password (or env ZEALOT_PASSWORD, or a prompt)
   --new-password-file F        with --sign-in: make a random password, save it to the NEW file F (mode 0600), and
-                               use it; if the account already exists it is not accepted and F is removed again
+                               use it; F is removed again only if the script fails before sending it, and KEPT after any failed sign-in
+                               (the server may have created the account), then pass it as --password-file F
   --token-name NAME            default: github-actions (a live token with this name is reused unless --rotate)
   --expiry 30|90|365|none      default: 90 (days)
   --rotate                     make a new token and, once it is stored, revoke the older live ones of that name
@@ -220,11 +221,19 @@ reason() {
 # account's user token. This makes those page loads with a throwaway cookie jar. The password and the token live
 # only in files inside $WORK (mode 0600, removed on exit) and never in argv, a URL or the output.
 GENERATED_PASSWORD=0
+SIGN_IN_POSTED=0
 
 sign_in_failed() {
   if ((GENERATED_PASSWORD)); then
-    rm -f "$NEW_PASSWORD_FILE"
-    log "password: removed $NEW_PASSWORD_FILE, the generated password was never accepted"
+    if ((SIGN_IN_POSTED)); then
+      # The login page and the sign-up are one form: an unknown email is registered with the password sent, and
+      # only then is the sign-in tried. A failure after the POST can therefore leave an account behind, so the
+      # only copy of its password is kept (found 2026-10-03: the file was deleted on every failed run).
+      log "password: KEPT $NEW_PASSWORD_FILE, the server may have created the account with it; next run use --password-file $NEW_PASSWORD_FILE instead of --new-password-file, or delete the file"
+    else
+      rm -f "$NEW_PASSWORD_FILE"
+      log "password: removed $NEW_PASSWORD_FILE, it was never sent to the server"
+    fi
   fi
   die "$1"
 }
@@ -254,7 +263,10 @@ explain_sign_in_422() {
   flat="$(tr '\n' ' ' <"$WORK/body" || true)"
   title="$(grep -oE '<title>[^<]*</title>' <<<"$flat" | head -1 | sed -E 's/<[^>]*>//g' || true)"
   msg="$(grep -oE 'data-controller="notification"[^>]*>.{0,600}' <<<"$flat" | head -1 | sed -E 's/<[^>]*>/ /g' | tr -s ' ' | head -c 240 || true)"
-  if grep -qiE 'verify CSRF|authenticity' <<<"$flat"; then
+  # Only the page's own title and message may say "CSRF": the login form always carries a hidden field called
+  # authenticity_token, so matching that word on the whole page called every failed sign-in a CSRF refusal
+  # (found 2026-10-03: the server log showed the create action had run, so the token had been accepted).
+  if grep -qiE "verify CSRF|InvalidAuthenticityToken" <<<"$title $msg"; then
     printf '%s' "the anti-forgery (CSRF) token was refused before any account was touched, so nothing was created and nothing counts toward the lockout"
   else
     printf '%s' "page title: ${title:-none}; message on the page: ${msg:-none}. A 422 here means a wrong password for an account that already exists, or the new account failed validation"
@@ -289,6 +301,7 @@ sign_in_for_token() {
 
   # One attempt. A wrong password is answered 422 (Devise responder.error_status) and the login page again, so
   # success is decided by the next request; 422 here is explained by explain_sign_in_422.
+  SIGN_IN_POSTED=1
   api POST /users/sign_in -c "$jar" -b "$jar" "${form[@]}"
   case "$STATUS" in
     422) why="$(explain_sign_in_422 || true)"
