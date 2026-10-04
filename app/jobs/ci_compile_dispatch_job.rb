@@ -30,7 +30,8 @@ class CiCompileDispatchJob < ApplicationJob
   def self.enqueue_for(release)
     return false unless CiCompileDispatcher.enabled? && aab?(release) && SENDABLE.include?(release.ci_compile_state)
 
-    release.update_columns(ci_compile_state: 'queued', ci_compile_error: nil, ci_compile_finished_at: nil)
+    release.update_columns(ci_compile_state: 'queued', ci_compile_error: nil, ci_compile_finished_at: nil,
+                           ci_compile_state_at: Time.current)
     perform_later(release.id)
     true
   end
@@ -49,7 +50,8 @@ class CiCompileDispatchJob < ApplicationJob
 
     ensure_stored(release)
     CiCompileDispatcher.new(release).call
-    Release.where(id: release.id, ci_compile_state: 'queued').update_all(ci_compile_state: 'dispatched')
+    Release.where(id: release.id, ci_compile_state: 'queued')
+           .update_all(ci_compile_state: 'dispatched', ci_compile_state_at: Time.current)
   rescue CiCompileDispatcher::DispatchError => e
     fail_release(release, e.message)
   rescue StandardError => e

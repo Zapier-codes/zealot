@@ -27,6 +27,11 @@ CRON_JOBS_SETUP = lambda do
       cron: '*/10 * * * *',
       class: 'AnthropicPlaySetupRecheckJob',
       description: 'Re-check Play Console setup for apps with releases waiting on it and resume their publish'
+    },
+    ci_compile_sweeper: {
+      cron: '*/15 * * * *',
+      class: 'CiCompileSweeperJob',
+      description: 'Fail releases whose CI compile was queued or dispatched but never reported back'
     }
   }
 

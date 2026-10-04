@@ -15,6 +15,13 @@ require 'rails_helper'
 # the caller authenticates against Zealot itself. Its per-app, scoped replacement is leaf `f.xiv`
 # (Task 34a); neither `f.viii` nor this spec changes it.
 #
+# Task 40h-b adds the direct-to-storage doors (a session, then finalize; console and API). They create a
+# `release_uploads` staging row, never a `Release`: the only code that will create a release from one is CI's
+# callback (40i-b). The examples at the end of this file pin who may write a staging row and keep both new doors
+# behind the same two credentials as the multipart ones. The callback-side examples (a wrong, missing or replayed
+# credential; a callback for an upload nobody finalized; the exact callers of `releases.create`) are 40i-b's to
+# add, when that creator exists.
+#
 # Written by reading the code, NOT run (no Ruby, Rails or database in the sandbox that wrote it), so
 # it is the first thing to look at if CI is red for this slice.
 RSpec.describe 'Manual upload only (f.viii)', type: :request do
@@ -23,6 +30,15 @@ RSpec.describe 'Manual upload only (f.viii)', type: :request do
     {
       'app/controllers/releases_controller.rb' => 'before_action :authenticate_login!',
       'app/controllers/api/apps/upload_controller.rb' => 'before_action :validate_user_token, unless: :app_token_presented?'
+    }
+  end
+
+  # Task 40h-b: the two doors that open and finalize a direct upload, with the auth line each must carry.
+  def session_doors
+    {
+      'app/controllers/release_uploads_controller.rb' => 'before_action :authenticate_user!',
+      'app/controllers/api/apps/upload_sessions_controller.rb' =>
+        'before_action :validate_user_token, unless: :app_token_presented?'
     }
   end
 
@@ -81,6 +97,46 @@ RSpec.describe 'Manual upload only (f.viii)', type: :request do
     expect do
       post '/api/apps/upload', params: { token: 'not-a-real-token', file: 'x' }
     end.not_to change(Release, :count)
+    expect(response.status).to be >= 400
+  end
+
+  # --- Task 40h-b: the direct-to-storage doors ---
+
+  it 'keeps each direct-upload door behind its own authentication' do
+    session_doors.each do |file, auth_line|
+      expect(File.read(Rails.root.join(file))).to include(auth_line), "#{file} lost `#{auth_line}`"
+    end
+  end
+
+  it 'writes a release_uploads row from exactly one place, the session service' do
+    offenders = source_files.select do |f|
+      File.read(f).match?(
+        /\bReleaseUpload\.(create!?|new|insert_all!?|upsert_all?)\b|\brelease_uploads\.(create!?|build)\b/
+      )
+    end
+    expect(offenders.map { |f| relative(f) }).to eq(['app/services/release_upload_session.rb'])
+  end
+
+  it 'lets the direct-upload doors create no release and fetch nothing from a URL' do
+    session_doors.each_key do |file|
+      text = File.read(Rails.root.join(file))
+      forbidden = /upload_file|\breleases\.(create|build)|Release\.create|open-uri|URI\.open|Net::HTTP|Faraday/
+      expect(text).not_to match(forbidden), "#{file} can create a release or pull a file from a URL"
+    end
+  end
+
+  it 'refuses an API session with no credential or an unknown token, and creates no row' do
+    expect do
+      post '/api/apps/upload_sessions', params: { filename: 'x.aab', size: 1, channel_key: 'nope' }
+      expect(response.status).to be >= 400
+      post '/api/apps/upload_sessions', params: { token: 'not-a-real-token', filename: 'x.aab', size: 1 }
+      expect(response.status).to be >= 400
+    end.not_to change(ReleaseUpload, :count)
+  end
+
+  it 'refuses finalizing an API session with no credential' do
+    post '/api/apps/upload_sessions/1/finalize'
+
     expect(response.status).to be >= 400
   end
 end

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_04_140000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_04_150000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -524,6 +524,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_04_140000) do
     t.string "universal_apk_storage_key"
     t.string "universal_apk_sha256"
     t.bigint "universal_apk_size"
+    t.datetime "ci_compile_state_at"
     t.check_constraint "ci_compile_state IS NULL OR ci_compile_state::text = 'queued'::text OR ci_compile_state::text = 'dispatched'::text OR ci_compile_state::text = 'done'::text OR ci_compile_state::text = 'failed'::text", name: "releases_ci_compile_state_known"
     t.check_constraint "rollout_percentage >= 0 AND rollout_percentage <= 100", name: "releases_rollout_percentage_range"
     t.check_constraint "status::text = 'available'::text OR status::text = 'held'::text OR status::text = 'halted'::text OR status::text = 'pulled'::text", name: "releases_status_known"

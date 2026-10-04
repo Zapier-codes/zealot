@@ -32,6 +32,12 @@ RSpec.describe CiCompileDispatchJob do
       expect(CiCompileDispatcher).to have_received(:new).with(having_attributes(id: release.id))
     end
 
+    it 'stamps when the release was dispatched, for the sweeper' do
+      described_class.new.perform(release.id)
+
+      expect(release.reload.ci_compile_state_at).to be_within(1.minute).of(Time.current)
+    end
+
     it 'does not mirror a release whose file is already stored' do
       described_class.new.perform(release.id)
 
@@ -115,6 +121,7 @@ RSpec.describe CiCompileDispatchJob do
       expect(described_class.enqueue_for(release)).to be(true)
 
       expect(release.reload.ci_compile_state).to eq('queued')
+      expect(release.ci_compile_state_at).to be_within(1.minute).of(Time.current)
       expect(described_class).to have_received(:perform_later).with(release.id)
     end
 

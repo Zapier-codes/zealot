@@ -1292,7 +1292,7 @@ So the work is **keeping it true**, not building a path: a rule enforced only by
 3. **The spec is a source scan plus a route listing,** so it catches a new door written in the usual way (a controller, a job, a route) but not one built by metaprogramming or by a gem. It is a tripwire, not a proof.
 4. Not run: no Ruby, Rails or database in the sandbox. If CI is red the spec's assumptions are the first suspect: the route spec path form (`/hooks/hyperswitch(.:format)`), and that an API upload with no token answers 4xx (the unauthorized error is rescued in `Api::BaseController`).
 
-### 🟡 Task 40: CI-only release processing — Zealot stops compiling, splitting, signing, compressing and holding release files (operator-directed 2026-10-04; DOCS ONLY, nothing below is built; the two earlier Task 40 patches are NOT in this repo; **40a to 40f and 40h-a built (40a, 40b, 40c, 40d, 40e, 40f, 40h-a), written NOT run**, the rest not built)
+### 🟡 Task 40: CI-only release processing — Zealot stops compiling, splitting, signing, compressing and holding release files (operator-directed 2026-10-04; DOCS ONLY, nothing below is built; the two earlier Task 40 patches are NOT in this repo; **40a to 40g, 40h-a and 40h-b built (40a, 40b, 40c, 40d, 40e, 40f, 40g, 40h-a, 40h-b), written NOT run**, the rest not built)
 
 **Why.** Render's web service (`plan: free`, 512Mi) was killed for memory (`server_failed`, `oomKilled`, `memoryLimit 512Mi`) at 2026-10-03 21:00:58 and 2026-10-04 02:59:31, each time just after an upload started the bundletool compile (see the 2026-10-04 Task 34f session-log entry). Task 34f only mitigated this (`ZEALOT_WORKER_CONCURRENCY=1`, mirror before compile, restore from storage). The operator's direction is to remove the cause: all heavy work moves to GitHub Actions in the storage repo, and Zealot stops doing it.
 
@@ -1419,9 +1419,9 @@ The earlier session's one patch exceeded the six-file slice guide. Cut it:
 | 40d ✅ | **Switch the hook.** `Release#anthropic_asset_delivery_job` queues the CI path; `ProxySdkInjectionJob` skips bundles when CI is on; no local fallback | 40b, 40c | `release.rb`, `proxy_sdk_injection_job.rb`, delete or gate `AnthropicAssetDeliveryJob` body, specs | an AAB upload never runs bundletool on Render | **medium**: the one behaviour change; `CI_COMPILE_ENABLED` is the revert |
 | 40e ✅ | **Serve and index the APK.** `Release#file?` accepts a stored copy; download serves the universal APK; the index carries the APK's SHA-256 and size and republishes on `done` | 40a | `release.rb`, `release_download.rb`, `CatalogIndex::Serializer`, specs | an evicted AAB release downloads as `.apk` and its index hash matches the bytes | medium: D-Store/Storeapp verify the hash |
 | 40f ✅ | **Evict the local AAB** after the four checks | 40e | eviction job, callback controller (one line), specs | file gone from disk, download still works | low once 40e is in |
-| 40g | **Sweeper** for stale `dispatched` releases | 40a | job + cron entry in `good_job.rb`, spec | a stale release becomes `failed` | low |
+| 40g ✅ | **Sweeper** for stale `dispatched` releases | 40a | job + cron entry in `good_job.rb`, spec | a stale release becomes `failed` | low |
 | 40h-a ✅ | **Staging record and R2 staging service.** `release_uploads` table and model with states (`awaiting_bytes`, `uploaded`, `processing`, `failed`, `expired`, `done`); a staging service for presigned PUT (and multipart), HEAD with size, delete; config and env | 40a | migration + `schema.rb`, model, `app/services/` staging service, `.env.example`, `render.yaml`, specs | a row is created, a presigned URL is returned, HEAD reports the size (fake S3) | low, additive |
-| 40h-b | **Upload session and finalize for the console and the API.** Both doors keep their auth; finalize checks the size, marks `uploaded`, dispatches CI. Old multipart endpoint stays behind a flag | 40h-a, 40b | controllers, routes, policies, specs, **rewrite of `manual_upload_only_spec.rb`** (see Task 39 paragraph) | an authenticated owner gets a URL and can finalize; an unauthenticated caller gets neither | **medium**: new door, the tripwire changes |
+| 40h-b ✅ | **Upload session and finalize for the console and the API.** Both doors keep their auth; finalize checks the size and marks `uploaded`; **the CI dispatch moved to 40i-a** (the workflow it dispatches does not exist yet). Old multipart endpoint stays behind a flag | 40h-a, 40b | controllers, routes, policies, specs, **rewrite of `manual_upload_only_spec.rb`** (see Task 39 paragraph) | an authenticated owner gets a URL and can finalize; an unauthenticated caller gets neither | **medium**: new door, the tripwire changes |
 | 40h-c | **Console and client upload to the presigned URL.** Form JS with progress; Storeapp workflow and docs move to session, PUT, finalize (cross-repo) | 40h-b | frontend JS, view, locale (`en.yml` and `zh-CN.yml` together), docs, Storeapp workflow | a browser upload reaches R2 and finalizes | medium; cross-repo |
 | 40i-a | **Stage-1 workflow and callback.** CI reads the manifest and icon; callback with OIDC (or HMAC) verification; idempotent; synchronous answer with the release id | 40h-a, 40c | workflow YAML, callback controller, verifier service, specs | a valid callback with the right claims is accepted; wrong repo, replay, wrong state refused | medium |
 | 40i-b | **Create the real `Release` from the metadata.** One transaction, status `held`, existing validations re-run; failure marks the upload `failed` and creates nothing; storage-backed releases accepted by the create-time validations | 40i-a | `release.rb`, `release_parser.rb`, specs | a wrong package name never creates a `Release`; a good one creates a held release | **high**; split again if it exceeds the slice guide |
@@ -1590,6 +1590,72 @@ Order: 40a → 40b → 40c → 40d → 40e → 40f, then 40g, then 40h-a → 40h
 
 **Next.** 40g (sweeper for stale `dispatched` releases) is independent and needs nothing from the operator; it now matters more, because a run that dies without calling back stays `dispatched` and its bundle is never evicted. 40h-a needs the R2 staging bucket (Decision 2); 40j needs Decision 4.
 
+#### 40g result (built; written, NOT run; no testing by instruction)
+
+**What it is.** `CiCompileSweeperJob`, a cron job (every 15 minutes, queue `schedule`, registered in `config/initializers/good_job.rb` as `ci_compile_sweeper`) that marks a release `failed` when its CI compile has been `queued` or `dispatched` for longer than the limit with no result. Gap H on this board. It makes **no GitHub call and touches no file**: database reads and conditional single-row updates only.
+
+**Files (7).** `app/jobs/ci_compile_sweeper_job.rb` (new), `db/migrate/20261004150000_add_ci_compile_state_at_to_releases.rb` and `db/schema.rb` (hand-edited: one column, version `2026_10_04_150000`), `app/jobs/ci_compile_dispatch_job.rb` (stamps the new column, two hunks), `config/initializers/good_job.rb` (cron entry), `.env.example`, `spec/jobs/ci_compile_sweeper_job_spec.rb` (new), `spec/jobs/ci_compile_dispatch_job_spec.rb` (two expectations added).
+
+**A column was needed, so this slice is not migration-free as the card predicted.** Nothing recorded *when* a release became `queued` or `dispatched`: `ci_compile_finished_at` is only set when it ends, and `updated_at` cannot be used because 40b writes with `update_columns`/`update_all` (it is never bumped) and any other edit to the release moves it. New column `releases.ci_compile_state_at` is set by `CiCompileDispatchJob.enqueue_for` (queued) and by the dispatch job's `queued -> dispatched` write. Nothing else reads it.
+
+**Behaviour.**
+- `queued` or `dispatched` with `ci_compile_state_at` older than the limit -> `failed`, `ci_compile_finished_at` set, and a reason in `ci_compile_error` (a `queued` one says the dispatch job did not run; a `dispatched` one says CI did not report back and to check the `compile-aab` run in the storage repo). Both end with "send the release to CI again", which is `CiCompileDispatchJob.enqueue_for` (it re-sends from `failed`).
+- **Limit:** `CI_COMPILE_STALE_AFTER_MINUTES`, default 90 (the workflow's timeout is 45 minutes, the rest is runner queue time). Unset, empty, zero, negative or non-numeric falls back to 90.
+- **A release in flight with a NULL timestamp** (dispatched before the column existed) is stamped with the current time on the first sweep and judged from there, so deploying this fails nothing early. Worst case such a release waits one extra limit.
+- **Races:** each update is `WHERE id AND ci_compile_state = <state read> AND ci_compile_state_at < cutoff`, so a callback that lands between the read and the write wins (`done` is never overwritten), and a release re-sent in the meantime (new timestamp) is not failed.
+- A `done` or `failed` release, and one never sent to CI (NULL state), is never touched.
+- A callback arriving after the sweep is answered 409 by `Api::CiCompileController` (the state is `failed`); the operator re-sends.
+
+**Choices flagged, not silently made.**
+1. **Fail, not re-dispatch.** The board said "fails stale dispatched releases and alerts or re-dispatches". A slow run that finishes after an automatic re-dispatch would compile the same release twice (two signed uploads with `--clobber` racing), so the sweeper only fails and the re-send stays a deliberate act. If auto-retry is wanted it is a small follow-up (once, with a counter column).
+2. **The "alert" is a `warn` log line per swept release** (`[CiCompileSweeperJob] release N was dispatched with no result; marked failed`) plus the reason shown in the console. No email or Novu notification: none exists for CI states and none was asked for.
+3. **`queued` is swept too**, not only `dispatched`, because a lost dispatch job leaves exactly the same dead end.
+4. **Runs whether or not `CI_COMPILE_ENABLED` is on**, so stale rows are cleaned up even after CI is switched off.
+5. **`db/schema.rb` was edited by hand** (one column after `universal_apk_size`, the version). The `db/schema.rb matches migrations` job is the first check of it.
+
+**Not verified:** everything. No Ruby in this sandbox (not even `ruby -c`); the migration, the job, the cron entry and both specs have never run. Only the 120-character limit was checked (`awk`) on the new files; two pre-existing lines elsewhere in `app/jobs` exceed it and were not touched. The beginless range (`ci_compile_state_at: ...cutoff`) relies on Rails 7+ range conditions; if the sweeper spec is red, look there and at the `allow_any_instance_of` race example first.
+
+**Operator setup.** None. Optionally set `CI_COMPILE_STALE_AFTER_MINUTES` on Render. The migration runs with the deploy. The cron registers only in the job-worker process (`ZEALOT_JOB_WORKER=true`), like the others.
+
+**Revert.** `db:rollback` (reversible), delete the job and its spec, revert the two hunks in the dispatch job, the cron hunk, the `.env.example` hunk and the two added expectations in the dispatch spec.
+
+**Next.** 40h-b (upload session and finalize, with the `manual_upload_only_spec.rb` rewrite) depends on 40h-a and 40b, both in. It can be written without the R2 bucket; running it end to end needs the bucket, CORS, lifecycle rule and the four `R2_STAGING_*` variables (commands in the 40h-a result).
+
+#### 40h-b result (built; written, NOT run; no testing by instruction)
+
+**What it is.** The two doors that open and finalize a direct-to-storage upload, console and API, behind a flag that is **off by default**. The owner asks for a session, gets a presigned PUT for the R2 staging bucket (`ReleaseUploadStaging`, 40h-a), sends the file there, then finalizes; Zealot HEADs the object, compares its size with the declared size and moves the `release_uploads` row `awaiting_bytes -> uploaded`. **No `Release` is created and nothing is dispatched to CI**, so deploying this changes no behaviour: the flag is off, the multipart doors are untouched, and no migration is added.
+
+**Files (13, over the six-file guide: two services, two controllers, routes, `.env.example`, four specs and this file; each layer is small).** `app/services/release_upload_session.rb` and `app/services/release_upload_finalizer.rb` (new), `app/controllers/release_uploads_controller.rb` and `app/controllers/api/apps/upload_sessions_controller.rb` (new), `config/routes.rb`, `.env.example`, `spec/services/release_upload_session_spec.rb`, `spec/services/release_upload_finalizer_spec.rb`, `spec/requests/release_upload_sessions_spec.rb` (new), `spec/requests/manual_upload_only_spec.rb` (extended, see below).
+
+**Routes.** Console: `POST /channels/:channel_id/release_uploads` and `POST /channels/:channel_id/release_uploads/:id/finalize` (JSON). API: `POST /api/apps/upload_sessions` and `POST /api/apps/upload_sessions/:id/finalize`.
+
+**Session (create).** Needs `filename` and `size` (bytes, 1 to 2 GiB - 1); optional `content_type` (signed into the URL, so the PUT must send the same header) and the form options in `ReleaseUploadSession::FORM_OPTION_KEYS` (`hold`, `play_store_target`, `changelog`, `branch`, `git_commit`, `ci_url`, `release_type`, `custom_fields`, `devices`), stored untouched in `form_options` and **not trusted until the release exists** (40i-b re-runs every check). `source` is set by the door (`web` or `api`), never read from the client. Answers 201 `{ id, state, upload_url, method, headers, expires_at, size }`; the staging key is never returned. A bad size or file name is 422; a presign failure marks the row `failed` and answers 503.
+
+**Finalize.** Only the user who opened the upload can finalize it (anyone else gets 404). `awaiting_bytes` only: R2 holds nothing -> 422 (row stays open, the client can retry); wrong size -> 422, row `failed`, staged object deleted (best effort); inside the window plus a 30-minute grace -> `uploaded` with the size and ETag recorded; past the grace -> `expired`, 409; any other state -> 409; R2 unreachable -> 503, row unchanged. Repeating a successful finalize answers 200 and writes nothing. Every write is conditional on `awaiting_bytes`, so two concurrent calls cannot both win and a row the sweeper expired is not overwritten.
+
+**Who may open or finalize.** Console: a signed-in user (guest mode does not apply) who passes `ReleasePolicy#create?` for the channel's app, the same rule as the upload form; an archived app is refused. API: either credential, never both and never a fallback, exactly like `POST /api/apps/upload`: a per-app token (header only, confined to its own app, 403 for another app's channel) or the user token. The channel is looked up through `scoped_channels`, so another tenant's channel is a plain 404. The API door **never creates an app, scheme or channel** (`channel_key` is required): a first upload still goes through the multipart endpoint.
+
+**The Task 39 tripwire (`manual_upload_only_spec.rb`) was extended, not rewritten**, because this slice adds no new way to create a `Release`. New examples: each new door keeps its auth line; a `release_uploads` row is written from exactly one file (`release_upload_session.rb`); the new doors contain no `upload_file`, `releases.create`, `Release.create` or URL fetch; the API door refuses a request with no or an unknown credential and creates no row; finalize with no credential is refused. **The callback-side examples the decided flow lists** (a missing, wrong or replayed credential; a callback for an upload nobody finalized; the exact callers of `releases.create`) **belong to 40i-b**, the slice that adds the callback creator, and are written there.
+
+**Choices flagged, not silently made.**
+1. **Finalize stops at `uploaded`; the CI dispatch is not here.** The card said finalize "dispatches CI", but the workflow it would dispatch (stage 1: read the manifest and icon) and its callback are 40i-a, and `CiCompileDispatcher` is per release. Dispatching a workflow that does not exist would only produce a `failed` row, so a finalized upload waits in `uploaded` until 40i-a hooks in. That is why the doors are behind a flag: with it on and 40i-a missing, an upload reaches `uploaded` and sits there.
+2. **Flag: `RELEASE_UPLOAD_SESSIONS_ENABLED=true` AND the four `R2_STAGING_*` variables.** Either missing -> both doors answer 404. Do not turn it on before 40i-a.
+3. **No file-type check at session time.** The extension is not validated (the list `AppInfo` accepts was not checked); a file that is not an app is refused by CI's stage 1 (40i-a), and no release is ever created for it.
+4. **A presigned PUT cannot be capped at the declared size** (40h-a, flagged there): the size check happens at finalize, and the 2-hour URL and the bucket lifecycle rule bound the damage.
+5. **The 30-minute finalize grace** (`ReleaseUploadFinalizer::GRACE`) exists because a PUT started inside the 2-hour window can finish after it. One constant.
+6. **`ReleasePolicy#create?` has no tenant rule** (its comment says so on purpose), so the console door inherits that; the API door adds the tenant-scoped channel lookup.
+7. **No sweeper for `release_uploads` yet.** `awaiting_bytes` rows past their window are only expired if someone finalizes them late; nothing expires the rest, and nothing fails an `uploaded` row that CI never picks up. `ReleaseUpload.stale_awaiting` (40h-a) is the scope for it. It is a small follow-up job like 40g (suggest slice `40g-2`); it is not in the 40h-b card, so it was not built.
+8. **No locale keys.** Error strings are plain English like `Api::CiCompileController`'s; `en.yml` and `zh-CN.yml` are unchanged. The console form and its copy are 40h-c.
+9. **No rate limit** beyond authentication: each session is one row and one URL, and only someone allowed to upload can open one.
+
+**Not verified:** everything. No Ruby in this sandbox (not even `ruby -c`, unlike 40h-a's session), so the services, controllers, routes and four specs have never been parsed or run. Only the 120-character limit was checked (`awk`; one pre-existing over-length line in `manual_upload_only_spec.rb` remains). Things to look at first if CI is red: `ActionController::Parameters#merge` keeping the permitted flag in `session_params.merge(source: ...)` (both controllers), the `ReleaseUploadStaging::Head`/`Presigned` structs built directly in specs, the console 404 rendering for an unknown upload id (`ApplicationController`'s `not_found` was not read), and `app.update!(archived: true)` in the console archived example.
+
+**Operator setup.** None to apply the patch. To use it later: the R2 bucket, CORS, lifecycle and token from the 40h-a result, the four `R2_STAGING_*` variables, then `RELEASE_UPLOAD_SESSIONS_ENABLED=true` **after 40i-a is in**.
+
+**Revert.** Delete the four new app files and the three new specs, revert the route hunks, the `.env.example` hunk and the extension to `manual_upload_only_spec.rb`. No data to undo (no migration).
+
+**Next.** 40h-c (console JS and Storeapp workflow) needs these doors but cannot be exercised until 40i-a exists; 40i-a (stage-1 workflow, OIDC-verified callback, and the dispatch from finalize) is the next slice that unblocks the chain and needs the R2 bucket and a CI token for R2 (names chosen there). A `40g-2` sweeper for `release_uploads` is independent.
+
 #### 40h-a result (built; written, NOT run; no testing by instruction)
 
 **What it is.** The `release_uploads` staging table and model, and `ReleaseUploadStaging`, the service that talks to the R2 staging bucket (presigned PUT, multipart, HEAD with size, delete). **Nothing calls either yet** (the session and finalize doors are 40h-b), so deploying this changes no behaviour; the migration only adds a table.
@@ -1618,7 +1684,7 @@ Order: 40a → 40b → 40c → 40d → 40e → 40f, then 40g, then 40h-a → 40h
 
 **Revert.** `db:rollback` (the migration is reversible), delete the model, service and two specs, revert the `.env.example` hunk. No data to undo.
 
-**Next.** 40h-b (upload session and finalize for the console and the API, with the `manual_upload_only_spec.rb` rewrite) depends on this slice and 40b. It can be written without the bucket; running it needs the bucket. 40g (sweeper) is independent.
+**Next.** 40h-b (upload session and finalize for the console and the API; built, see its result above) depends on this slice and 40b. It can be written without the bucket; running it needs the bucket. 40g (sweeper) is independent.
 
 ##### R2 staging bucket: terminal commands (operator; from Cloudflare's API docs, NOT run by the session)
 
@@ -5454,6 +5520,22 @@ them is already modernized.
   at it.
 
 ## Session log
+
+### 2026-10-04 -- Task 40h-b: upload session and finalize for the console and the API (operator: "Continue", no testing; written, NOT run)
+- **Base:** `origin/develop` tip is still `2ae8b594`. This session delivers **one combined patch (40g + 40h-b) against `2ae8b594`**, because the 40g patch from the previous turn had not been confirmed applied (`origin/develop` had not moved when this was built). **It replaces the 40g-only patch; apply only this one. If the 40g patch was already applied or pushed, `git am` fails loudly: say so and the next session rebases to a 40h-b-only patch.**
+- **Picked because:** the board's order after 40g is 40h-b; it depends on 40h-a and 40b, both in, and can be written without the R2 bucket.
+- **Built:** see "40h-b result" in the Task 40 entry (session and finalize services, console and API controllers, routes, a flag that is off, specs, and the extended Task 39 tripwire). The CI dispatch from finalize moved to 40i-a.
+- **Not verified:** everything. No Ruby in the sandbox; the 120-character check only. No testing, per the operator's standing rule.
+- **Behaviour change on deploy:** none for users (the flag is off, the doors answer 404, no migration). The 40g sweeper and its migration still deploy as described in its entry. `.rb` files change, so the push starts `Anthropic - Build & Deploy develop`.
+- **Needs the operator:** apply the patch and push. Nothing blocks 40h-b. Do not set `RELEASE_UPLOAD_SESSIONS_ENABLED` before 40i-a lands.
+
+### 2026-10-04 -- Task 40g: sweeper for CI compiles that never report back (operator: "jump to the next task", no testing; written, NOT run)
+- **Base:** `origin/develop` tip is `2ae8b594` (the combined 40f + 40h-a commit), cloned fresh and up to date, so no earlier patch was left half-applied.
+- **Picked because:** the board's order puts 40g right after 40f and before 40h; it depends only on 40a and needs nothing from the operator. One slice, per the TSF.
+- **Built:** see "40g result" in the Task 40 entry (new `CiCompileSweeperJob` on a 15-minute cron, and a `releases.ci_compile_state_at` column the dispatch job now stamps).
+- **Not verified:** everything. No Ruby in the sandbox, so not even `ruby -c`; the line-length check only. No testing, per the operator's standing rule.
+- **Behaviour change on deploy:** a release left `queued` or `dispatched` past 90 minutes with no result becomes `failed`. Today CI is off by default (`CI_COMPILE_ENABLED`), so on a service that has not switched it on nothing changes. `.rb` and migration files change, so the push starts `Anthropic - Build & Deploy develop`.
+- **Needs the operator:** apply the patch and push. Nothing blocks 40g.
 
 ### 2026-10-04 -- Task 40h-a: the `release_uploads` staging record and the R2 staging service (operator: "we want to implement now", no testing; written, NOT run)
 - **Base:** `origin/develop` tip is still `54f60a9`. This session delivers **one combined patch (40f + 40h-a) against `54f60a9`**, because the earlier 40f-only patch had not been confirmed applied. **It replaces the 40f patch; apply only this one. If the 40f patch was already applied or pushed, `git am` fails loudly: say so and the next session rebases to a 40h-a-only patch.**

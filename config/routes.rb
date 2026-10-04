@@ -102,6 +102,13 @@ Rails.application.routes.draw do
       end
     end
 
+    # Task 40h-b: direct-to-storage upload (session, then finalize). JSON only; 404 until enabled.
+    resources :release_uploads, only: :create do
+      member do
+        post :finalize
+      end
+    end
+
     resources :releases, path_names: { new: 'upload' } do
       # Task 27f-b: PATCH /channels/:channel_id/releases/:id/status (hold, release, halt, pull ...).
       member do
@@ -355,6 +362,10 @@ Rails.application.routes.draw do
     resources :apps, except: %i[new edit] do
       collection do
         post :upload, to: 'apps/upload#create'
+
+        # Task 40h-b: direct-to-storage upload (session, then finalize); user token or per-app token.
+        post :upload_sessions, to: 'apps/upload_sessions#create'
+        post 'upload_sessions/:id/finalize', to: 'apps/upload_sessions#finalize', as: :finalize_upload_session
 
         get :latest, to: 'apps/latest#show'
         get :version_exist, to: 'apps/version_exist#show'
