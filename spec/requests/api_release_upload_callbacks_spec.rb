@@ -3,7 +3,8 @@
 require 'rails_helper'
 
 # Task 40i-a: the stage-1 callback door. Authentication is the GitHub OIDC token; the verifier is stubbed here
-# (its own spec signs real tokens). Needs Postgres. NOT run.
+# (its own spec signs real tokens). Task 40i-b: a good report answers with the new release's id and storage tag.
+# Needs Postgres. NOT run.
 RSpec.describe 'Api::ReleaseUploadCallbacks', type: :request do
   let!(:app) { create(:app, name: 'Live app', listing_status: :live, listed_at: Time.current) }
   let(:scheme) { app.schemes.create!(name: 'Main') }
@@ -34,18 +35,31 @@ RSpec.describe 'Api::ReleaseUploadCallbacks', type: :request do
   context 'with a token the verifier accepts' do
     before { allow(verifier).to receive(:call).with('good-token').and_return({}) }
 
-    it 'records the report, answers 200 and creates no release' do
-      expect { stage1 }.not_to change(Release, :count)
+    it 'records the report and answers 200 with the new held release and its storage tag' do
+      expect { stage1 }.to change(Release, :count).by(1)
 
+      release = Release.order(:id).last
       expect(response).to have_http_status(:ok)
-      expect(response.parsed_body).to include('upload_id' => upload.id, 'stage' => 1, 'release_id' => nil)
+      expect(response.parsed_body).to include('upload_id' => upload.id, 'stage' => 1, 'state' => 'processing',
+                                              'release_id' => release.id,
+                                              'storage_tag' => "a#{app.id}-r#{release.id}")
+      expect(release.status).to eq('held')
       expect(upload.reload.metadata['package_name']).to eq('com.example.app')
     end
 
-    it 'is idempotent' do
+    it 'is idempotent and never creates a second release' do
       stage1
-      stage1
+      expect { stage1 }.not_to change(Release, :count)
       expect(response).to have_http_status(:ok)
+    end
+
+    it 'answers 422 and creates no release when the release checks refuse the package' do
+      channel.update!(bundle_id: 'com.other.app')
+
+      expect { stage1 }.not_to change(Release, :count)
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response.parsed_body).to include('state' => 'failed')
+      expect(upload.reload.state).to eq('failed')
     end
 
     it 'answers 404 for an unknown upload and 409 for one that is not open' do
@@ -53,7 +67,7 @@ RSpec.describe 'Api::ReleaseUploadCallbacks', type: :request do
       expect(response).to have_http_status(:not_found)
 
       upload.update_columns(state: 'awaiting_bytes')
-      stage1
+      expect { stage1 }.not_to change(Release, :count)
       expect(response).to have_http_status(:conflict)
     end
 

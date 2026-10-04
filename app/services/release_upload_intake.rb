@@ -2,12 +2,12 @@
 
 # Task 40i-a: records what the stage-1 workflow found in a staged upload (or that it failed). Stage 1 reads the
 # file in CI: package name, version, the SDK levels, the ABIs, the SHA-256, and an icon it puts back into the
-# staging bucket next to the file. This service checks the report against what Zealot already knows and stores it
-# on the `release_uploads` row. It creates NO release: building the `Release` from this metadata, with the
-# existing validations, is 40i-b.
+# staging bucket next to the file. This service checks the report against what Zealot already knows, stores it
+# on the `release_uploads` row, and (Task 40i-b) hands the recorded report to `ReleaseUploadReleaseBuilder`,
+# which builds the held `Release` with the form's own validations. This file never creates a release itself.
 #
 #   result = ReleaseUploadIntake.new(upload, body).call
-#   result.code     # :recorded, :already_recorded, :failure_recorded, :malformed, :not_open, :conflict
+#   result.code     # :recorded, :already_recorded, :failure_recorded, :refused, :malformed, :not_open, :conflict
 #   result.http     # the status the callback answers with
 #   result.payload  # the JSON body to answer with
 #
@@ -20,7 +20,11 @@
 # - `file_size` must equal the size finalize recorded from the bucket, and `kind` must match the file extension,
 #   so the report is about the object that was actually staged;
 # - an icon key must live under this upload's own staging prefix, so a report cannot point at another object;
-# - a `failed` report marks the upload failed with the reason and drops the staged object (best effort).
+# - a `failed` report marks the upload failed with the reason and drops the staged object (best effort);
+# - a recorded report whose release the checks refuse (wrong package name, stale Play version code) answers 422
+#   `{ state: "failed", error: ... }`, creates nothing and leaves the upload `failed`. A replay of a recorded
+#   report whose release was never created (the first call died in between) finishes the job; a replay after the
+#   release exists answers the same release again and never makes a second one.
 #
 # Not verified: no Ruby in the sandbox this was written in; nothing was run.
 class ReleaseUploadIntake
@@ -65,7 +69,7 @@ class ReleaseUploadIntake
     metadata = normalized(sha)
     changed = ReleaseUpload.where(id: upload.id, state: 'uploaded', stage1_at: nil)
                            .update_all(metadata: metadata, stage1_at: @now, updated_at: @now)
-    return recorded(metadata) if changed.positive?
+    return build_release(:recorded) if changed.positive?
 
     upload.reload
     upload.stage1_at.present? ? already_recorded(sha) : not_open
@@ -75,17 +79,33 @@ class ReleaseUploadIntake
     return refuse(:conflict, 409, 'This upload was already reported with a different file.') unless
       upload.metadata['file_sha256'] == sha
 
-    Result.new(code: :already_recorded, http: 200, payload: answer(upload.metadata))
+    build_release(:already_recorded)
   end
 
-  def recorded(metadata)
-    Result.new(code: :recorded, http: 200, payload: answer(metadata))
+  # Task 40i-b: the builder locks the row, so a replay and a first call can never both create a release.
+  def build_release(code)
+    # `@staging` on purpose, not `staging`: the builder only needs the bucket client to drop a refused upload's
+    # object, so it builds one then, and a good report never depends on the staging bucket's configuration.
+    result = ReleaseUploadReleaseBuilder.new(upload, staging: @staging).call
+    upload.reload
+
+    case result.code
+    when :created, :existing then Result.new(code: code, http: 200, payload: answer(result.release))
+    when :refused then Result.new(code: :refused, http: 422, payload: refused_answer(result.reason))
+    else not_open
+    end
   end
 
-  # `release_id` stays nil until 40i-b creates the release from this metadata.
-  def answer(metadata)
-    { upload_id: upload.id, state: 'uploaded', stage: 1, release_id: upload.release_id,
-      package_name: metadata['package_name'] }
+  def refused_answer(reason)
+    { upload_id: upload.id, state: upload.state, error: reason }
+  end
+
+  # What stage 2 needs: the release id and the storage tag its files go under.
+  def answer(release)
+    payload = { upload_id: upload.id, state: upload.state, stage: 1, release_id: release&.id,
+                package_name: upload.metadata['package_name'] }
+    payload[:storage_tag] = ReleaseStorage.new(release, adapter: nil).tag if release
+    payload
   end
 
   def not_open

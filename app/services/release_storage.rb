@@ -136,6 +136,15 @@ class ReleaseStorage
     adapter.exist?(key)
   end
 
+  # Task 40i-b: the storage tag this release's files are kept under (`a12-r345`), which the stage-2 workflow
+  # needs to upload to. It comes from the GitHub adapter's own key mapping, not a second copy of it, and builds
+  # no adapter (`ReleaseStorage.new(release, adapter: nil).tag`), so it answers even where storage is unset.
+  #
+  # @return [String]
+  def tag
+    ReleaseStorage::GithubAdapter.location_for(binary_key('app')).first
+  end
+
   # Task 19d: yields a local filesystem path to the release's primary file,
   # guaranteed to exist for the duration of the block, whether or not this
   # host still has the local copy CarrierWave originally wrote. Callers that

@@ -3,8 +3,21 @@
 require 'digest'
 
 class Release < ApplicationRecord
+  # Task 40i-b: set ONLY by ReleaseUploadReleaseBuilder (the manual-upload tripwire spec pins that), to 'apk' or
+  # 'aab', on a release built from CI's stage-1 report of a staged upload. Such a release has no mounted file:
+  # its bytes are in the staging bucket until CI's second stage moves them to the storage repo (40i-c). The flag
+  # is not a column and does not survive a reload; it only tells this one save which checks and hooks apply.
+  attr_accessor :storage_intake_kind
+
+  def storage_intake?
+    storage_intake_kind.present?
+  end
+
   after_commit :schedule_proxy_injection, on: :create
   def schedule_proxy_injection
+    # Task 40i-b: SDK injection for a staged upload runs in CI (40j), never on a file Render does not hold.
+    return if storage_intake?
+
     ProxySdkInjectionJob.perform_later(self.id)
   end
 
@@ -31,6 +44,9 @@ class Release < ApplicationRecord
                if: -> { saved_change_to_play_publish_status? && play_publish_waiting_for_setup? }
 
   def schedule_deploy_notification
+    # Task 40i-b: a staged upload is created held and cannot be installed yet; 40i-c sends this email when CI
+    # has finished and the release becomes available, so members are not told about a build with no file.
+    return if storage_intake?
     return unless EmailNotifications.enabled?
 
     ReleaseDeployNotificationJob.perform_later(id)
@@ -204,7 +220,7 @@ class Release < ApplicationRecord
     joins(channel: :scheme).where(schemes: { app_id: App.for_tenant(tenant).select(:id) })
   }
 
-  validates :file, presence: true, on: :create
+  validates :file, presence: true, on: :create, unless: :storage_intake?
   validates :rollout_percentage, numericality: {
     only_integer: true, greater_than_or_equal_to: 0, less_than_or_equal_to: 100
   }
@@ -433,7 +449,7 @@ class Release < ApplicationRecord
   end
 
   def bundle_id_matched
-    return if file.blank? || channel&.bundle_id.blank?
+    return if (file.blank? && !storage_intake?) || channel&.bundle_id.blank?
     return if manifest_unreadable_reason
     return if channel.bundle_id_matched?(self.bundle_id)
 
@@ -452,7 +468,7 @@ class Release < ApplicationRecord
   # applicationId can't be read (bundle_id blank) there is nothing to
   # compare, so that case is let through rather than blocked.
   def play_target_bundle_valid
-    return if file.blank?
+    return if file.blank? && !storage_intake?
 
     expected = app.play_package_name
     if expected.blank? && bundle_id.present? && App.where(play_package_name: bundle_id).where.not(id: app.id).exists?
@@ -473,7 +489,7 @@ class Release < ApplicationRecord
   # approval. build_version is the bundle's versionCode (the publish service
   # sends `build_version.to_i` as the version code).
   def play_version_code_newer
-    return if file.blank?
+    return if file.blank? && !storage_intake?
 
     code = build_version.to_i
     return if code <= 0
@@ -691,6 +707,9 @@ class Release < ApplicationRecord
   end
 
   def determine_file_exist
+    # Task 40i-b: a staged upload has no mounted file by design; the builder already has CI's report of it.
+    return if storage_intake?
+
     if self.file&.path.blank?
       errors.add(:file, :invalid)
     end
@@ -703,10 +722,18 @@ class Release < ApplicationRecord
   # shows a "not supported" message (see #play_target_dropped).
   def drop_unsupported_play_target
     return unless play_store_target?
-    return if file.blank? || file.path.to_s.end_with?('.aab')
+    return if bundle_for_play_check?
 
     self.play_store_target = false
     @play_target_dropped = true
+  end
+
+  # Task 40i-b: a staged upload says what it is in `storage_intake_kind`; every other release is judged by its
+  # mounted file, exactly as before (a release with no file at all is left alone).
+  def bundle_for_play_check?
+    return storage_intake_kind == 'aab' if storage_intake?
+
+    file.blank? || file.path.to_s.end_with?('.aab')
   end
 
   def determine_disk_space
@@ -761,6 +788,9 @@ class Release < ApplicationRecord
   # off, the Ruby compile runs exactly as before. `AnthropicAssetDeliveryJob` itself refuses to run while CI
   # is on, so a job already queued or enqueued by hand cannot compile either.
   def anthropic_asset_delivery_job
+    # Task 40i-b: a staged upload is compiled by the stage-2 workflow (40i-c), which also uploads the file to
+    # storage; this hook's dispatch mirrors a LOCAL file, and there is none. Skipped here, not routed around.
+    return if storage_intake?
     return unless file.path.to_s.end_with?('.aab')
 
     if CiCompileDispatcher.enabled?

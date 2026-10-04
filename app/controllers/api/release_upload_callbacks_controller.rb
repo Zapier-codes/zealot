@@ -12,9 +12,14 @@
 #       "app_label": "...", "min_sdk": 21, "target_sdk": 34, "abis": ["arm64-v8a"], "file_sha256": "<64 hex>",
 #       "file_size": 123, "icon_key": "staging/.../icon.png", "icon_sha256": "<64 hex>" }
 #     { "state": "failed", "error": "why" }
+#   200 { "upload_id": 1, "state": "processing", "stage": 1, "release_id": 7, "package_name": "...",
+#         "storage_tag": "a3-r7" }
 #
-# This door creates no `Release` (40i-b does), fetches nothing from a URL beyond GitHub's published keys (inside
-# the verifier) and writes only the staging row. Idempotent: see `ReleaseUploadIntake`.
+# This door builds no `Release` itself: a recorded report goes to `ReleaseUploadIntake`, which hands it to the one
+# release builder (Task 40i-b). It fetches nothing from a URL beyond GitHub's published keys (inside the
+# verifier) and writes no staging row. The answer for a good report carries `release_id` and `storage_tag`; a
+# report the release checks refuse is answered 422 with `state: "failed"` and creates nothing. Idempotent: see
+# `ReleaseUploadIntake`.
 #
 # Not verified: no Ruby in the sandbox this was written in; nothing was run.
 class Api::ReleaseUploadCallbacksController < Api::BaseController

@@ -2,7 +2,8 @@
 
 require 'rails_helper'
 
-# Task 40i-a: what the stage-1 report may change on a release_uploads row. Needs Postgres. NOT run.
+# Task 40i-a: what the stage-1 report may change on a release_uploads row. Task 40i-b: and that a recorded report
+# becomes one held release through the builder, once. Needs Postgres. NOT run.
 RSpec.describe ReleaseUploadIntake do
   let!(:app) { create(:app, name: 'Live app', listing_status: :live, listed_at: Time.current) }
   let(:scheme) { app.schemes.create!(name: 'Main') }
@@ -26,28 +27,64 @@ RSpec.describe ReleaseUploadIntake do
     described_class.new(upload.reload, payload, staging: staging).call
   end
 
-  it 'stores the normalized report, stamps stage1_at and creates no release' do
-    expect { @result = intake }.not_to change(Release, :count)
+  it 'stores the normalized report, stamps stage1_at and creates one held release from it' do
+    expect { @result = intake }.to change(Release, :count).by(1)
 
+    release = Release.order(:id).last
     expect(@result.code).to eq(:recorded)
     expect(@result.http).to eq(200)
-    expect(@result.payload).to include(upload_id: upload.id, stage: 1, release_id: nil,
-                                       package_name: 'com.example.app')
+    expect(@result.payload).to include(upload_id: upload.id, state: 'processing', stage: 1, release_id: release.id,
+                                       package_name: 'com.example.app',
+                                       storage_tag: "a#{app.id}-r#{release.id}")
+    expect(release.status).to eq('held')
     upload.reload
-    expect(upload.state).to eq('uploaded')
+    expect(upload.state).to eq('processing')
+    expect(upload.release_id).to eq(release.id)
     expect(upload.stage1_at).to be_present
     expect(upload.metadata).to include('package_name' => 'com.example.app', 'version_code' => 12,
                                        'file_sha256' => sha, 'icon_key' => icon_key)
   end
 
-  it 'answers the same report again with 200 and writes nothing' do
-    intake
+  it 'answers the same report again with 200, the same release, and creates no second one' do
+    first = intake
     stamp = upload.reload.stage1_at
 
-    result = intake
+    result = nil
+    expect { result = intake }.not_to change(Release, :count)
     expect(result.code).to eq(:already_recorded)
     expect(result.http).to eq(200)
+    expect(result.payload[:release_id]).to eq(first.payload[:release_id])
     expect(upload.reload.stage1_at).to eq(stamp)
+  end
+
+  it 'finishes the job when an earlier call recorded the report but died before the release existed' do
+    upload.update_columns(stage1_at: Time.current, metadata: body.except('state').merge('file_sha256' => sha))
+
+    result = nil
+    expect { result = intake }.to change(Release, :count).by(1)
+    expect(result.code).to eq(:already_recorded)
+    expect(result.payload[:release_id]).to be_present
+  end
+
+  it 'refuses a report the release checks refuse with 422, creates no release and fails the upload' do
+    channel.update!(bundle_id: 'com.other.app')
+
+    result = nil
+    expect { result = intake }.not_to change(Release, :count)
+    expect(result.code).to eq(:refused)
+    expect(result.http).to eq(422)
+    expect(result.payload).to include(state: 'failed', error: be_present)
+    expect(upload.reload).to have_attributes(state: 'failed', release_id: nil)
+    expect(staging).to have_received(:delete)
+  end
+
+  it 'does not answer a replay of a refused report with a release' do
+    channel.update!(bundle_id: 'com.other.app')
+    intake
+
+    result = nil
+    expect { result = intake }.not_to change(Release, :count)
+    expect(result.http).to eq(409)
   end
 
   it 'refuses a different report for an upload that already has one' do
@@ -61,7 +98,8 @@ RSpec.describe ReleaseUploadIntake do
 
   it 'refuses a report for an upload that is not uploaded' do
     upload.update_columns(state: 'awaiting_bytes')
-    result = intake
+    result = nil
+    expect { result = intake }.not_to change(Release, :count)
 
     expect(result.code).to eq(:not_open)
     expect(result.http).to eq(409)
@@ -120,7 +158,7 @@ RSpec.describe ReleaseUploadIntake do
     result = intake('state' => 'failed', 'error' => 'late')
 
     expect(result.code).to eq(:not_open)
-    expect(upload.reload.state).to eq('uploaded')
+    expect(upload.reload.state).to eq('processing')
   end
 
   it 'refuses a report whose state is neither ok nor failed' do
