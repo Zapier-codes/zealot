@@ -5,8 +5,8 @@
 # `awaiting_bytes -> uploaded`. A presigned PUT cannot be capped at the declared size (see
 # `ReleaseUploadStaging`), so this is where an oversized or wrong file is caught.
 #
-# This slice stops at `uploaded`. Dispatching the CI workflow that reads the file is 40i-a (the workflow and
-# its callback do not exist yet), so a finalized upload waits in `uploaded` until then.
+# Task 40i-a: a successful finalize enqueues `ReleaseUploadDispatchJob`, which sends the upload to the stage-1
+# workflow (`read-upload.yml`) that reads the manifest and icon. A repeated finalize enqueues nothing.
 #
 #   result = ReleaseUploadFinalizer.new(upload).call
 #   result.code   # :uploaded, :already_uploaded, :no_bytes, :size_mismatch, :expired, :not_open, :storage_unavailable
@@ -87,7 +87,10 @@ class ReleaseUploadFinalizer
 
   def record_uploaded(held)
     changed = conditional_update(state: 'uploaded', uploaded_size: held.size, etag: held.etag, uploaded_at: @now)
-    return Result.new(code: :uploaded) if changed.positive?
+    if changed.positive?
+      ReleaseUploadDispatchJob.perform_later(@upload.id)
+      return Result.new(code: :uploaded)
+    end
 
     # Lost a race: report whatever the row became.
     @upload.reload

@@ -413,6 +413,10 @@ Rails.application.routes.draw do
     # route: authenticated by the shared CI_COMPILE_CALLBACK_TOKEN only. See Api::CiCompileController.
     post 'ci_compile/:id/callback', to: 'ci_compile#callback'
 
+    # Task 40i-a: the stage-1 workflow reports what it read from a staged upload. Authenticated by GitHub's OIDC
+    # token only (GithubOidcVerifier); creates no release. See Api::ReleaseUploadCallbacksController.
+    post 'release_uploads/:id/stage1', to: 'release_upload_callbacks#stage1'
+
     resources :debug_files, except: %i[new edit create] do
       collection do
         post :upload, action: :create

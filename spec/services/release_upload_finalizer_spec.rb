@@ -34,6 +34,12 @@ RSpec.describe ReleaseUploadFinalizer do
     expect(upload.uploaded_at).to be_present
   end
 
+  # Task 40i-a: a successful finalize sends the upload to the stage-1 workflow; nothing else does.
+  it 'enqueues the stage-1 dispatch once, on the finalize that wins' do
+    expect { finalize }.to have_enqueued_job(ReleaseUploadDispatchJob).with(upload.id).exactly(:once)
+    expect { finalize }.not_to have_enqueued_job(ReleaseUploadDispatchJob)
+  end
+
   it 'is idempotent: a second finalize answers 200 and does not ask R2 again' do
     finalize
     result = finalize

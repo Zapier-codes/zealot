@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_04_150000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_04_160000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -442,13 +442,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_04_150000) do
     t.string "content_type"
     t.datetime "created_at", null: false
     t.bigint "declared_size", null: false
+    t.datetime "dispatched_at"
     t.text "error"
     t.string "etag"
     t.datetime "expires_at"
     t.string "filename", null: false
     t.jsonb "form_options", default: {}, null: false
+    t.jsonb "metadata", default: {}, null: false
     t.string "multipart_upload_id"
     t.bigint "release_id"
+    t.datetime "stage1_at"
     t.string "staging_key"
     t.string "state", default: "awaiting_bytes", null: false
     t.datetime "updated_at", null: false

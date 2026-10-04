@@ -22,6 +22,11 @@ require 'rails_helper'
 # credential; a callback for an upload nobody finalized; the exact callers of `releases.create`) are 40i-b's to
 # add, when that creator exists.
 #
+# Task 40i-a adds the stage-1 callback (`POST /api/release_uploads/:id/stage1`). It is a door that needs NO user
+# credential, so it is pinned at the end of this file: it must authenticate with the GitHub OIDC verifier before
+# anything else, create no release and write no staging row (it only updates one), and refuse every call without
+# a valid token.
+#
 # Written by reading the code, NOT run (no Ruby, Rails or database in the sandbox that wrote it), so
 # it is the first thing to look at if CI is red for this slice.
 RSpec.describe 'Manual upload only (f.viii)', type: :request do
@@ -138,5 +143,34 @@ RSpec.describe 'Manual upload only (f.viii)', type: :request do
     post '/api/apps/upload_sessions/1/finalize'
 
     expect(response.status).to be >= 400
+  end
+
+  # --- Task 40i-a: the stage-1 callback ---
+
+  it 'puts the OIDC check first in the stage-1 callback and lets it create no release or staging row' do
+    text = File.read(Rails.root.join('app/controllers/api/release_upload_callbacks_controller.rb'))
+
+    expect(text).to include('before_action :authenticate_workflow!')
+    expect(text).to include('GithubOidcVerifier.new')
+    forbidden = Regexp.union(/upload_file/, /\breleases\.(create|build)/, /Release\.create/,
+                             /ReleaseUpload\.(create|new)/, /open-uri|URI\.open|Net::HTTP|Faraday/)
+    expect(text).not_to match(forbidden)
+  end
+
+  it 'lets the report intake create no release and fetch nothing from a URL' do
+    text = File.read(Rails.root.join('app/services/release_upload_intake.rb'))
+
+    forbidden = /upload_file|\breleases\.(create|build)|Release\.create|open-uri|URI\.open|Net::HTTP|Faraday/
+    expect(text).not_to match(forbidden)
+  end
+
+  it 'refuses a stage-1 callback with no token, with the shared compile token, and creates nothing' do
+    expect do
+      post '/api/release_uploads/1/stage1', params: { state: 'failed' }
+      expect(response.status).to be >= 400
+      post '/api/release_uploads/1/stage1', params: { state: 'failed' },
+                                            headers: { 'Authorization' => 'Bearer not-a-jwt' }
+      expect(response.status).to eq(401)
+    end.not_to(change { [Release.count, ReleaseUpload.count] })
   end
 end

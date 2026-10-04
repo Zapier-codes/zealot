@@ -1,0 +1,308 @@
+# Task 40i-a: the stage-1 workflow. Copy this file into the STORAGE repo as
+# `.github/workflows/read-upload.yml` (the repo named by GITHUB_STORAGE_REPO / CI_COMPILE_REPO on Render), on the
+# branch CI_COMPILE_REF names (default main). It does not belong in the Zealot repo's own `.github/workflows/`
+# (see "Which workflow is the deploy pipeline?" in handover.md).
+#
+# What it does, for one staged upload, when Zealot dispatches it (ReleaseUploadDispatcher, after the owner's
+# finalize call):
+#   1. downloads the file from the R2 staging bucket (the object Zealot's presigned URL received);
+#   2. computes its SHA-256 and size;
+#   3. reads the manifest: for an APK, `aapt2 dump badging`; for an AAB, bundletool builds a throwaway universal
+#      APK first and aapt2 reads that. That gives package name, version code and name, label, SDK levels and ABIs;
+#   4. extracts the app icon when it is a PNG or WebP and puts it back into the staging bucket next to the file;
+#   5. asks GitHub for an OIDC ID token whose audience is Zealot's URL, and reports everything to Zealot once
+#      (POST /api/release_uploads/<upload_id>/stage1). Zealot verifies the token (signature, audience, this
+#      repository, the workflow_dispatch event and this exact workflow file on the expected branch), so NO
+#      shared secret is stored anywhere for this callback.
+# If any step fails, the last step reports `state: failed` with a reason, so a broken run shows up on the upload
+# instead of leaving it waiting.
+#
+# This workflow reads and reports only. It builds, signs and compresses nothing, and it does not create a
+# release: Zealot creates the release from the report (slice 40i-b), and the heavy stage 2 is slice 40i-c.
+#
+# Storage-repo SECRETS (Settings > Secrets and variables > Actions > Secrets):
+#   R2_STAGING_CI_ACCESS_KEY_ID      } an R2 API token (Object Read and Write, scoped to the staging bucket)
+#   R2_STAGING_CI_SECRET_ACCESS_KEY  } created for CI, not the one Render uses
+# Storage-repo VARIABLES (same page, Variables tab):
+#   ZEALOT_URL            https://<your zealot host>, no trailing path. Must equal CI_OIDC_AUDIENCE on Render
+#                         (or https://<ZEALOT_DOMAIN> when that is what Render has).
+#   R2_STAGING_ENDPOINT   https://<account id>.r2.cloudflarestorage.com
+#   R2_STAGING_BUCKET     the staging bucket name
+#   BUNDLETOOL_VERSION    optional; default below (only used for .aab files)
+#   BUNDLETOOL_SHA256     optional; SHA-256 of that bundletool jar; checked when set
+#
+# Needs `id-token: write` (below) and nothing else: no write access to the repo, no release token.
+#
+# Not run. Written without testing (operator's standing instruction); parsed as YAML and its shell steps
+# syntax-checked with `bash -n` only. What has never been exercised: the aapt2 output patterns, the bundletool
+# flags, the R2 download and upload through the aws CLI, the OIDC token request and the callback.
+
+name: Read upload (Zealot)
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_id:
+        description: "Zealot upload id (digits)"
+        required: true
+        type: string
+      staging_key:
+        description: "Object key in the R2 staging bucket, e.g. staging/a12/u34/<32 hex>/app.apk"
+        required: true
+        type: string
+      filename:
+        description: "File name of the upload, ending in .apk or .aab"
+        required: true
+        type: string
+
+# One run per upload at a time.
+concurrency:
+  group: read-upload-${{ inputs.upload_id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  BUNDLETOOL_VERSION: ${{ vars.BUNDLETOOL_VERSION || '1.18.1' }}
+  # Cloudflare R2 rejects the newer AWS CLI's default checksum headers.
+  AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+  AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+  AWS_DEFAULT_REGION: auto
+
+jobs:
+  read:
+    name: Read upload ${{ inputs.upload_id }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # Inputs reach the shell only through env, never by pasting ${{ }} into a script, and are checked against
+      # strict patterns first. A bad value fails here, before anything is downloaded.
+      - name: Check the inputs
+        env:
+          UPLOAD_ID: ${{ inputs.upload_id }}
+          STAGING_KEY: ${{ inputs.staging_key }}
+          FILENAME: ${{ inputs.filename }}
+          ZEALOT_URL: ${{ vars.ZEALOT_URL }}
+          R2_ENDPOINT: ${{ vars.R2_STAGING_ENDPOINT }}
+          R2_BUCKET: ${{ vars.R2_STAGING_BUCKET }}
+          R2_KEY_ID: ${{ secrets.R2_STAGING_CI_ACCESS_KEY_ID }}
+          R2_SECRET: ${{ secrets.R2_STAGING_CI_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          [[ $UPLOAD_ID =~ ^[0-9]+$ ]] || fail "upload_id must be digits"
+          [[ $STAGING_KEY =~ ^staging/a[0-9]+/u[0-9]+/[0-9a-f]{32}/[A-Za-z0-9._-]+$ ]] || fail "staging_key has an unexpected shape"
+          [[ $FILENAME =~ ^[A-Za-z0-9._-]+\.(apk|aab)$ ]] || fail "filename must be a plain name ending in .apk or .aab"
+          [[ ${STAGING_KEY##*/} == "$FILENAME" ]] || fail "filename does not match the end of staging_key"
+          [[ -n ${ZEALOT_URL:-} ]] || fail "the repository variable ZEALOT_URL is not set"
+          [[ $ZEALOT_URL =~ ^https:// ]] || fail "ZEALOT_URL must start with https://"
+          [[ -n ${R2_ENDPOINT:-} ]] || fail "the repository variable R2_STAGING_ENDPOINT is not set"
+          [[ $R2_ENDPOINT =~ ^https:// ]] || fail "R2_STAGING_ENDPOINT must start with https://"
+          [[ -n ${R2_BUCKET:-} ]] || fail "the repository variable R2_STAGING_BUCKET is not set"
+          [[ -n ${R2_KEY_ID:-} ]] || fail "the secret R2_STAGING_CI_ACCESS_KEY_ID is not set"
+          [[ -n ${R2_SECRET:-} ]] || fail "the secret R2_STAGING_CI_SECRET_ACCESS_KEY is not set"
+          {
+            echo "WORK=${RUNNER_TEMP}/read-${UPLOAD_ID}"
+            echo "KIND=${FILENAME##*.}"
+          } >> "$GITHUB_ENV"
+
+      - name: Set up Java
+        if: endsWith(inputs.filename, '.aab')
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Cache bundletool
+        if: endsWith(inputs.filename, '.aab')
+        id: bt-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/bundletool
+          key: bundletool-${{ env.BUNDLETOOL_VERSION }}
+
+      - name: Get bundletool
+        if: endsWith(inputs.filename, '.aab') && steps.bt-cache.outputs.cache-hit != 'true'
+        env:
+          BUNDLETOOL_SHA256: ${{ vars.BUNDLETOOL_SHA256 }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/bundletool
+          curl -fsSL --retry 3 -o ~/bundletool/bundletool.jar \
+            "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar"
+          if [[ -n ${BUNDLETOOL_SHA256:-} ]]; then
+            echo "${BUNDLETOOL_SHA256}  $HOME/bundletool/bundletool.jar" | sha256sum -c -
+          else
+            echo "::warning::BUNDLETOOL_SHA256 is not set; the bundletool jar was not checked against a known hash"
+          fi
+
+      - name: Download the staged file from R2
+        env:
+          STAGING_KEY: ${{ inputs.staging_key }}
+          FILENAME: ${{ inputs.filename }}
+          R2_ENDPOINT: ${{ vars.R2_STAGING_ENDPOINT }}
+          R2_BUCKET: ${{ vars.R2_STAGING_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_STAGING_CI_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STAGING_CI_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$WORK"
+          aws s3 cp "s3://${R2_BUCKET}/${STAGING_KEY}" "$WORK/$FILENAME" --endpoint-url "$R2_ENDPOINT" --only-show-errors
+          ls -l "$WORK/$FILENAME"
+
+      # An AAB is not readable by aapt2, so bundletool builds a throwaway universal APK from it (signed with
+      # bundletool's debug key if it finds one, otherwise unsigned: nothing here is ever installed or kept).
+      - name: Make a readable APK from the bundle
+        if: endsWith(inputs.filename, '.aab')
+        env:
+          FILENAME: ${{ inputs.filename }}
+        run: |
+          set -euo pipefail
+          java -jar ~/bundletool/bundletool.jar build-apks --mode=universal \
+            --bundle="$WORK/$FILENAME" --output="$WORK/universal.apks"
+          unzip -o -q "$WORK/universal.apks" universal.apk -d "$WORK"
+          echo "READABLE_APK=$WORK/universal.apk" >> "$GITHUB_ENV"
+
+      - name: Point at the APK to read
+        if: endsWith(inputs.filename, '.apk')
+        env:
+          FILENAME: ${{ inputs.filename }}
+        run: echo "READABLE_APK=$WORK/$FILENAME" >> "$GITHUB_ENV"
+
+      - name: Read the manifest, the hash and the icon
+        env:
+          STAGING_KEY: ${{ inputs.staging_key }}
+          FILENAME: ${{ inputs.filename }}
+          R2_ENDPOINT: ${{ vars.R2_STAGING_ENDPOINT }}
+          R2_BUCKET: ${{ vars.R2_STAGING_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_STAGING_CI_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STAGING_CI_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          AAPT2="$(ls -d "${ANDROID_HOME:-/usr/local/lib/android/sdk}"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -n 1)"
+          [[ -x $AAPT2 ]] || { echo "::error::aapt2 was not found on this runner"; exit 1; }
+          "$AAPT2" dump badging "$READABLE_APK" > "$WORK/badging.txt"
+
+          python3 - <<'PY'
+          import hashlib, json, os, re, zipfile
+
+          work = os.environ["WORK"]
+          filename = os.environ["FILENAME"]
+          kind = os.environ["KIND"]
+          staged = os.path.join(work, filename)
+
+          def sha256(path):
+              digest = hashlib.sha256()
+              with open(path, "rb") as handle:
+                  for chunk in iter(lambda: handle.read(1 << 20), b""):
+                      digest.update(chunk)
+              return digest.hexdigest()
+
+          badging = open(os.path.join(work, "badging.txt"), encoding="utf-8", errors="replace").read()
+
+          def first(pattern, text=badging):
+              match = re.search(pattern, text, re.MULTILINE)
+              return match.group(1) if match else None
+
+          package = re.search(
+              r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']*)'", badging, re.MULTILINE)
+          if not package:
+              raise SystemExit("the manifest has no package line")
+
+          report = {
+              "state": "ok",
+              "kind": kind,
+              "package_name": package.group(1),
+              "version_code": int(package.group(2)),
+              "version_name": package.group(3) or "0",
+              "app_label": first(r"^application-label:'([^']*)'"),
+              "min_sdk": first(r"^(?:minSdkVersion|sdkVersion):'(\d+)'"),
+              "target_sdk": first(r"^targetSdkVersion:'(\d+)'"),
+              "abis": re.findall(r"'([A-Za-z0-9_-]+)'", first(r"^native-code: (.*)$") or ""),
+              "file_sha256": sha256(staged),
+              "file_size": os.path.getsize(staged),
+          }
+
+          # Icon: the densest PNG or WebP the manifest names (an adaptive-icon XML cannot be used as a picture).
+          icons = []
+          for density, path in re.findall(r"^application-icon-(\d+):'([^']+)'", badging, re.MULTILINE):
+              if path.lower().endswith((".png", ".webp")):
+                  icons.append((int(density), path))
+          fallback = first(r"^application: .*? icon='([^']+)'")
+          if fallback and fallback.lower().endswith((".png", ".webp")):
+              icons.append((0, fallback))
+          if icons:
+              icon_path = max(icons)[1]
+              extension = os.path.splitext(icon_path)[1].lower()
+              with zipfile.ZipFile(os.environ["READABLE_APK"]) as archive:
+                  data = archive.read(icon_path)
+              icon_file = os.path.join(work, "icon" + extension)
+              with open(icon_file, "wb") as handle:
+                  handle.write(data)
+              report["icon_file"] = icon_file
+              report["icon_sha256"] = hashlib.sha256(data).hexdigest()
+              prefix = os.environ["STAGING_KEY"].rsplit("/", 1)[0]
+              report["icon_key"] = prefix + "/icon" + extension
+
+          with open(os.path.join(work, "report.json"), "w", encoding="utf-8") as handle:
+              json.dump(report, handle)
+          PY
+
+          icon_file="$(jq -r '.icon_file // empty' "$WORK/report.json")"
+          if [[ -n $icon_file ]]; then
+            icon_key="$(jq -r '.icon_key' "$WORK/report.json")"
+            aws s3 cp "$icon_file" "s3://${R2_BUCKET}/${icon_key}" --endpoint-url "$R2_ENDPOINT" --only-show-errors
+          fi
+          # The body Zealot receives: no local paths, no empty values.
+          jq 'del(.icon_file) | with_entries(select(.value != null and .value != "" and .value != []))' \
+            "$WORK/report.json" > "$WORK/body.json"
+          jq -r '"package=\(.package_name) versionCode=\(.version_code) kind=\(.kind) icon=\(.icon_key // "none")"' \
+            "$WORK/body.json"
+
+      - name: Report to Zealot
+        id: callback
+        env:
+          UPLOAD_ID: ${{ inputs.upload_id }}
+          ZEALOT_URL: ${{ vars.ZEALOT_URL }}
+        run: |
+          set -euo pipefail
+          base="${ZEALOT_URL%/}"
+          token="$(curl -fsSL --max-time 30 \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${base}" | jq -r '.value')"
+          [[ -n $token && $token != null ]] || { echo "::error::could not get an OIDC token"; exit 1; }
+          echo "::add-mask::$token"
+          code="$(curl -sS -o "$WORK/callback.out" -w '%{http_code}' --retry 3 --retry-all-errors --max-time 60 \
+            -X POST "${base}/api/release_uploads/${UPLOAD_ID}/stage1" \
+            -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" \
+            --data @"$WORK/body.json")"
+          cat "$WORK/callback.out"; echo
+          [[ $code == 200 ]] || { echo "::error::Zealot answered HTTP $code"; exit 1; }
+
+      # Runs only when an earlier step failed: tells Zealot, so the upload shows `failed` with a reason.
+      - name: Report the failure to Zealot
+        if: failure()
+        env:
+          UPLOAD_ID: ${{ inputs.upload_id }}
+          ZEALOT_URL: ${{ vars.ZEALOT_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          [[ -n ${ZEALOT_URL:-} && -n ${UPLOAD_ID:-} ]] || exit 0
+          base="${ZEALOT_URL%/}"
+          token="$(curl -fsSL --max-time 30 \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${base}" | jq -r '.value')" || exit 0
+          [[ -n $token && $token != null ]] || exit 0
+          echo "::add-mask::$token"
+          body="$(jq -n --arg e "The stage-1 read failed. See ${RUN_URL}" '{state: "failed", error: $e}')"
+          curl -sS -o /dev/null --retry 3 --retry-all-errors --max-time 60 \
+            -X POST "${base}/api/release_uploads/${UPLOAD_ID}/stage1" \
+            -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" \
+            --data "$body" || true
+
+      - name: Remove the working files
+        if: always()
+        run: rm -rf "${WORK:-/nonexistent}"

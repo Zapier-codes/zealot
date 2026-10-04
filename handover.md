@@ -1292,7 +1292,7 @@ So the work is **keeping it true**, not building a path: a rule enforced only by
 3. **The spec is a source scan plus a route listing,** so it catches a new door written in the usual way (a controller, a job, a route) but not one built by metaprogramming or by a gem. It is a tripwire, not a proof.
 4. Not run: no Ruby, Rails or database in the sandbox. If CI is red the spec's assumptions are the first suspect: the route spec path form (`/hooks/hyperswitch(.:format)`), and that an API upload with no token answers 4xx (the unauthorized error is rescued in `Api::BaseController`).
 
-### 🟡 Task 40: CI-only release processing — Zealot stops compiling, splitting, signing, compressing and holding release files (operator-directed 2026-10-04; DOCS ONLY, nothing below is built; the two earlier Task 40 patches are NOT in this repo; **40a to 40g, 40g-2, 40h-a, 40h-b and the Zealot half of 40h-c built (40a, 40b, 40c, 40d, 40e, 40f, 40g, 40g-2, 40h-a, 40h-b, 40h-c-1), written NOT run**, the rest not built)
+### 🟡 Task 40: CI-only release processing — Zealot stops compiling, splitting, signing, compressing and holding release files (operator-directed 2026-10-04; DOCS ONLY, nothing below is built; the two earlier Task 40 patches are NOT in this repo; **40a to 40g, 40g-2, 40h-a, 40h-b, 40i-a and the Zealot half of 40h-c built (40a, 40b, 40c, 40d, 40e, 40f, 40g, 40g-2, 40h-a, 40h-b, 40h-c-1, 40i-a), written NOT run**, the rest not built)
 
 **Why.** Render's web service (`plan: free`, 512Mi) was killed for memory (`server_failed`, `oomKilled`, `memoryLimit 512Mi`) at 2026-10-03 21:00:58 and 2026-10-04 02:59:31, each time just after an upload started the bundletool compile (see the 2026-10-04 Task 34f session-log entry). Task 34f only mitigated this (`ZEALOT_WORKER_CONCURRENCY=1`, mirror before compile, restore from storage). The operator's direction is to remove the cause: all heavy work moves to GitHub Actions in the storage repo, and Zealot stops doing it.
 
@@ -1425,7 +1425,7 @@ The earlier session's one patch exceeded the six-file slice guide. Cut it:
 | 40h-b ✅ | **Upload session and finalize for the console and the API.** Both doors keep their auth; finalize checks the size and marks `uploaded`; **the CI dispatch moved to 40i-a** (the workflow it dispatches does not exist yet). Old multipart endpoint stays behind a flag | 40h-a, 40b | controllers, routes, policies, specs, **rewrite of `manual_upload_only_spec.rb`** (see Task 39 paragraph) | an authenticated owner gets a URL and can finalize; an unauthenticated caller gets neither | **medium**: new door, the tripwire changes |
 | 40h-c-1 ✅ | **Console form uploads to the presigned URL.** A Stimulus controller runs session, PUT (with progress), finalize when the flag is on; the form helper adds it only then; messages in both locales; `docs/direct_upload.md` | 40h-b | `direct_upload_controller.js`, `controllers/index.js`, `releases_helper.rb`, `releases/_form.html.slim`, `direct_upload.{en,zh-CN}.yml`, `docs/direct_upload.md`, spec | with the flag on, a browser upload reaches R2 and finalizes; with it off the form is unchanged | low; flag off by default |
 | 40h-c-2 ⛔ blocked | **Storeapp's release workflow moves from the multipart POST to session, PUT, finalize** (other repo, its own patch) | 40i-a, the R2 bucket | `Zapier-codes/Storeapp` workflow and docs | a Storeapp release build reaches R2, finalizes and becomes a held release | medium; cross-repo. **Blocked, see the 40h-c result** |
-| 40i-a | **Stage-1 workflow and callback.** CI reads the manifest and icon; callback with OIDC (or HMAC) verification; idempotent; synchronous answer with the release id | 40h-a, 40c | workflow YAML, callback controller, verifier service, specs | a valid callback with the right claims is accepted; wrong repo, replay, wrong state refused | medium |
+| 40i-a ✅ | **Stage-1 workflow and callback.** CI reads the manifest and icon; callback with OIDC (or HMAC) verification; idempotent; synchronous answer with the release id | 40h-a, 40c | workflow YAML, callback controller, verifier service, specs | a valid callback with the right claims is accepted; wrong repo, replay, wrong state refused | medium |
 | 40i-b | **Create the real `Release` from the metadata.** One transaction, status `held`, existing validations re-run; failure marks the upload `failed` and creates nothing; storage-backed releases accepted by the create-time validations | 40i-a | `release.rb`, `release_parser.rb`, specs | a wrong package name never creates a `Release`; a good one creates a held release | **high**; split again if it exceeds the slice guide |
 | 40i-c | **Stage-2 callback and release.** CI uploads to the final tag, callback verifies files and certificate, unholds unless `hold` was asked, republishes the index; staging object deleted | 40i-b, 40d, 40e | callback, serializer trigger, workflow, specs | a finished upload becomes an available, installable release | medium |
 | 40j | **SDK injection and delta patches in CI** (D and E) | 40d | `proxy_sdk_injection_job.rb`, `delta_service.rb`, workflow | no Python, bundletool or bspatch on Render | medium |
@@ -1764,6 +1764,39 @@ curl -sS "$API/$BUCKET/lifecycle" -H "Authorization: Bearer $CF_API_TOKEN"
 
 Then, in the Cloudflare dashboard (tokens are created there or through the API, not by these commands): R2 > Manage API tokens > Create API token > **Object Read and Write**, scoped to this one bucket. Copy the Access Key ID and Secret Access Key (shown once) and the endpoint `https://<account id>.r2.cloudflarestorage.com`. Put them on the Render service as `R2_STAGING_BUCKET`, `R2_STAGING_ENDPOINT`, `R2_STAGING_ACCESS_KEY_ID`, `R2_STAGING_SECRET_ACCESS_KEY`. The second token (for CI) is not needed until 40i-a, which chooses its names; R2 tokens cannot be narrower than the bucket, so both can delete there.
 
+#### 40i-a result (built; written, NOT run; no testing by instruction; no Ruby in the sandbox, so not even `ruby -c`)
+
+**What it is.** The stage-1 half of the decided flow: after finalize, CI reads the staged file and reports what it found, through a callback authenticated by GitHub's OIDC token. **It creates no `Release`** (40i-b does). Behind the same flag as 40h (`RELEASE_UPLOAD_SESSIONS_ENABLED`, off), so deploying this changes nothing for users.
+
+**Files.** `db/migrate/20261004160000_add_stage1_to_release_uploads.rb` and `db/schema.rb` (hand-edited, version `2026_10_04_160000`: `metadata` jsonb default `{}`, `dispatched_at`, `stage1_at`); `app/services/github_oidc_verifier.rb`, `release_upload_dispatcher.rb`, `release_upload_intake.rb` (new); `app/jobs/release_upload_dispatch_job.rb` (new); `app/controllers/api/release_upload_callbacks_controller.rb` (new); `config/routes.rb` (`POST /api/release_uploads/:id/stage1`); `app/services/release_upload_finalizer.rb` (one enqueue); `docs/ci/read-upload.yml` (the workflow, for the storage repo); `.env.example`; specs: `github_oidc_verifier_spec`, `release_upload_dispatcher_spec`, `release_upload_intake_spec`, `release_upload_dispatch_job_spec`, `api_release_upload_callbacks_spec`, two examples in `release_upload_finalizer_spec`, and three in the extended Task 39 tripwire.
+
+**The flow.** Finalize wins (`awaiting_bytes -> uploaded`) and enqueues `ReleaseUploadDispatchJob`. The job sends `workflow_dispatch` to `read-upload.yml` in the storage repo (inputs `upload_id`, `staging_key`, `filename`; no secret) and stamps `dispatched_at`; a refusal fails the upload with the reason. The workflow downloads the object from R2, hashes it, reads the manifest with `aapt2 dump badging` (for an AAB, bundletool first builds a throwaway universal APK), puts a PNG/WebP icon back into staging beside the file, asks GitHub for an OIDC token whose audience is Zealot's URL, and POSTs the report. `ReleaseUploadIntake` checks the report and stores it in `metadata`, stamping `stage1_at`; the state stays `uploaded`. A failure report (the workflow's last step sends one on any error) marks the upload `failed` and drops the staged object.
+
+**Trust.** `GithubOidcVerifier` (no gem; the RSA key is built from the JWKS `n` and `e` with OpenSSL) checks, in order: size cap, three segments, `alg` exactly RS256, a published `kid`, the signature, `iss`, `aud` (our URL), `exp`/`nbf` with a minute of leeway, `repository` equals the storage repo, `event_name` is `workflow_dispatch`, and `job_workflow_ref` is exactly `<repo>/.github/workflows/read-upload.yml@refs/heads/<CI_COMPILE_REF>`. The JWKS is cached an hour; an unknown `kid` refetches once, at most once a minute. The controller checks the token **before** looking the upload up, answers one generic 401, and refuses everything while no audience is configured. A shared token, a per-app token or a user token never opens this door.
+
+**Intake rules.** Only an `uploaded` row takes a report (else 409). Idempotent: the same `file_sha256` again answers 200 and writes nothing; a different one for a reported upload is 409. A malformed report is 422 and changes nothing. `file_size` must equal the size finalize recorded from the bucket; `kind` must match the file extension; an icon key must sit under this upload's own staging prefix. The answer carries `release_id: null` until 40i-b.
+
+**Choices flagged, not silently made.**
+1. **The card said "synchronous answer with the release id"; that part is 40i-b.** Creating the release is 40i-b's one transaction, so 40i-a answers `release_id: null` and 40i-b fills it in on the same endpoint. State stays `uploaded` (the `processing` state belongs to 40i-b, as the model's header says).
+2. **The audience.** The audience is `CI_OIDC_AUDIENCE`, else `https://$ZEALOT_DOMAIN`. It must equal the storage repo's `ZEALOT_URL` variable (trailing slashes ignored on both sides).
+3. **Only `main`-branch (or `CI_COMPILE_REF`) runs of that workflow file are accepted**, and only the `workflow_dispatch` event, so a push-triggered or fork run cannot report.
+4. **The workflow cannot bind a token to one upload id**, so any run of that workflow could report on any `uploaded` upload. What limits it: only someone with write access to the storage repo can run it, a report must match the staged file's size, and a reported upload cannot be re-reported. Binding the token to the upload id would need a custom claim, which GitHub does not offer for workflow_dispatch inputs; the staging key is unguessable (32 hex) but is also what CI is given.
+5. **Icon: PNG or WebP only.** An adaptive-icon XML cannot be used as a picture, so such an app gets no icon from stage 1 (a gap, not decided).
+6. **One dispatch attempt**, as 40b: a refused dispatch fails the upload and the owner uploads again. The 40g-2 sweeper still fails an `uploaded` row nobody finishes after 90 minutes.
+7. **Stage 1 reads the staged bytes at the declared size only; the 2 GiB cap and R2's HEAD check at finalize are what bound CI's download.**
+
+**Not verified:** everything. No Ruby in the sandbox (installing it was not possible), so no `ruby -c`; the migration, the schema edit, the verifier against a real GitHub token, the dispatch against the GitHub API, the workflow on a runner (aapt2 output patterns, bundletool flags, `aws s3` against R2 with the CI token, the OIDC token request) and all specs have never run. Only the YAML was parsed, its shell steps passed `bash -n`, the embedded Python compiled, and the 120-character limit was checked on the new files. If CI is red, look first at: the verifier spec's `jwk_for` (BN to bytes), `ActiveSupport::Cache::MemoryStore#write(unless_exist:)` in `JwksFetcher`, `params.permit(..., abis: [])` in the callback, and `have_enqueued_job` in the finalizer spec.
+
+**Operator setup (new; nothing exists yet).**
+1. Copy `docs/ci/read-upload.yml` into the storage repo as `.github/workflows/read-upload.yml` on `main`.
+2. Storage-repo **secrets** `R2_STAGING_CI_ACCESS_KEY_ID`, `R2_STAGING_CI_SECRET_ACCESS_KEY` (a second R2 token, Object Read and Write on the staging bucket). **Variables** `ZEALOT_URL`, `R2_STAGING_ENDPOINT`, `R2_STAGING_BUCKET`.
+3. Render env: `CI_OIDC_AUDIENCE` (same as `ZEALOT_URL`); `CI_COMPILE_DISPATCH_TOKEN` and `CI_COMPILE_REPO` as for 40b. Optional `CI_READ_UPLOAD_WORKFLOW`.
+4. Only after 40i-b and 40i-c are in: `RELEASE_UPLOAD_SESSIONS_ENABLED=true`. Until then a finalized upload ends as `uploaded` with a recorded report and no release.
+
+**Revert.** `db:rollback` (reversible), delete the five new app files, the job, the workflow and the five new specs, revert the route, finalizer, `.env.example`, spec and tripwire hunks.
+
+**Next.** **40i-b** (build the real `Release` from the report: one transaction, status `held`, the existing validations re-run, storage-backed releases accepted by the create-time validations, and the callback-side tripwire examples that Task 39 reserved for it) is unblocked; it is **high risk and may need to be cut again** (see its card). 40j (SDK injection and delta in CI, **decided: keep SDK injection in CI**) follows 40d. 40h-c-2 (Storeapp's workflow) waits for 40i-c.
+
 #### Rules for the next session
 
 - Deliver **one** combined patch, applied with `git am` then `git push` (see "Handoff process" at the top). Confirm it applies to a fresh clone of `develop` first. If an earlier Task 40 patch was applied, rebase onto it.
@@ -1777,16 +1810,18 @@ Then, in the Cloudflare dashboard (tokens are created there or through the API, 
 
 **Answered by the operator (2026-10-04):** all of A to E above move to CI; no local disk operations on Render. The upload resolves to the **R2 staging, presigned direct upload** flow and the pending-release problem to the **`release_uploads` two-phase ingest with OIDC-verified, idempotent callbacks** (see "Decided flow").
 
-**Still open (the next session needs these):**
-1. Did any earlier Task 40 patch get applied or pushed? (`git log --oneline -5` in `~/zealot`.)
-2. **Operator actions for the R2 staging bucket** (bucket, CORS, lifecycle rule, two scoped API tokens, env names). Nothing in 40h can be run end to end until these exist. Env names are now fixed (`R2_STAGING_*`, see the 40h-a result) and the terminal commands are written in "R2 staging bucket: terminal commands"; the bucket still has to be created.
-3. Signing: the `.jks` goes into the storage repo's secrets (the earlier design), or Zealot hands CI the key through an endpoint (key on the wire)?
-4. SDK injection in CI: keep it, or drop it for Appstore?
-5. Make the storage repo private now? (Task 19 D2 already says private; it is public today.)
-6. Should Storeapp get a PackageInstaller-session installer so the device-split set can be served instead of the large universal APK?
-7. ~~Hold releases automatically while the CI compile is pending?~~ Settled by the decided flow: the release is created `held` and unheld on `done`.
-8. **Out of scope of the five items, still on local disk:** `DebugFile` (`DebugFileUploader`, `storage :file`) and store-listing graphics (`ListingGraphicStorage`, `ListingGraphicUploader` pattern). Should they follow the same R2 staging path, or are they out of this task?
-9. OIDC verification or the HMAC fallback? OIDC is the recommendation and the one documented first; it needs the storage repo's workflow to request an ID token, which the operator does not have to configure beyond the workflow file.
+**Answered by the operator (2026-10-04, second message):** "Keep SDK injection in the CI and all answers use the recommended industry standards approaches to answer all pending blocks." The answers below are therefore the recommended, industry-standard ones, adopted on that instruction and overrulable.
+1. **Earlier Task 40 patches:** none in this repo; `develop` @ `af8b9378` already holds 40a to 40h-c-1 and 40g-2 (read from `git log`), so nothing is rebased.
+2. **R2 staging bucket:** still an operator action (it needs the Cloudflare account), commands under "R2 staging bucket: terminal commands". **Two tokens**: one for Render (`R2_STAGING_*`), one for CI (`R2_STAGING_CI_*`, a storage-repo secret). Both Object Read and Write on that one bucket (R2 tokens cannot be scoped to a prefix).
+3. **Signing key location: the keystore goes into the storage repo's encrypted secrets** (what `docs/ci/compile-aab.yml` already assumes; the standard way CI signs). Rejected: an endpoint that hands CI the key (a private key on the wire). Zealot keeps its own encrypted copy and never exports it. Needed before the first real compile (40c/40i-c), not for 40i-a.
+4. **SDK injection: KEEP it, in CI (40j).** The same step as today's `ProxySdkInjectionJob`, run as a CI job on the uploaded APK or the universal APK; Python/androguard and the patched-file handling leave Render. (Task 40 D.)
+5. **Make the storage repo private: yes, before real builds** (Task 19 D2 already says private). Check downloads still work afterwards; `GITHUB_STORAGE_ALLOW_PUBLIC` stays off.
+6. **Device-split install (PackageInstaller in Storeapp): not now.** The universal APK is what a sideload store serves; the split set is built and stored so this can be added later without rework.
+7. ~~Hold while pending~~ settled by the decided flow.
+8. **`DebugFile` and store-listing graphics stay out of Task 40** and keep their current storage; they follow the same R2 staging pattern only if the 512Mi plan still fails after Task 40 lands. Revisit then, as its own task.
+9. **Callback trust: OIDC** (decided and built in 40i-a). HMAC is not built.
+
+**Still needs the operator (actions, not decisions):** create the R2 bucket, CORS, lifecycle rule and the two tokens; copy the two workflow files into the storage repo and set their secrets and variables; set the Render variables listed under the 40h-a, 40b, 40c and 40i-a results; make the storage repo private; and keep `RELEASE_UPLOAD_SESSIONS_ENABLED` and `CI_COMPILE_ENABLED` off until 40i-c is in.
 
 ### 🟡 Task 27: Zealot as the Play Console — signed catalog index, store-listing management, release controls (27a–27c, 27d-a, 27d-b, 27d-c, 27d-d1, 27d-d2-a, 27d-d2-b, 27d-d2-c, 27d-d2-d, 27d-e1, 27d-e2-a, 27d-e2-b, 27d-e2-c1, 27d-e2-c2, 27d-e2-d, 27d-e2-e, 27e-a, 27e-b, 27e-c, 27e-d, 27e-e-a, 27e-e-b, 27f-a, 27f-b, 27f-c and 27f-d done; every open ❓ answered, see "Task 27 open questions": 27e-f is cut into 27e-f-a to 27e-f-c, 27d-f is deferred, 27g and 27h are parked)
 
@@ -5568,6 +5603,14 @@ them is already modernized.
   at it.
 
 ## Session log
+
+### 2026-10-04 -- Task 40i-a: stage-1 read of a direct upload, OIDC-verified callback (operator: "Keep SDK injection in the CI and all answers use the recommended industry standards"; no testing; written, NOT run)
+- **Base:** `develop` @ `af8b9378` (the 40h-c-1 + 40g-2 commit; the previous turn's blocked-status reply produced no patch). One combined patch on top of it.
+- **Picked because:** it is the board's next slice and the operator answered every block: Decision 9 (OIDC), Decision 4 (SDK injection stays, in CI), and all other pending decisions by the recommended approach (recorded under "Decisions").
+- **Built:** see "40i-a result" in the Task 40 entry: dispatch from finalize, `GithubOidcVerifier`, the stage-1 callback and its intake rules, `docs/ci/read-upload.yml`, a migration (three columns), specs, and an extended Task 39 tripwire.
+- **Not verified:** everything. No Ruby in the sandbox (apt install was not possible), so not even `ruby -c`; only the YAML parse, `bash -n` on the workflow steps and a compile of its embedded Python.
+- **Behaviour change on deploy:** none for users (the flag is off and the new route needs an OIDC token). One migration (three nullable or defaulted columns on `release_uploads`). `.rb` files change, so the push starts `Anthropic - Build & Deploy develop`.
+- **Needs the operator:** apply and push; then the setup list in the 40i-a result. Nothing blocks 40i-b; do not turn the flag on before 40i-c.
 
 ### 2026-10-04 -- Task 40g-2: sweeper for direct uploads (operator: "on to the next task", no testing; written, NOT run)
 - **Base:** `origin/develop` is still `713f1365`, so the 40h-c-1 patch from the previous turn had not been pushed. **This one combined patch (40h-c-1 + 40g-2) replaces it; apply only this one. If the 40h-c-1 patch was already applied or pushed, `git am` fails loudly: say so and the next session rebases to a 40g-2-only patch.**
