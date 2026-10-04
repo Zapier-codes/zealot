@@ -156,6 +156,16 @@ class Release < ApplicationRecord
     pulled: 'pulled'
   }, prefix: true
 
+  # Task 40a: where the release's CI compile stands (see AddCiCompileToReleases). NULL means the
+  # release was never sent to CI. 40a only records it (`Api::CiCompileController#callback`); nothing
+  # sets `queued` or `dispatched` until 40b, and nothing reads the state yet.
+  enum :ci_compile_state, {
+    queued: 'queued',
+    dispatched: 'dispatched',
+    done: 'done',
+    failed: 'failed'
+  }, prefix: :ci_compile
+
   # Task 27f-b: which status a release may move to from each status, and the name of the console
   # action for that move (`releases.show.status_actions.<name>`). One table drives both the buttons
   # on the release page and the server-side check in `ReleasesController#update_status`, so a

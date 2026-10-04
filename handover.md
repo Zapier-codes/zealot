@@ -1292,7 +1292,7 @@ So the work is **keeping it true**, not building a path: a rule enforced only by
 3. **The spec is a source scan plus a route listing,** so it catches a new door written in the usual way (a controller, a job, a route) but not one built by metaprogramming or by a gem. It is a tripwire, not a proof.
 4. Not run: no Ruby, Rails or database in the sandbox. If CI is red the spec's assumptions are the first suspect: the route spec path form (`/hooks/hyperswitch(.:format)`), and that an API upload with no token answers 4xx (the unauthorized error is rescued in `Api::BaseController`).
 
-### 🆕 Task 40: CI-only release processing — Zealot stops compiling, splitting, signing, compressing and holding release files (operator-directed 2026-10-04; DOCS ONLY, nothing below is built; the two earlier Task 40 patches are NOT in this repo)
+### 🟡 Task 40: CI-only release processing — Zealot stops compiling, splitting, signing, compressing and holding release files (operator-directed 2026-10-04; DOCS ONLY, nothing below is built; the two earlier Task 40 patches are NOT in this repo; **40a built, written NOT run**, the rest not built)
 
 **Why.** Render's web service (`plan: free`, 512Mi) was killed for memory (`server_failed`, `oomKilled`, `memoryLimit 512Mi`) at 2026-10-03 21:00:58 and 2026-10-04 02:59:31, each time just after an upload started the bundletool compile (see the 2026-10-04 Task 34f session-log entry). Task 34f only mitigated this (`ZEALOT_WORKER_CONCURRENCY=1`, mirror before compile, restore from storage). The operator's direction is to remove the cause: all heavy work moves to GitHub Actions in the storage repo, and Zealot stops doing it.
 
@@ -1413,7 +1413,7 @@ The earlier session's one patch exceeded the six-file slice guide. Cut it:
 
 | ID | Goal (one behaviour) | Depends on | Files (predicted) | Acceptance check | Risk / revert |
 |---|---|---|---|---|---|
-| 40a | **Compile state and callback.** Release has a CI-compile state; a token-authenticated callback records the result | none | migration + `schema.rb`, `Release`, callback controller, route, spec | callback with a good token flips `dispatched` → `done`; bad token 401 | low, additive; drop the columns |
+| 40a ✅ | **Compile state and callback.** Release has a CI-compile state; a token-authenticated callback records the result | none | migration + `schema.rb`, `Release`, callback controller, route, spec | callback with a good token flips `dispatched` → `done`; bad token 401 | low, additive; drop the columns |
 | 40b | **Dispatch to CI.** A light job copies the AAB to storage and dispatches the workflow | 40a | dispatch job + service, spec | upload sets `queued`, then `dispatched`; dispatch failure → `failed` with a reason | low; flag off |
 | 40c | **The workflow.** `docs/ci/compile-aab.yml`: download, bundletool, sign, universal APK, Brotli, upload, callback | 40a | the YAML, this entry | `workflow_dispatch` on a test AAB goes green and calls back (operator runs it) | low; lives in the storage repo |
 | 40d | **Switch the hook.** `Release#anthropic_asset_delivery_job` queues the CI path; `ProxySdkInjectionJob` skips bundles when CI is on; no local fallback | 40b, 40c | `release.rb`, `proxy_sdk_injection_job.rb`, delete or gate `AnthropicAssetDeliveryJob` body, specs | an AAB upload never runs bundletool on Render | **medium**: the one behaviour change; `CI_COMPILE_ENABLED` is the revert |
@@ -1430,6 +1430,34 @@ The earlier session's one patch exceeded the six-file slice guide. Cut it:
 | 40k | **Delete the local code paths**, including the old multipart upload endpoint and `AppFileUploader` for releases: `ReleaseFileMirrorJob`, `patched_file_path`, local-first `ReleaseDownload`, `AnthropicAssetDeliveryJob`'s Ruby compile, after everything above has served from storage | 40e to 40j | those files, specs | `grep` for `file.path` and `icon.path` finds nothing in `app/` | medium; last |
 
 Order: 40a → 40b → 40c → 40d → 40e → 40f, then 40g, then 40h-a → 40h-b → 40h-c → 40i-a → 40i-b → 40i-c → 40j, and 40k last. 40h to 40k (including the 40h-x and 40i-x cuts) are now **required** (operator decision, see above), not optional. A session takes 1 to 3 slices. Slices 40a, 40b and 40g are safe to do first because they change no behaviour.
+
+#### 40a result (built this session; written, NOT run; no testing by instruction)
+
+**What it is.** Release has a CI-compile state and a token-authenticated callback records CI's result. Additive: nothing sets `queued` or `dispatched` yet (that is 40b), nothing reads the state, and no existing release changes (`ci_compile_state` is NULL for all of them, meaning "never sent to CI").
+
+**Files (6, one layer each).** `db/migrate/20261004130000_add_ci_compile_to_releases.rb` and `db/schema.rb` (hand-edited, version `2026_10_04_130000`); `app/models/release.rb` (the `ci_compile_state` enum, prefix `ci_compile`); `app/controllers/api/ci_compile_controller.rb` (new); `config/routes.rb` (`POST /api/ci_compile/:id/callback`); `spec/requests/api_ci_compile_callback_spec.rb` (new).
+
+**New columns on `releases`:** `ci_compile_state` (string, check constraint `queued | dispatched | done | failed` or NULL, indexed), `ci_compile_error` (text), `ci_compile_finished_at`, `universal_apk_storage_key`, `universal_apk_sha256`, `universal_apk_size` (bigint). The compressed split set reuses `compressed_apks_storage_key`, `compressed_size` and `brotli_compressed`.
+
+**The callback.** `Authorization: Bearer <CI_COMPILE_CALLBACK_TOKEN>` (header only, never a query parameter; compared by digest in constant time; an unset or empty variable refuses every call, so the endpoint is never open by default; the token is checked before the release is looked up, so an unauthenticated caller learns nothing about which ids exist). Body `{state: 'done', universal_apk_key, universal_apk_sha256, universal_apk_size, compressed_apks_key, compressed_size?, cert_sha256?}` or `{state: 'failed', error}`.
+- From `queued` or `dispatched` only. A `done` repeat with the same `universal_apk_sha256` answers 200 and writes nothing (idempotent); any other call for a release not in those states answers 409.
+- A malformed `done` body (missing key, bad hash, non-positive size) answers 422 and changes nothing, so CI can resend.
+- Before `done` is recorded, both named files must exist in storage (`ReleaseStorage#exist?`), and, **only if `CI_COMPILE_EXPECT_CERT_SHA256` is set**, the reported `cert_sha256` must equal it (keytool `AA:BB` form or bare hex, any case; once configured, a body without one is refused). A failed check marks the release `failed` with the reason and answers 422.
+
+**Choices flagged, not silently made.**
+1. **The shared token is the 40a stand-in.** The decided flow (above) moves callbacks to GitHub OIDC in 40i-a; 40i-a replaces this check, it does not extend it.
+2. **`signed` and `signing_key_checksum` are not touched by the callback.** Only `brotli_compressed` is set to `true`. Whether CI's signature should flip `signed` is a 40e question (it decides what readers trust).
+3. **The certificate check is off unless the operator sets `CI_COMPILE_EXPECT_CERT_SHA256`.** Without it, `done` proves the files exist, not who signed them.
+4. **No locale keys.** The API error strings are plain English, like `Api::MtprotoArchiveController`'s; `en.yml` and `zh-CN.yml` are unchanged.
+5. **`db/schema.rb` was edited by hand** (columns, the check constraint's `::text` form, the index, the version). The `db/schema.rb matches migrations` job is the first check of it.
+
+**Not verified:** everything. No Ruby in this sandbox, so not even `ruby -c`; the migration, the schema edit, the enum, the controller and the spec have never run. Only the 120-character line limit was checked (`awk`). The spec stubs `ReleaseStorage` and `ENV` (`stub_const`) and builds a release with `save!(validate: false)` like `release_status_control_spec.rb`; if CI is red, look there first.
+
+**Operator setup.** None yet for behaviour: nothing calls the endpoint. Before 40b/40c go live, set `CI_COMPILE_CALLBACK_TOKEN` on Render (and the same value in the storage repo's secrets) and, if wanted, `CI_COMPILE_EXPECT_CERT_SHA256`. The migration runs automatically with the Render deploy.
+
+**Revert.** `db:rollback` (the migration is reversible), delete the controller and spec, revert the enum hunk in `release.rb` and the route hunk.
+
+**Next.** 40b (dispatch to CI; depends only on 40a) and 40g (sweeper) change no behaviour and are unblocked. 40c (the workflow) is unblocked as code but cannot be run end to end until Decision 3 (where the signing key lives) is answered. 40d must not land before 40e; 40h needs the R2 staging bucket (Decision 2).
 
 #### Rules for the next session
 
@@ -5235,6 +5263,14 @@ them is already modernized.
   at it.
 
 ## Session log
+
+### 2026-10-04 -- Task 40a: CI compile state and callback (operator: "jump to the next task", no testing; written, NOT run)
+- **Base:** `develop` @ `ce4dba19` (the docs-only 34f confirmation commit), cloned fresh. No earlier Task 40 patch is in that history. **Not known:** whether the operator applied either earlier Task 40 patch locally without pushing (open Decision 1). `git am` fails loudly if so; report back and the next session rebases.
+- **Picked because:** the board's Task 40 entry is the newest and its own order starts at 40a; 40a, 40b and 40g are the slices it calls safe to do first (no behaviour change). One slice only, per the TSF (1 to 3 per session).
+- **Built:** see "40a result" in the Task 40 entry (migration, enum, callback controller, route, request spec).
+- **Not verified:** everything (no Ruby). No testing, per the operator's standing rule.
+- **Behaviour change on deploy:** none visible. The migration adds six nullable columns, a check constraint and an index; the new route answers 401 to everyone until `CI_COMPILE_CALLBACK_TOKEN` is set. `.rb` and migration files change, so the push starts `Anthropic - Build & Deploy develop` and redeploys Zealot.
+- **Needs the operator:** apply the patch and push; check the right workflow (see the deploy-pipeline section). Nothing blocks 40a. To unblock later slices: Decision 3 (signing key for CI) before 40c is run, Decision 2 (R2 staging bucket) before any 40h slice, and Decision 4 (SDK injection) before 40j.
 
 ### 2026-10-04 -- Operator confirmation of the 34f and 36b steps (docs only; nothing built, nothing run)
 - **Read from `confirm-task-steps.txt`, which the operator ran in Termux and uploaded (verified this way):** `ZEALOT_WORKER_CONCURRENCY` is `1` on Render service `srv-dalsvf942hec73dk2vg0`; `ADC_AUTO_REGISTER` is not set (registration stays off, as designed); the latest deploy `dep-db0spfvavr4c7396e79g` is `live`, finished 2026-10-04 03:53 UTC, after the 02:59 out-of-memory kill, and the two before it are `deactivated`; the last three Storeapp `Release AAB` runs on `main` (2026-10-03 21:28, 2026-10-04 02:55 and 05:41 UTC) completed with success.

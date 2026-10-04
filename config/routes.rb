@@ -398,6 +398,10 @@ Rails.application.routes.draw do
     get 'mtproto_archive/candidates', to: 'mtproto_archive#candidates'
     post 'mtproto_archive/:id/complete', to: 'mtproto_archive#complete'
 
+    # Task 40a: the storage repo's compile workflow reports its result here. NOT a user or app-token
+    # route: authenticated by the shared CI_COMPILE_CALLBACK_TOKEN only. See Api::CiCompileController.
+    post 'ci_compile/:id/callback', to: 'ci_compile#callback'
+
     resources :debug_files, except: %i[new edit create] do
       collection do
         post :upload, action: :create

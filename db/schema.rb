@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_04_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_04_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -492,12 +492,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_04_120000) do
     t.string "status", default: "available", null: false
     t.string "icon_sha256"
     t.string "icon_storage_key"
+    t.string "ci_compile_state"
+    t.text "ci_compile_error"
+    t.datetime "ci_compile_finished_at"
+    t.string "universal_apk_storage_key"
+    t.string "universal_apk_sha256"
+    t.bigint "universal_apk_size"
+    t.check_constraint "ci_compile_state IS NULL OR ci_compile_state::text = 'queued'::text OR ci_compile_state::text = 'dispatched'::text OR ci_compile_state::text = 'done'::text OR ci_compile_state::text = 'failed'::text", name: "releases_ci_compile_state_known"
     t.check_constraint "rollout_percentage >= 0 AND rollout_percentage <= 100", name: "releases_rollout_percentage_range"
     t.check_constraint "status::text = 'available'::text OR status::text = 'held'::text OR status::text = 'halted'::text OR status::text = 'pulled'::text", name: "releases_status_known"
     t.index ["asset_pack_type"], name: "index_releases_on_asset_pack_type"
     t.index ["build_version"], name: "index_releases_on_build_version"
     t.index ["bundle_id"], name: "index_releases_on_bundle_id"
     t.index ["channel_id", "version"], name: "index_releases_on_channel_id_and_version", unique: true
+    t.index ["ci_compile_state"], name: "index_releases_on_ci_compile_state"
     t.index ["mtproto_archived_at"], name: "index_releases_on_mtproto_archived_at"
     t.index ["play_approval_expires_at"], name: "index_releases_on_play_approval_expires_at"
     t.index ["play_approval_status"], name: "index_releases_on_play_approval_status"
