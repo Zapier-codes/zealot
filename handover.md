@@ -1292,7 +1292,7 @@ So the work is **keeping it true**, not building a path: a rule enforced only by
 3. **The spec is a source scan plus a route listing,** so it catches a new door written in the usual way (a controller, a job, a route) but not one built by metaprogramming or by a gem. It is a tripwire, not a proof.
 4. Not run: no Ruby, Rails or database in the sandbox. If CI is red the spec's assumptions are the first suspect: the route spec path form (`/hooks/hyperswitch(.:format)`), and that an API upload with no token answers 4xx (the unauthorized error is rescued in `Api::BaseController`).
 
-### 🟡 Task 40: CI-only release processing — Zealot stops compiling, splitting, signing, compressing and holding release files (operator-directed 2026-10-04; DOCS ONLY, nothing below is built; the two earlier Task 40 patches are NOT in this repo; **40a built, written NOT run**, the rest not built)
+### 🟡 Task 40: CI-only release processing — Zealot stops compiling, splitting, signing, compressing and holding release files (operator-directed 2026-10-04; DOCS ONLY, nothing below is built; the two earlier Task 40 patches are NOT in this repo; **40a and 40b built, written NOT run**, the rest not built)
 
 **Why.** Render's web service (`plan: free`, 512Mi) was killed for memory (`server_failed`, `oomKilled`, `memoryLimit 512Mi`) at 2026-10-03 21:00:58 and 2026-10-04 02:59:31, each time just after an upload started the bundletool compile (see the 2026-10-04 Task 34f session-log entry). Task 34f only mitigated this (`ZEALOT_WORKER_CONCURRENCY=1`, mirror before compile, restore from storage). The operator's direction is to remove the cause: all heavy work moves to GitHub Actions in the storage repo, and Zealot stops doing it.
 
@@ -1414,7 +1414,7 @@ The earlier session's one patch exceeded the six-file slice guide. Cut it:
 | ID | Goal (one behaviour) | Depends on | Files (predicted) | Acceptance check | Risk / revert |
 |---|---|---|---|---|---|
 | 40a ✅ | **Compile state and callback.** Release has a CI-compile state; a token-authenticated callback records the result | none | migration + `schema.rb`, `Release`, callback controller, route, spec | callback with a good token flips `dispatched` → `done`; bad token 401 | low, additive; drop the columns |
-| 40b | **Dispatch to CI.** A light job copies the AAB to storage and dispatches the workflow | 40a | dispatch job + service, spec | upload sets `queued`, then `dispatched`; dispatch failure → `failed` with a reason | low; flag off |
+| 40b ✅ | **Dispatch to CI.** A light job copies the AAB to storage and dispatches the workflow | 40a | dispatch job + service, spec | upload sets `queued`, then `dispatched`; dispatch failure → `failed` with a reason | low; flag off |
 | 40c | **The workflow.** `docs/ci/compile-aab.yml`: download, bundletool, sign, universal APK, Brotli, upload, callback | 40a | the YAML, this entry | `workflow_dispatch` on a test AAB goes green and calls back (operator runs it) | low; lives in the storage repo |
 | 40d | **Switch the hook.** `Release#anthropic_asset_delivery_job` queues the CI path; `ProxySdkInjectionJob` skips bundles when CI is on; no local fallback | 40b, 40c | `release.rb`, `proxy_sdk_injection_job.rb`, delete or gate `AnthropicAssetDeliveryJob` body, specs | an AAB upload never runs bundletool on Render | **medium**: the one behaviour change; `CI_COMPILE_ENABLED` is the revert |
 | 40e | **Serve and index the APK.** `Release#file?` accepts a stored copy; download serves the universal APK; the index carries the APK's SHA-256 and size and republishes on `done` | 40a | `release.rb`, `release_download.rb`, `CatalogIndex::Serializer`, specs | an evicted AAB release downloads as `.apk` and its index hash matches the bytes | medium: D-Store/Storeapp verify the hash |
@@ -1458,6 +1458,29 @@ Order: 40a → 40b → 40c → 40d → 40e → 40f, then 40g, then 40h-a → 40h
 **Revert.** `db:rollback` (the migration is reversible), delete the controller and spec, revert the enum hunk in `release.rb` and the route hunk.
 
 **Next.** 40b (dispatch to CI; depends only on 40a) and 40g (sweeper) change no behaviour and are unblocked. 40c (the workflow) is unblocked as code but cannot be run end to end until Decision 3 (where the signing key lives) is answered. 40d must not land before 40e; 40h needs the R2 staging bucket (Decision 2).
+
+#### 40b result (built; written, NOT run; no testing by instruction)
+
+**What it is.** A light job that sends one release to the storage repo's compile workflow and records where it got to, plus the service that makes the GitHub call. **No migration** (it uses 40a's columns). **Not wired to the upload hook**: nothing calls it on upload until 40d, so deploying this changes no behaviour.
+
+**Files (6).** `app/services/ci_compile_dispatcher.rb` (new), `app/jobs/ci_compile_dispatch_job.rb` (new), `app/services/release_storage/github_adapter.rb` (the key-to-tag-and-asset mapping is now the public class method `GithubAdapter.location_for`; the instance `locate` calls it; behaviour-preserving), `.env.example`, `spec/services/ci_compile_dispatcher_spec.rb` (new), `spec/jobs/ci_compile_dispatch_job_spec.rb` (new).
+
+**The flow.** `CiCompileDispatchJob.enqueue_for(release)` (returns false and changes nothing unless `CI_COMPILE_ENABLED` is exactly `true`, the release is an AAB, and its state is NULL or `failed`) sets `queued`, clears any old error and enqueues the job. The job: if the file has no `file_storage_key` it runs `ReleaseFileMirrorJob` first; then `CiCompileDispatcher` posts `workflow_dispatch` (`ref` + inputs `release_id`, `tag`, `asset`; **no secret in the body**); on 204 the release becomes `dispatched`. Any refusal (no key, adapter not `github`, missing token or repo, GitHub 401/403/404/422, network error) becomes `failed` with the reason in `ci_compile_error`; an unexpected error also becomes `failed`, never a raised job error. Every state write is conditional on `queued`, so a result callback that beat the job (40a accepts a result from `queued`) is never overwritten, and a `done` release never moves back.
+
+**Env (all in `.env.example`; none set anywhere yet).** `CI_COMPILE_ENABLED`, `CI_COMPILE_DISPATCH_TOKEN` (a fine-grained token with **Actions: read and write** on the storage repo; deliberately not `GITHUB_STORAGE_TOKEN`), `CI_COMPILE_CALLBACK_TOKEN` (40a), optional `CI_COMPILE_REPO` (default `GITHUB_STORAGE_REPO`), `CI_COMPILE_WORKFLOW` (default `compile-aab.yml`, must be a plain file name), `CI_COMPILE_REF` (default `main`), `CI_COMPILE_EXPECT_CERT_SHA256`. `render.yaml` is unchanged (set them in the dashboard).
+
+**Choices flagged, not silently made.**
+1. **The upload hook is not switched here.** The 40b card's acceptance reads "upload sets `queued`, then `dispatched`", but switching the hook is 40d, and 40d must not land before 40e (serving the APK) and must remove the Ruby compile in the same step. So 40b is tested at the job, not at an upload. To use it on release 2 before 40d, from a Rails console: `CiCompileDispatchJob.enqueue_for(Release.find(2))` (needs the three env vars above, the workflow from 40c in the storage repo, and release 2's AAB in storage).
+2. **One attempt, no automatic retry.** A dispatch that fails is `failed` with a reason and `enqueue_for` re-sends it. A dispatch that succeeds but whose run never calls back stays `dispatched` forever until the sweeper (40g) exists.
+3. **The inputs are `release_id`, `tag`, `asset`**; the callback URL and token are the workflow's own variable and secret (as the earlier design had them). 40c must declare exactly these three inputs under `workflow_dispatch`, or GitHub answers 422 (the failure message says so).
+4. **`ReleaseFileMirrorJob` only helps while the AAB is still on local disk.** After a redeploy wiped the disk, an unmirrored release fails with "not in storage yet" and cannot be dispatched.
+5. **The dispatcher refuses any adapter but `github`** (the workflow downloads the AAB from the storage repo's release).
+
+**Not verified:** everything. No Ruby in the sandbox (not even `ruby -c`); no call to GitHub; neither spec has run. Only the 120-character limit was checked (`awk`). The dispatcher spec uses a fake transport; the job spec stubs the dispatcher and `ReleaseFileMirrorJob` and builds a release with `save!(validate: false)`. If CI is red, look at the two specs first, then at `GithubAdapter.location_for` (the only edit to existing code).
+
+**Revert.** Delete the two new classes and their specs; revert the `github_adapter.rb` hunk (the instance methods `locate` and `sanitize_asset_name` come back as they were) and the `.env.example` hunk. No data to undo.
+
+**Next.** 40c (the workflow, `docs/ci/compile-aab.yml`; its inputs are fixed by item 3) and 40g (sweeper) are unblocked as code. 40c cannot be run end to end until Decision 3 (where the signing key lives) is answered. 40e before 40d, as before.
 
 #### Rules for the next session
 
@@ -5263,6 +5286,14 @@ them is already modernized.
   at it.
 
 ## Session log
+
+### 2026-10-04 -- Task 40b: dispatch to CI (operator: "on to the next task", no testing; written, NOT run)
+- **Base:** `origin/develop` tip is the 40a commit (`d65b2b4e`, `feat(task-40a)`), so the 40a patch landed and this one is built on it; no earlier patch was left half-applied. **Not confirmed:** the deploy run for 40a (Actions pages not fetched this session); check `Anthropic - Build & Deploy develop` for it.
+- **Picked because:** the board's order is 40a then 40b; 40b depends only on 40a and changes no behaviour (not wired to the upload hook, see choice 1 in the 40b result). One slice, per the TSF.
+- **Built:** see "40b result" in the Task 40 entry.
+- **Not verified:** everything (no Ruby). No testing, per the operator's standing rule.
+- **Behaviour change on deploy:** none. Two new classes nobody calls on upload, one behaviour-preserving refactor in `github_adapter.rb`, `.env.example` comments. `.rb` files change, so the push starts `Anthropic - Build & Deploy develop` and redeploys Zealot.
+- **Needs the operator:** apply the patch and push. Nothing blocks 40b. To unblock later slices: Decision 3 (signing key for CI) before 40c is run; Decision 2 (R2 staging bucket) before any 40h slice; Decision 4 (SDK injection) before 40j. When you want to try 40b by hand (not required): create the `Actions: read and write` token and the three env vars in the 40b result.
 
 ### 2026-10-04 -- Task 40a: CI compile state and callback (operator: "jump to the next task", no testing; written, NOT run)
 - **Base:** `develop` @ `ce4dba19` (the docs-only 34f confirmation commit), cloned fresh. No earlier Task 40 patch is in that history. **Not known:** whether the operator applied either earlier Task 40 patch locally without pushing (open Decision 1). `git am` fails loudly if so; report back and the next session rebases.

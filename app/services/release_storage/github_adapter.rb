@@ -114,6 +114,29 @@ class ReleaseStorage::GithubAdapter
   end
 
   class << self
+    # Task 40b: the storage tag and asset name a key is stored under (`a12-r345`, `pipeline__release.apks.br`).
+    # Public so the CI dispatch can tell the compile workflow which release asset to download, from the one
+    # mapping this adapter itself uses, instead of a second copy of it.
+    #
+    # @return [Array(String, String)] tag, asset name
+    # @raise [ReleaseStorage::StorageError] the key does not follow the storage convention
+    def location_for(key)
+      match = KEY_PATTERN.match(key.to_s)
+      unless match
+        raise ReleaseStorage::StorageError,
+              "GitHub storage cannot store key #{key.inspect}: expected uploads/apps/a<id>/r<id>/<file> " \
+              'or uploads/apps/a<id>/graphics/<file>'
+      end
+
+      ["#{match[1]}-#{match[2]}", sanitize_asset_name(match[3].delete_prefix('binary/').gsub('/', '__'))]
+    end
+
+    # GitHub rewrites unusual characters in asset names on upload, which would
+    # make our own lookups miss; normalise up front so name == stored name.
+    def sanitize_asset_name(name)
+      name.gsub(/[^A-Za-z0-9._-]/, '_')
+    end
+
     # Remembers which storage repos passed the visibility/access check so it
     # costs one API call per process per VERIFY_TTL, not one per operation.
     def verified?(repo)
@@ -216,20 +239,7 @@ class ReleaseStorage::GithubAdapter
   # --- key mapping ---------------------------------------------------------
 
   def locate(key)
-    match = KEY_PATTERN.match(key.to_s)
-    unless match
-      raise ReleaseStorage::StorageError,
-            "GitHub storage cannot store key #{key.inspect}: expected uploads/apps/a<id>/r<id>/<file> " \
-            'or uploads/apps/a<id>/graphics/<file>'
-    end
-
-    ["#{match[1]}-#{match[2]}", sanitize_asset_name(match[3].delete_prefix('binary/').gsub('/', '__'))]
-  end
-
-  # GitHub rewrites unusual characters in asset names on upload, which would
-  # make our own lookups miss; normalise up front so name == stored name.
-  def sanitize_asset_name(name)
-    name.gsub(/[^A-Za-z0-9._-]/, '_')
+    self.class.location_for(key)
   end
 
   # --- setup and safety checks --------------------------------------------
