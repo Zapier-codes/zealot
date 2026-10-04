@@ -1292,7 +1292,7 @@ So the work is **keeping it true**, not building a path: a rule enforced only by
 3. **The spec is a source scan plus a route listing,** so it catches a new door written in the usual way (a controller, a job, a route) but not one built by metaprogramming or by a gem. It is a tripwire, not a proof.
 4. Not run: no Ruby, Rails or database in the sandbox. If CI is red the spec's assumptions are the first suspect: the route spec path form (`/hooks/hyperswitch(.:format)`), and that an API upload with no token answers 4xx (the unauthorized error is rescued in `Api::BaseController`).
 
-### 🟡 Task 40: CI-only release processing — Zealot stops compiling, splitting, signing, compressing and holding release files (operator-directed 2026-10-04; DOCS ONLY, nothing below is built; the two earlier Task 40 patches are NOT in this repo; **40a and 40b built, written NOT run**, the rest not built)
+### 🟡 Task 40: CI-only release processing — Zealot stops compiling, splitting, signing, compressing and holding release files (operator-directed 2026-10-04; DOCS ONLY, nothing below is built; the two earlier Task 40 patches are NOT in this repo; **40a to 40e built (40a, 40b, 40c, 40d, 40e), written NOT run**, the rest not built)
 
 **Why.** Render's web service (`plan: free`, 512Mi) was killed for memory (`server_failed`, `oomKilled`, `memoryLimit 512Mi`) at 2026-10-03 21:00:58 and 2026-10-04 02:59:31, each time just after an upload started the bundletool compile (see the 2026-10-04 Task 34f session-log entry). Task 34f only mitigated this (`ZEALOT_WORKER_CONCURRENCY=1`, mirror before compile, restore from storage). The operator's direction is to remove the cause: all heavy work moves to GitHub Actions in the storage repo, and Zealot stops doing it.
 
@@ -1328,7 +1328,7 @@ Storage already exists (Task 19): `ReleaseStorage` with the `github` adapter, on
 
 **Single hook.** Change only `Release#anthropic_asset_delivery_job` (it sees every AAB from every upload path, including tenant and white-label hosts). Do not add a second hook.
 
-**Standing rule to add to this file when built:** Zealot never compiles, splits, signs or compresses; with CI on there is **no local fallback**.
+**Standing rule (in force since 40d, which built the switch):** Zealot never compiles, splits, signs or compresses; with CI on (`CI_COMPILE_ENABLED=true`) there is **no local fallback**. Do not add a path that runs bundletool, Brotli or signing on Render while that variable is on, and do not route an AAB around `Release#anthropic_asset_delivery_job`.
 
 **Serving.** An AAB whose compile is `done` is served as its signed universal APK from storage, named `.apk`. Google Play installs device-specific splits through its own client; a sideload store has no such client, so the installable file is the universal APK (installs anywhere, large). The split set is still built and stored; serving it would need a PackageInstaller-session installer in Storeapp, which is not built.
 
@@ -1415,9 +1415,9 @@ The earlier session's one patch exceeded the six-file slice guide. Cut it:
 |---|---|---|---|---|---|
 | 40a ✅ | **Compile state and callback.** Release has a CI-compile state; a token-authenticated callback records the result | none | migration + `schema.rb`, `Release`, callback controller, route, spec | callback with a good token flips `dispatched` → `done`; bad token 401 | low, additive; drop the columns |
 | 40b ✅ | **Dispatch to CI.** A light job copies the AAB to storage and dispatches the workflow | 40a | dispatch job + service, spec | upload sets `queued`, then `dispatched`; dispatch failure → `failed` with a reason | low; flag off |
-| 40c | **The workflow.** `docs/ci/compile-aab.yml`: download, bundletool, sign, universal APK, Brotli, upload, callback | 40a | the YAML, this entry | `workflow_dispatch` on a test AAB goes green and calls back (operator runs it) | low; lives in the storage repo |
-| 40d | **Switch the hook.** `Release#anthropic_asset_delivery_job` queues the CI path; `ProxySdkInjectionJob` skips bundles when CI is on; no local fallback | 40b, 40c | `release.rb`, `proxy_sdk_injection_job.rb`, delete or gate `AnthropicAssetDeliveryJob` body, specs | an AAB upload never runs bundletool on Render | **medium**: the one behaviour change; `CI_COMPILE_ENABLED` is the revert |
-| 40e | **Serve and index the APK.** `Release#file?` accepts a stored copy; download serves the universal APK; the index carries the APK's SHA-256 and size and republishes on `done` | 40a | `release.rb`, `release_download.rb`, `CatalogIndex::Serializer`, specs | an evicted AAB release downloads as `.apk` and its index hash matches the bytes | medium: D-Store/Storeapp verify the hash |
+| 40c ✅ | **The workflow.** `docs/ci/compile-aab.yml`: download, bundletool, sign, universal APK, Brotli, upload, callback | 40a | the YAML, this entry | `workflow_dispatch` on a test AAB goes green and calls back (operator runs it) | low; lives in the storage repo |
+| 40d ✅ | **Switch the hook.** `Release#anthropic_asset_delivery_job` queues the CI path; `ProxySdkInjectionJob` skips bundles when CI is on; no local fallback | 40b, 40c | `release.rb`, `proxy_sdk_injection_job.rb`, delete or gate `AnthropicAssetDeliveryJob` body, specs | an AAB upload never runs bundletool on Render | **medium**: the one behaviour change; `CI_COMPILE_ENABLED` is the revert |
+| 40e ✅ | **Serve and index the APK.** `Release#file?` accepts a stored copy; download serves the universal APK; the index carries the APK's SHA-256 and size and republishes on `done` | 40a | `release.rb`, `release_download.rb`, `CatalogIndex::Serializer`, specs | an evicted AAB release downloads as `.apk` and its index hash matches the bytes | medium: D-Store/Storeapp verify the hash |
 | 40f | **Evict the local AAB** after the four checks | 40e | eviction job, `release.rb`, spec | file gone from disk, download still works | low once 40e is in |
 | 40g | **Sweeper** for stale `dispatched` releases | 40a | job + cron entry in `good_job.rb`, spec | a stale release becomes `failed` | low |
 | 40h-a | **Staging record and R2 staging service.** `release_uploads` table and model with states (`awaiting_bytes`, `uploaded`, `processing`, `failed`, `expired`, `done`); a staging service for presigned PUT (and multipart), HEAD with size, delete; config and env | 40a | migration + `schema.rb`, model, `app/services/` staging service, `.env.example`, `render.yaml`, specs | a row is created, a presigned URL is returned, HEAD reports the size (fake S3) | low, additive |
@@ -1481,6 +1481,85 @@ Order: 40a → 40b → 40c → 40d → 40e → 40f, then 40g, then 40h-a → 40h
 **Revert.** Delete the two new classes and their specs; revert the `github_adapter.rb` hunk (the instance methods `locate` and `sanitize_asset_name` come back as they were) and the `.env.example` hunk. No data to undo.
 
 **Next.** 40c (the workflow, `docs/ci/compile-aab.yml`; its inputs are fixed by item 3) and 40g (sweeper) are unblocked as code. 40c cannot be run end to end until Decision 3 (where the signing key lives) is answered. 40e before 40d, as before.
+
+#### 40c result (built; written, NOT run; no testing by instruction)
+
+**What it is.** The compile workflow as one YAML file, `docs/ci/compile-aab.yml`. **It is not active in this repo and does nothing until the operator copies it into the storage repo** as `.github/workflows/compile-aab.yml` (on purpose: a new workflow in Zealot's own `.github/workflows/` would break the "one deploy pipeline" rule at the top of this file). **Only that one file changes (plus this entry); no Ruby, no migration, no locale, no spec.** Deploying this patch changes no behaviour. `anthropic_deploy_main.yml` ignores only `**.md`, `.devcontainer/**`, `.vscode/**` and `LICENSE` (checked in the file), and a push is skipped only when **every** changed file matches; `docs/ci/compile-aab.yml` does not, so the push **will** start `Anthropic - Build & Deploy develop` and redeploy unchanged code. Harmless, but expect the run.
+
+**What it does, per run.** `workflow_dispatch` with exactly the three inputs 40b sends (`release_id`, `tag`, `asset`; GitHub answers 422 otherwise). Inputs are checked against strict patterns and reach the shell only through `env`. It downloads the AAB from the storage release with `gh release download` (the run's own `GITHUB_TOKEN`, `contents: write`; no other token), runs bundletool twice, `--mode=default` (the split set, as `BundletoolService` did) and `--mode=universal` (the signed universal APK, taken out of the `.apks` zip), both signed with the organisation key, Brotli-compresses the split set at quality 11 (as `BrotliService`), uploads `pipeline__universal.apk` and `pipeline__release.apks.br` to the same tag with `--clobber`, then POSTs the 40a callback once. Those asset names are what `GithubAdapter.location_for` makes of the keys `uploads/apps/a<app>/r<release>/pipeline/universal.apk` and `.../pipeline/release.apks.br`; the callback sends those keys, with the APK's SHA-256 and size, the compressed size and the signing certificate's SHA-256. A final `if: always()` step reports `state: failed` (reason: the step status and the run URL, never log text or a secret) when the run did not reach an accepted callback, and always deletes the key files. One run per release at a time (`concurrency`); 45-minute timeout.
+
+**Signing certificate.** Read from the signed universal APK with `apksigner` (present on GitHub's Ubuntu runners) when available, else from the keystore entry. If the variable `RELEASE_CERT_SHA256` is set the run refuses to upload anything signed by another certificate; it is also sent so Zealot's own `CI_COMPILE_EXPECT_CERT_SHA256` check can run.
+
+**Operator setup (this slice's list; nothing exists yet).**
+1. Copy `docs/ci/compile-aab.yml` into the storage repo as `.github/workflows/compile-aab.yml` on the branch `CI_COMPILE_REF` names (default `main`).
+2. Storage-repo **secrets**: `CI_COMPILE_CALLBACK_TOKEN` (same value as on Render), `RELEASE_KEYSTORE_BASE64` (`base64 -w0 release.jks`), `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD` (omit if equal to the keystore password).
+3. Storage-repo **variables**: `ZEALOT_URL` (https, required); optional `RELEASE_CERT_SHA256`, `BUNDLETOOL_VERSION`, `BUNDLETOOL_SHA256`.
+4. Then the 40b list: the `Actions: read and write` token as `CI_COMPILE_DISPATCH_TOKEN`, `CI_COMPILE_CALLBACK_TOKEN`, and `CI_COMPILE_ENABLED=true` **last**.
+
+**Choices flagged, not silently made.**
+1. **The five secret names are mine.** The earlier session's names were not recoverable (see the Task 40 operator list). If the Storeapp repo already holds a keystore under other names, either rename here or reuse them; the workflow and this list must agree.
+2. **bundletool 1.18.1 is a pin I could not verify from this sandbox** (outbound access is limited to package registries and GitHub's API). The jar is fetched from google/bundletool's GitHub releases; if that version or file name is wrong the "Get bundletool" step fails loudly. Set `BUNDLETOOL_VERSION` to a version you have checked, and `BUNDLETOOL_SHA256` once you have the hash.
+3. **The key is in the storage repo's secrets (Decision 3, the earlier design's option).** Written that way so the slice can exist, not because Decision 3 is closed: if the operator picks "Zealot hands CI the key through an endpoint", the "Write the signing key to temp files" step changes and 40c is revised. Zealot still stores its own copy encrypted and never exports it.
+4. **Brotli is installed with `apt`, bundletool is cached with `actions/cache@v4`, Java is Temurin 17 (`actions/setup-java@v4`).** Versions pinned by major tag, not by commit SHA; pin to SHAs if the storage repo's policy requires it.
+5. **Asset packs are not configured**, as before (no pack config is passed).
+6. **The workflow is not wired to anything yet.** Nothing in Zealot dispatches it until 40d switches the hook, and 40d must not land before 40e.
+
+**Not verified:** everything that matters. The YAML was parsed with PyYAML, its triggers and the three inputs read back, and each shell step passed `bash -n` (syntax only, no step was executed). Never run on GitHub Actions: the bundletool flags, the `apksigner` output format the `sed` expects, `keytool -storepass:file`, the `gh release` commands, the `jq` body and the callback have not been exercised. If the first run fails, fetch its log and save it under `~/storage/downloads` for the next session (standing rule).
+
+**Revert.** Delete `docs/ci/compile-aab.yml` here and, if copied, the workflow file in the storage repo. No data to undo.
+
+**Next.** 40g (sweeper) and 40e (serve and index the APK) are unblocked as code. 40d needs 40e first. Running 40c end to end needs the operator setup above and Decision 3 closed.
+
+#### 40e result (built; written, NOT run; no testing by instruction)
+
+**What it is.** A release CI has compiled is served and advertised as its signed universal APK. **No migration, no route, no locale key, no operator setup.** Behaviour changes only for a release whose `ci_compile_state` is `done` with the APK recorded; nothing sets that until CI is switched on (40d), so today no release is affected, with one exception: see choice 1.
+
+**Files (6).** `app/models/release.rb`, `app/services/release_download.rb`, `app/services/catalog_index/serializer.rb`, `spec/models/release_universal_apk_spec.rb` (new), `spec/services/release_download_spec.rb`, `spec/services/catalog_index/serializer_spec.rb`.
+
+**What changed.**
+- `Release#serves_universal_apk?` (new): `done` **and** the APK's key, SHA-256 and a positive size all recorded. A half-recorded result is never advertised.
+- `Release#file?` is now also true when the bytes are only in storage (the universal APK, or any `file_storage_key`). `file_extname` answers `.apk` for a compiled release; `size` answers the APK's size; `original_filename` no longer asks the uploader for an identifier a storage-only release does not have.
+- `ReleaseDownload`: a compiled release resolves only to a signed URL for `universal_apk_storage_key`; the local bundle, the patched file and the primary key are skipped. If storage has no URL it is `:missing`, never the bundle.
+- `CatalogIndex::Serializer`: `sha256` and `size_bytes` come from the universal APK for a compiled release (the `original_size` column holds the old split set's size, not the download's). Duck-typed like the rest of the class.
+- `CATALOG_INDEX_RELEASE_FIELDS` gains `universal_apk_sha256` and `universal_apk_size`, so the callback's `update!` republishes the index (the entry first goes out at upload time with the bundle's values).
+
+**Choices flagged, not silently made.**
+1. **`file?` is broader for every release, not only compiled ones.** It was local-only; it now also accepts a stored copy, as the Task 40 entry required (breakage 1). The only callers are the install-button views and `original_filename`, so a mirrored release whose disk was wiped now shows its install button instead of "missing file". On a local-adapter host a key with no file would also read true, the same answer `ReleaseDownload#available?` already gave.
+2. **`signed` and `signing_key_checksum` are still not set by the callback** (40a choice 2, closed this way). `signing_key_checksum` is a SHA-1 of the keystore bytes (`AndroidSigningKey#checksum`); CI can only report a certificate SHA-256, and Zealot cannot prove the two are the same key. The index's `signing_fingerprint` is therefore nil for a CI-built release. Advertising the certificate would need a new column and a schema decision; not done here, and not decided.
+3. **The split set is still built and stored but never served** (as the Task 40 entry says); `compressed_apks_storage_key` is untouched.
+4. **`ReleaseDownload` is not told about the old tiers for a compiled release.** If the universal APK is later deleted from storage the release downloads nothing rather than falling back to the bundle, on purpose: an `.aab` is not installable and its hash is not the advertised one.
+
+**Not verified:** everything. `ruby -c` (syntax only) passed on all six files; nothing was run. The new model spec builds releases with `save!(validate: false)` and `update_columns`; its republish test uses `update!` on such a release, so if CI is red, look first at validations that fire on update. The existing `release_download_spec.rb` struct gained `universal_apk_storage_key` and a `serves_universal_apk?` method because `ReleaseDownload` now calls it.
+
+**Revert.** `git revert` the slice: the six files above. No data to undo.
+
+**Next.** 40d (switch the hook) is now unblocked by this slice but is the one behaviour change, and needs the 40c operator setup done and Decision 3 closed to be worth turning on. 40f (evict the local AAB) depends on 40e and is also unblocked. 40g (sweeper) is independent.
+
+#### 40d result (built; written, NOT run; no testing by instruction)
+
+**What it is.** The one behaviour change of Task 40, behind a flag. With `CI_COMPILE_ENABLED=true`, an uploaded `.aab` goes to the CI path (`CiCompileDispatchJob.enqueue_for`, 40b) and Zealot never runs bundletool. **With the variable unset or anything but `true`, nothing changes**: the Ruby compile is queued as before. The flag is the revert. No migration, no route, no locale key.
+
+**Files (5).** `app/models/release.rb` (the hook), `app/jobs/anthropic_asset_delivery_job.rb`, `app/jobs/proxy_sdk_injection_job.rb`, `spec/models/release_ci_compile_hook_spec.rb` (new) and `spec/jobs/ci_compile_hook_jobs_spec.rb` (new).
+
+**What changed.**
+- `Release#anthropic_asset_delivery_job` (the single `after_create` hook for every AAB, per the card; no second hook): CI on queues `CiCompileDispatchJob.enqueue_for(self)`, CI off queues `AnthropicAssetDeliveryJob` as before. APKs are untouched either way.
+- `AnthropicAssetDeliveryJob#perform` returns first thing, logging why, when CI is on. This is what makes "no local fallback" true for a job already in the queue at the moment the flag is switched, or enqueued by hand.
+- `ProxySdkInjectionJob` skips a bundle when CI is on, before the injector and before its mirror (Task 40 breakage 3: the injector would delete the `.aab` and leave an unsigned APK for CI to find nothing to compile). APK uploads still go through the injector until 40j.
+
+**Required order to turn it on (do not set the flag before the rest).** 40c's setup done (workflow in the storage repo, its secrets and variables), the 40b variables on Render (`CI_COMPILE_DISPATCH_TOKEN`, `CI_COMPILE_CALLBACK_TOKEN`), the storage adapter on `github`, and **`CI_COMPILE_ENABLED=true` last**. Decision 3 (where the signing key lives) must be settled first, since the workflow as written needs the keystore in the storage repo's secrets. If the flag is set earlier, an upload does not break: the release goes `queued`, then `failed` with the reason in `ci_compile_error`, and is installable only after a re-send (`CiCompileDispatchJob.enqueue_for(release)` from a console, which accepts a `failed` release).
+
+**Choices flagged, not silently made.**
+1. **A release uploaded while CI is on is NOT held.** It is listed and downloadable as the raw `.aab` until CI reports `done`, then switches to the universal APK (40e). The decided flow's hold-until-done belongs to 40i-b/c; for the old upload path the Storeapp workflow already passes `hold=true`, and the board's Task 40 item G ("require `hold=true` on upload") is the interim answer. Not changed here; say so if the operator wants an automatic hold now.
+2. **A Play-targeted AAB is also skipped by the injector when CI is on**, so no patched internal APK is made for it (the injector made one next to the original). CI's universal APK is what a sideload store serves, so this loses nothing the store served before; recorded in case the patched internal APK mattered.
+3. **`ReleaseFileMirrorJob` still runs on Render** (the dispatch job calls it when the AAB is not yet stored, because the workflow downloads the AAB from the storage release). It copies one file and does no compile; it goes away in 40h/40k with the direct-to-storage upload.
+4. **The 40e serving only applies after `done`.** Between upload and `done` a CI-on release is served from its mirrored or local bundle exactly like any other.
+5. **Existing releases are not touched.** Release 2 (uploaded before CI) has no CI state; it can be sent through with `CiCompileDispatchJob.enqueue_for(Release.find(2))` once its AAB is in storage (see the operator confirmation in the session log). No backfill job is written.
+
+**Not verified:** everything. `ruby -c` (syntax only) passed on the three app files and both specs; nothing was run. The hook spec builds an AAB with a Tempfile saved via `save!(validate: false)` like `serializer_spec.rb`; the job spec stubs `Release.find_by`, `CiCompileDispatchJob.aab?` and the injector. If CI is red, look at the two specs first, then at `ReleaseFileMirrorJob` being reached by `ProxySdkInjectionJob` in the "still injects an APK" case.
+
+**Revert.** Unset `CI_COMPILE_ENABLED` (instant, no deploy), or `git revert` the three app hunks and delete the two specs.
+
+**Next.** 40f (evict the local AAB after four checks) needs only 40e and is unblocked; 40g (sweeper) is independent and now matters, because a run that dies without calling back stays `dispatched` until it exists. Neither needs the operator.
 
 #### Rules for the next session
 
@@ -5286,6 +5365,30 @@ them is already modernized.
   at it.
 
 ## Session log
+
+### 2026-10-04 -- Task 40d: switch the upload hook to CI, behind CI_COMPILE_ENABLED (operator: "on to the next task", no testing; written, NOT run)
+- **Base:** `origin/develop` tip was still the 40b commit (`b4f85ead`): neither the 40c-only patch nor the combined 40c + 40e patch had been pushed when this session cloned. This session applied the combined 40c + 40e patch first, built 40d on top, and delivers **one combined patch (40c + 40d + 40e) against `b4f85ead`**. **It replaces both earlier patches; apply only this one. If any earlier patch was already applied or pushed, `git am` fails loudly: say so and the next session rebases.**
+- **Picked because:** the board's order is 40d next; its dependencies 40b, 40c and 40e are all in the combined patch (40d must not land without 40e, and it does not).
+- **Built:** see "40d result" in the Task 40 entry. Also added the standing rule "Zealot never compiles, with CI on there is no local fallback" to the Task 40 entry, as the card required once built.
+- **Not verified:** everything. `ruby -c` only; nothing was executed. No testing, per the operator's standing rule.
+- **Behaviour change on deploy:** none while `CI_COMPILE_ENABLED` is unset (it is not set anywhere). `.rb` files change, so the push starts `Anthropic - Build & Deploy develop` and redeploys Zealot.
+- **Needs the operator:** apply the patch and push. To turn the CI path on, in this order: Decision 3 (signing key), the 40c setup in the storage repo, the 40b variables on Render, then `CI_COMPILE_ENABLED=true` last. Nothing blocks the patch itself.
+
+### 2026-10-04 -- Task 40e: serve and index the universal APK (operator: "on to the next task", no testing; written, NOT run)
+- **Base:** `origin/develop` tip was still the 40b commit (`b4f85ead`); the 40c patch (`0001-feat-task-40c-compile-workflow.patch`) had **not** been pushed when this session cloned. This session applied the 40c patch first and built 40e on top, and delivers **one combined patch (40c + 40e) against `b4f85ead`**. **If 40c was already applied or pushed since, `git am` will fail loudly: say so and the next session rebases onto it.**
+- **Picked because:** the board's order is 40d next, but 40d must not land before 40e (breakages 1 and 2), and 40e depends only on 40a. One slice, per the TSF; 40c rides along because it was undelivered.
+- **Built:** see "40e result" in the Task 40 entry.
+- **Not verified:** everything. `ruby -c` only (this sandbox has Ruby; nothing was executed). No testing, per the operator's standing rule.
+- **Behaviour change on deploy:** none for any existing release (none is `done` with an APK recorded). `.rb` files change, so the push starts `Anthropic - Build & Deploy develop` and redeploys Zealot.
+- **Needs the operator:** apply the patch and push. Nothing blocks 40e. To run 40c and turn the CI path on later: the 40c operator setup and Decision 3. 40f and 40g need nothing from the operator; 40h needs the R2 staging bucket (Decision 2); 40j needs Decision 4.
+
+### 2026-10-04 -- Task 40c: the compile workflow (operator: "jump to the next task", no testing; written, NOT run)
+- **Base:** `origin/develop` tip is the 40b commit (`b4f85ead`, `feat(task-40b)`), cloned fresh; the 40a and 40b patches both landed, so no earlier patch was left half-applied. **Not confirmed:** the deploy runs for 40a and 40b (Actions pages not fetched this session); check `Anthropic - Build & Deploy develop` for them.
+- **Picked because:** the board's order is 40a, 40b, 40c; 40c depends only on 40a and its inputs were fixed by 40b. One slice, per the TSF.
+- **Built:** `docs/ci/compile-aab.yml` and its "40c result" block in the Task 40 entry. No Ruby, migration, locale or spec changed.
+- **Not verified:** the workflow has never run; only YAML parse and `bash -n` on its shell steps were done. No testing, per the operator's standing rule.
+- **Behaviour change on deploy:** none. The file is documentation until the operator copies it into the storage repo. The push still starts the deploy pipeline (a non-`.md` file changed), which redeploys unchanged code.
+- **Needs the operator (to run 40c, not to apply it):** copy the file into the storage repo; create the five secrets and the variables listed in the 40c result; answer **Decision 3** (signing key in the storage repo's secrets, as written, or an endpoint); confirm or correct the secret names and the bundletool version. **To unblock later slices:** 40e and 40g need nothing from the operator; 40d needs 40e first; 40h needs the R2 staging bucket (Decision 2); 40j needs Decision 4.
 
 ### 2026-10-04 -- Task 40b: dispatch to CI (operator: "on to the next task", no testing; written, NOT run)
 - **Base:** `origin/develop` tip is the 40a commit (`d65b2b4e`, `feat(task-40a)`), so the 40a patch landed and this one is built on it; no earlier patch was left half-applied. **Not confirmed:** the deploy run for 40a (Actions pages not fetched this session); check `Anthropic - Build & Deploy develop` for it.

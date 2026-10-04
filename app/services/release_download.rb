@@ -2,6 +2,8 @@
 
 # Decides where a release download comes from (Task 19c):
 #
+#   0. (Task 40e) a release CI has compiled (`Release#serves_universal_apk?`) is served only from its
+#      signed universal APK in storage, as a signed URL; tiers 1 and 2 below are skipped for it; else
 #   1. a file that is still on this host's disk (fast, no external call),
 #      the patched internal APK first, then the primary file; else
 #   2. the copy mirrored to ReleaseStorage (ReleaseFileMirrorJob), as a
@@ -48,6 +50,10 @@ class ReleaseDownload
   end
 
   def local_path
+    # Task 40e: a CI-built release is served from its universal APK in storage, never from the local bundle
+    # (which is an .aab nothing can install, and which Zealot no longer keeps on disk).
+    return nil if @release.serves_universal_apk?
+
     patched = @release.patched_file_path
     return patched if patched.present? && File.file?(patched)
 
@@ -56,6 +62,8 @@ class ReleaseDownload
   end
 
   def remote_key
+    return @release.universal_apk_storage_key if @release.serves_universal_apk?
+
     primary = @release.file_storage_key.presence
     return primary if @release.patched_file_path.blank?
 

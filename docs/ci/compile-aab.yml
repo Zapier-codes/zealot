@@ -1,0 +1,282 @@
+# Task 40c: the compile workflow. Copy this file into the STORAGE repo as
+# `.github/workflows/compile-aab.yml` (the repo named by GITHUB_STORAGE_REPO / CI_COMPILE_REPO on Render).
+# It does not belong in the Zealot repo's own `.github/workflows/`, and it is deliberately kept out of it
+# (see "Which workflow is the deploy pipeline?" in handover.md: no new workflow may race the deploy pipeline).
+#
+# What it does, for one release, when Zealot dispatches it (CiCompileDispatcher, Task 40b):
+#   1. downloads the release's AAB from the storage repo's GitHub release (tag + asset name come from Zealot);
+#   2. builds the device-split APK set with bundletool (`--mode=default`, as Zealot did) and a signed
+#      universal APK (`--mode=universal`), both signed with the organisation key;
+#   3. Brotli-compresses the split set (quality 11, as BrotliService did);
+#   4. uploads `pipeline__universal.apk` and `pipeline__release.apks.br` to the SAME release (same tag);
+#   5. calls Zealot back once (POST /api/ci_compile/<release_id>/callback, Task 40a) with the keys, the
+#      universal APK's SHA-256 and size, the compressed size and the signing certificate's SHA-256.
+# If any step fails, the last step calls back with `state: failed` and a reason, so a broken run shows up on
+# the release as `failed` instead of staying `dispatched`.
+#
+# Storage-repo SECRETS (Settings > Secrets and variables > Actions > Secrets):
+#   CI_COMPILE_CALLBACK_TOKEN   the same value as CI_COMPILE_CALLBACK_TOKEN on Render
+#   RELEASE_KEYSTORE_BASE64     the organisation .jks, base64 with no line breaks (`base64 -w0 release.jks`)
+#   RELEASE_KEYSTORE_PASSWORD   the keystore password
+#   RELEASE_KEY_ALIAS           the key alias inside the keystore
+#   RELEASE_KEY_PASSWORD        the key password (leave unset if it equals the keystore password)
+# Storage-repo VARIABLES (same page, Variables tab):
+#   ZEALOT_URL                  https://<your zealot host>, no trailing path
+#   RELEASE_CERT_SHA256         optional; the signing certificate's SHA-256 (hex, with or without colons).
+#                               When set, the run refuses to upload anything signed by another certificate.
+#   BUNDLETOOL_VERSION          optional; default below
+#   BUNDLETOOL_SHA256           optional; SHA-256 of that bundletool jar. When set, the download is checked
+#                               against it. Recommended once you have looked the value up.
+#
+# The secret NAMES above are chosen here (the earlier session's names were not recoverable); the operator
+# creates them as listed. No token other than GITHUB_TOKEN is used to upload: the workflow runs in the repo
+# that holds the release, so `contents: write` is enough.
+#
+# Not run. Written without testing (operator's standing instruction); parsed as YAML and its shell steps
+# syntax-checked with `bash -n` only.
+
+name: Compile AAB (Zealot)
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: "Zealot release id (digits)"
+        required: true
+        type: string
+      tag:
+        description: "Storage release tag holding the AAB, e.g. a12-r345"
+        required: true
+        type: string
+      asset:
+        description: "AAB asset name inside that release, e.g. app.aab"
+        required: true
+        type: string
+
+# One run per release at a time; a second dispatch for the same release waits instead of racing the upload.
+concurrency:
+  group: compile-aab-${{ inputs.release_id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  BUNDLETOOL_VERSION: ${{ vars.BUNDLETOOL_VERSION || '1.18.1' }}
+
+jobs:
+  compile:
+    name: Compile release ${{ inputs.release_id }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      # Inputs reach the shell only through env, never by pasting ${{ }} into a script, and are checked
+      # against a strict pattern first. A bad value fails here, before anything is downloaded.
+      - name: Check the inputs
+        env:
+          RELEASE_ID: ${{ inputs.release_id }}
+          TAG: ${{ inputs.tag }}
+          ASSET: ${{ inputs.asset }}
+          ZEALOT_URL: ${{ vars.ZEALOT_URL }}
+          CALLBACK_TOKEN: ${{ secrets.CI_COMPILE_CALLBACK_TOKEN }}
+          KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASS: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          [[ $RELEASE_ID =~ ^[0-9]+$ ]] || fail "release_id must be digits"
+          [[ $TAG =~ ^a[0-9]+-r[0-9]+$ ]] || fail "tag must look like a12-r345"
+          [[ $ASSET =~ ^[A-Za-z0-9._-]+\.aab$ ]] || fail "asset must be a plain file name ending in .aab"
+          [[ -n ${ZEALOT_URL:-} ]] || fail "the repository variable ZEALOT_URL is not set"
+          [[ $ZEALOT_URL =~ ^https:// ]] || fail "ZEALOT_URL must start with https://"
+          [[ -n ${CALLBACK_TOKEN:-} ]] || fail "the secret CI_COMPILE_CALLBACK_TOKEN is not set"
+          [[ -n ${KEYSTORE_B64:-} ]] || fail "the secret RELEASE_KEYSTORE_BASE64 is not set"
+          [[ -n ${KEYSTORE_PASS:-} ]] || fail "the secret RELEASE_KEYSTORE_PASSWORD is not set"
+          [[ -n ${KEY_ALIAS:-} ]] || fail "the secret RELEASE_KEY_ALIAS is not set"
+          app="${TAG%%-*}"; rel="${TAG##*-}"
+          {
+            echo "PIPELINE_PREFIX=uploads/apps/${app}/${rel}/pipeline"
+            echo "WORK=${RUNNER_TEMP}/compile-${RELEASE_ID}"
+          } >> "$GITHUB_ENV"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Cache bundletool
+        id: bt-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/bundletool
+          key: bundletool-${{ env.BUNDLETOOL_VERSION }}
+
+      - name: Get bundletool
+        if: steps.bt-cache.outputs.cache-hit != 'true'
+        env:
+          BUNDLETOOL_SHA256: ${{ vars.BUNDLETOOL_SHA256 }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/bundletool
+          curl -fsSL --retry 3 -o ~/bundletool/bundletool.jar \
+            "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar"
+          if [[ -n ${BUNDLETOOL_SHA256:-} ]]; then
+            echo "${BUNDLETOOL_SHA256}  $HOME/bundletool/bundletool.jar" | sha256sum -c -
+          else
+            echo "::warning::BUNDLETOOL_SHA256 is not set; the bundletool jar was not checked against a known hash"
+          fi
+
+      - name: Install Brotli
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq brotli
+
+      - name: Download the AAB from the storage release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          ASSET: ${{ inputs.asset }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$WORK"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$ASSET" --dir "$WORK" --clobber
+          [[ -s "$WORK/$ASSET" ]] || { echo "::error::$ASSET is missing or empty in release $TAG"; exit 1; }
+          echo "AAB_PATH=$WORK/$ASSET" >> "$GITHUB_ENV"
+          echo "AAB size: $(stat -c %s "$WORK/$ASSET") bytes"
+
+      # The keystore and its passwords exist only on the runner's temp disk, in files readable by this user
+      # only, and are removed in the last step whatever happens. Passwords go to bundletool as `file:` values,
+      # never `pass:`, so they are not visible in the process list (the same rule BundletoolService follows).
+      - name: Write the signing key to temp files
+        env:
+          KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASS: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          KEY_PASS: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$WORK/keys"
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$WORK/keys/release.jks"
+          printf '%s' "$KEYSTORE_PASS" > "$WORK/keys/ks.pass"
+          printf '%s' "${KEY_PASS:-$KEYSTORE_PASS}" > "$WORK/keys/key.pass"
+          [[ -s "$WORK/keys/release.jks" ]] || { echo "::error::RELEASE_KEYSTORE_BASE64 did not decode to a keystore"; exit 1; }
+
+      - name: Build the split set and the universal APK
+        env:
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          bt() { java -jar "$HOME/bundletool/bundletool.jar" "$@"; }
+          sign=(--ks "$WORK/keys/release.jks" --ks-key-alias "$KEY_ALIAS"
+                --ks-pass "file:$WORK/keys/ks.pass" --key-pass "file:$WORK/keys/key.pass")
+
+          # Device-split set, exactly the mode Zealot used (no asset-pack config).
+          bt build-apks --bundle "$AAB_PATH" --output "$WORK/release.apks" --mode=default "${sign[@]}"
+
+          # Universal APK: one installable file for a store with no Play-style split installer.
+          bt build-apks --bundle "$AAB_PATH" --output "$WORK/universal.apks" --mode=universal "${sign[@]}"
+          unzip -p "$WORK/universal.apks" universal.apk > "$WORK/universal.apk"
+          [[ -s "$WORK/universal.apk" ]] || { echo "::error::bundletool produced no universal.apk"; exit 1; }
+
+      - name: Read the signing certificate
+        env:
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          EXPECTED: ${{ vars.RELEASE_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          cert=""
+          # Preferred: the certificate actually inside the APK (apksigner ships with the runner's Android SDK).
+          apksigner="$(ls -1 "${ANDROID_HOME:-/nonexistent}"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1 || true)"
+          if [[ -n $apksigner ]]; then
+            cert="$("$apksigner" verify --print-certs "$WORK/universal.apk" 2>/dev/null \
+              | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1 | tr 'A-F' 'a-f')"
+          fi
+          # Fallback: the certificate of the key that did the signing (same key, read from the keystore).
+          if [[ -z $cert ]]; then
+            echo "::notice::apksigner not found or unreadable; reading the certificate from the keystore instead"
+            cert="$(keytool -list -v -keystore "$WORK/keys/release.jks" -alias "$KEY_ALIAS" \
+              -storepass:file "$WORK/keys/ks.pass" 2>/dev/null \
+              | sed -n 's/^ *SHA256: //p' | head -1 | tr -d ':' | tr 'A-F' 'a-f')"
+          fi
+          [[ $cert =~ ^[0-9a-f]{64}$ ]] || { echo "::error::could not read the signing certificate's SHA-256"; exit 1; }
+
+          if [[ -n ${EXPECTED:-} ]]; then
+            want="$(printf '%s' "$EXPECTED" | tr -d ':[:space:]' | tr 'A-F' 'a-f')"
+            [[ $cert == "$want" ]] || { echo "::error::the signing certificate does not match RELEASE_CERT_SHA256; nothing was uploaded"; exit 1; }
+          else
+            echo "::warning::RELEASE_CERT_SHA256 is not set; the signing certificate was not checked against an expected one"
+          fi
+          echo "CERT_SHA256=$cert" >> "$GITHUB_ENV"
+
+      - name: Compress the split set with Brotli
+        run: |
+          set -euo pipefail
+          brotli -q 11 -f -o "$WORK/release.apks.br" "$WORK/release.apks"
+          [[ -s "$WORK/release.apks.br" ]] || { echo "::error::brotli produced no output"; exit 1; }
+
+      # Asset names follow the storage adapter's own mapping (GithubAdapter.location_for): key
+      # `.../pipeline/universal.apk` becomes asset `pipeline__universal.apk` in the same release tag.
+      - name: Upload both files to the storage release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          cp "$WORK/universal.apk" "$WORK/pipeline__universal.apk"
+          cp "$WORK/release.apks.br" "$WORK/pipeline__release.apks.br"
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
+            "$WORK/pipeline__universal.apk" "$WORK/pipeline__release.apks.br"
+
+      - name: Tell Zealot it is done
+        env:
+          RELEASE_ID: ${{ inputs.release_id }}
+          ZEALOT_URL: ${{ vars.ZEALOT_URL }}
+          CALLBACK_TOKEN: ${{ secrets.CI_COMPILE_CALLBACK_TOKEN }}
+        run: |
+          set -euo pipefail
+          sha="$(sha256sum "$WORK/universal.apk" | cut -d' ' -f1)"
+          body="$(jq -n \
+            --arg state done \
+            --arg ukey "$PIPELINE_PREFIX/universal.apk" \
+            --arg usha "$sha" \
+            --argjson usize "$(stat -c %s "$WORK/universal.apk")" \
+            --arg ckey "$PIPELINE_PREFIX/release.apks.br" \
+            --argjson csize "$(stat -c %s "$WORK/release.apks.br")" \
+            --arg cert "$CERT_SHA256" \
+            '{state: $state, universal_apk_key: $ukey, universal_apk_sha256: $usha, universal_apk_size: $usize,
+              compressed_apks_key: $ckey, compressed_size: $csize, cert_sha256: $cert}')"
+          code="$(curl -sS -o "$WORK/callback.out" -w '%{http_code}' --retry 3 --retry-all-errors --max-time 60 \
+            -X POST "${ZEALOT_URL%/}/api/ci_compile/${RELEASE_ID}/callback" \
+            -H "Authorization: Bearer ${CALLBACK_TOKEN}" -H 'Content-Type: application/json' \
+            --data "$body")"
+          echo "Zealot answered HTTP $code"
+          cat "$WORK/callback.out"; echo
+          [[ $code == 200 ]] || { echo "::error::Zealot did not accept the result (HTTP $code)"; exit 1; }
+          echo "CALLBACK_DONE=1" >> "$GITHUB_ENV"
+
+      # Runs whatever happened above. If the result was already accepted it only cleans up. Otherwise it
+      # reports `failed` with a short reason (never a secret; the reason is the step name, not log text),
+      # so the release does not stay `dispatched`. A 409 here (the release already finished) is fine.
+      - name: Report a failure to Zealot, and remove the key files
+        if: always()
+        env:
+          RELEASE_ID: ${{ inputs.release_id }}
+          ZEALOT_URL: ${{ vars.ZEALOT_URL }}
+          CALLBACK_TOKEN: ${{ secrets.CI_COMPILE_CALLBACK_TOKEN }}
+          JOB_STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set +e
+          if [[ ${JOB_STATUS} != success && ${CALLBACK_DONE:-} != 1 && -n ${ZEALOT_URL:-} && -n ${CALLBACK_TOKEN:-} \
+                && ${RELEASE_ID:-} =~ ^[0-9]+$ ]]; then
+            body="$(jq -n --arg e "The compile workflow failed (${JOB_STATUS}). See ${RUN_URL}" '{state: "failed", error: $e}')"
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --retry 3 --retry-all-errors --max-time 60 \
+              -X POST "${ZEALOT_URL%/}/api/ci_compile/${RELEASE_ID}/callback" \
+              -H "Authorization: Bearer ${CALLBACK_TOKEN}" -H 'Content-Type: application/json' --data "$body")"
+            echo "Reported the failure to Zealot (HTTP $code)"
+          fi
+          rm -rf "${WORK:-/nonexistent}/keys" 2>/dev/null
+          exit 0

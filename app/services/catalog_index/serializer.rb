@@ -389,7 +389,7 @@ module CatalogIndex
         # Download button).
         download_url: release.download_url,
         sha256: sha256_for(release),
-        size_bytes: release.original_size || local_file_size(release),
+        size_bytes: size_bytes_for(release),
         # Set only for org-signed builds delivered through
         # AnthropicAssetDeliveryJob (see AndroidSigningKey); nil otherwise.
         signing_fingerprint: release.signing_key_checksum,
@@ -442,12 +442,28 @@ module CatalogIndex
     # Task 19's mirror-then-wipe, may or may not still have a local file;
     # `null` is still the honest answer once both are unavailable.
     def sha256_for(release)
+      # Task 40e: a CI-built release is installed from its signed universal APK, so that file's hash is the
+      # one a reader can check. The bundle's hash would be rejected by every reader that verifies it.
+      return release.universal_apk_sha256 if universal_apk_served?(release)
       return release.file_sha256 if release.respond_to?(:file_sha256) && release.file_sha256.present?
 
       path = local_file_path(release)
       return nil unless path && File.exist?(path)
 
       Digest::SHA256.file(path).hexdigest
+    end
+
+    # Task 40e: the universal APK's size for a CI-built release (the `original_size` column holds the size
+    # of the old split set, not of what gets downloaded), else the earlier answer.
+    def size_bytes_for(release)
+      return release.universal_apk_size if universal_apk_served?(release)
+
+      release.original_size || local_file_size(release)
+    end
+
+    # Duck-typed: a fixture without the CI columns is never a CI-built release.
+    def universal_apk_served?(release)
+      release.respond_to?(:serves_universal_apk?) && release.serves_universal_apk?
     end
 
     def local_file_size(release)

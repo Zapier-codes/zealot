@@ -119,6 +119,34 @@ RSpec.describe CatalogIndex::Serializer do
         .to eq("- Fixed login crash\n- Improved battery usage")
     end
 
+    describe 'a release CI has compiled (Task 40e)' do
+      let(:apk_sha) { 'd' * 64 }
+
+      it 'advertises the universal APK\'s hash and size, not the bundle\'s or the old split set\'s' do
+        app, release = build_app_with_release(file_contents: 'aab bytes', original_size: 999,
+                                              file_sha256: Digest::SHA256.hexdigest('aab bytes'))
+        release.update_columns(ci_compile_state: 'done',
+                               universal_apk_storage_key: 'uploads/apps/a1/r1/pipeline/universal.apk',
+                               universal_apk_sha256: apk_sha, universal_apk_size: 4321)
+
+        version = described_class.call(app, generated_at: Time.utc(2026, 9, 24, 12))[:apps].first[:versions].first
+
+        expect(version[:sha256]).to eq(apk_sha)
+        expect(version[:size_bytes]).to eq(4321)
+      end
+
+      it 'keeps the bundle\'s values while the compile is not done' do
+        app, release = build_app_with_release(file_contents: 'aab bytes', original_size: 999,
+                                              file_sha256: Digest::SHA256.hexdigest('aab bytes'))
+        release.update_columns(ci_compile_state: 'dispatched', universal_apk_sha256: apk_sha, universal_apk_size: 4321)
+
+        version = described_class.call(app, generated_at: Time.utc(2026, 9, 24, 12))[:apps].first[:versions].first
+
+        expect(version[:sha256]).to eq(Digest::SHA256.hexdigest('aab bytes'))
+        expect(version[:size_bytes]).to eq(999)
+      end
+    end
+
     describe 'listing.icon (Task 27d-c)' do
       let(:sha) { 'a' * 64 }
 

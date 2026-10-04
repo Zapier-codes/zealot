@@ -12,6 +12,13 @@ class AnthropicAssetDeliveryJob < ApplicationJob
   queue_as :default
 
   def perform(release_id, pack_config: nil)
+    # Task 40d: with CI compile on, Zealot never compiles, splits, signs or compresses; there is no local
+    # fallback (see Release#anthropic_asset_delivery_job). Checked first, before any lookup or file work.
+    if CiCompileDispatcher.enabled?
+      logger.info("[AnthropicAssetDeliveryJob] release #{release_id}: skipped, CI compile is on (CI_COMPILE_ENABLED)")
+      return
+    end
+
     return unless Rails.application.config.x.anthropic.asset_pack_delivery_enabled
 
     release = Release.find_by(id: release_id)

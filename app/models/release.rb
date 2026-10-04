@@ -157,8 +157,10 @@ class Release < ApplicationRecord
   }, prefix: true
 
   # Task 40a: where the release's CI compile stands (see AddCiCompileToReleases). NULL means the
-  # release was never sent to CI. 40a only records it (`Api::CiCompileController#callback`); nothing
-  # sets `queued` or `dispatched` until 40b, and nothing reads the state yet.
+  # release was never sent to CI. `Api::CiCompileController#callback` (40a) records the result and
+  # `CiCompileDispatchJob` (40b) sets `queued`/`dispatched`; since 40d the upload hook calls it for an AAB
+  # while `CI_COMPILE_ENABLED=true`. Since 40e, `done` (with the universal APK recorded) is what
+  # `serves_universal_apk?` reads to serve and index the release.
   enum :ci_compile_state, {
     queued: 'queued',
     dispatched: 'dispatched',
@@ -267,7 +269,11 @@ class Release < ApplicationRecord
   # rollout columns: the index carries `rollout` per version (`Serializer#rollout_for`), so a ramp
   # step or a halted rollout has to reach readers now, not at the next unrelated publish. One
   # callback with an OR condition, so a save that changes several of them still enqueues once.
-  CATALOG_INDEX_RELEASE_FIELDS = %w[status rollout_percentage rollout_status].freeze
+  # Task 40e: the universal APK's hash and size are what the index advertises for a CI-built release, and
+  # CI's result arrives after the entry first went out at upload time, so recording them republishes.
+  CATALOG_INDEX_RELEASE_FIELDS = %w[
+    status rollout_percentage rollout_status universal_apk_sha256 universal_apk_size
+  ].freeze
 
   after_update_commit :publish_catalog_index_if_app_live, if: :catalog_index_release_field_changed?
 
@@ -330,9 +336,22 @@ class Release < ApplicationRecord
   end
 
   def size
+    return universal_apk_size if serves_universal_apk?
+
     file&.size
   end
   alias_method :file_size, :size
+
+  # Task 40e: true once CI has compiled this bundle and Zealot has recorded a complete, checkable result
+  # (state `done`, the stored universal APK's key, its SHA-256 and a positive size). Such a release is
+  # installed from that signed universal APK in storage, not from the bundle itself: a sideload store has
+  # no Play-style split installer, and the catalog index must describe the bytes a reader actually gets
+  # (D-Store and Storeapp verify the hash). All four values are required so a half-recorded result is
+  # never advertised.
+  def serves_universal_apk?
+    ci_compile_done? && universal_apk_storage_key.present? && universal_apk_sha256.present? &&
+      universal_apk_size.to_i.positive?
+  end
 
   def short_git_commit
     return nil if git_commit.blank?
@@ -355,13 +374,21 @@ class Release < ApplicationRecord
     end.join("\n")
   end
 
+  # Task 40e: a release also "has a file" when its bytes live only in storage (the CI-built universal APK,
+  # or a mirrored primary file after a redeploy wiped the disk). Before, only the local file counted, so
+  # every evicted release showed "missing file" and no install button. This answers the same question
+  # `ReleaseDownload#available?` does (something is stored, or something is on disk).
   def file?
+    return true if serves_universal_apk? || file_storage_key.present?
     return false if file.blank?
 
     File.exist?(file.path)
   end
 
   def file_extname
+    # A CI-built release is served as its universal APK whatever the uploaded bundle was called.
+    return '.apk' if serves_universal_apk?
+
     # Once the local copy is gone (ephemeral disk), the mirrored file's key
     # still carries the real extension, so download URLs don't turn into .zip.
     return File.extname(file_storage_key) if file_storage_key.present? && (file.blank? || !File.file?(file.path))
@@ -727,10 +754,20 @@ class Release < ApplicationRecord
   # Only relevant for Android App Bundles; no-op for APK/IPA uploads.
   # The job itself also re-checks the config flag and file extension so
   # this stays safe even if called from elsewhere.
+  # The one hook every AAB upload passes through (Task 39a pins `Release.upload_file` to two callers, both
+  # of which save through here). Task 40d: with `CI_COMPILE_ENABLED=true` the bundle is compiled, split,
+  # signed and compressed by the storage repo's workflow (`CiCompileDispatchJob`, which only mirrors the
+  # file and dispatches) and Zealot never runs bundletool; there is deliberately NO local fallback. With it
+  # off, the Ruby compile runs exactly as before. `AnthropicAssetDeliveryJob` itself refuses to run while CI
+  # is on, so a job already queued or enqueued by hand cannot compile either.
   def anthropic_asset_delivery_job
     return unless file.path.to_s.end_with?('.aab')
 
-    AnthropicAssetDeliveryJob.perform_later(id)
+    if CiCompileDispatcher.enabled?
+      CiCompileDispatchJob.enqueue_for(self)
+    else
+      AnthropicAssetDeliveryJob.perform_later(id)
+    end
   end
 
   # Only fires when the uploader explicitly flagged this release as bound
@@ -753,6 +790,10 @@ class Release < ApplicationRecord
   end
 
   def original_filename
+    # `file?` is also true for a release held only in storage, where there is no uploader identifier (and
+    # for a CI-built release the served file is the universal APK, not the uploaded bundle's name).
+    return default_filename if serves_universal_apk? || file.blank?
+
     file? ? file.identifier : default_filename
   end
   
