@@ -82,6 +82,7 @@ class Api::CiCompileController < Api::BaseController
     return reject_result(release, reason) if reason
 
     save_done(release, body, sha)
+    queue_local_eviction(release)
     render json: { message: 'OK' }, status: :ok
   end
 
@@ -156,5 +157,14 @@ class Api::CiCompileController < Api::BaseController
     }
     attributes[:compressed_size] = Integer(body[:compressed_size].to_s, 10) if body[:compressed_size].present?
     release.update!(attributes)
+  end
+
+  # Task 40f: the bundle on local disk is no longer needed once the result is recorded; the job re-checks
+  # everything itself before deleting. Housekeeping only: a queue problem must not turn CI's accepted result
+  # into an error (the result is already saved, and `ReleaseLocalEvictionJob.backfill` catches up later).
+  def queue_local_eviction(release)
+    ReleaseLocalEvictionJob.perform_later(release.id)
+  rescue StandardError => e
+    Rails.logger.error("[Api::CiCompileController] release #{release.id}: could not queue local eviction: #{e.message}")
   end
 end

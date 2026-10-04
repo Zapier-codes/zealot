@@ -135,6 +135,30 @@ RSpec.describe 'API CI compile callback', type: :request do
       expect(release.reload.ci_compile_state).to be_nil
     end
 
+    # Task 40f: the local bundle is checked for deletion once the result is recorded.
+    it 'queues the local bundle eviction when the result is recorded' do
+      expect { call(done_body) }.to have_enqueued_job(ReleaseLocalEvictionJob).with(release.id)
+    end
+
+    it 'does not queue the eviction again for a repeat of the same call' do
+      call(done_body)
+
+      expect { call(done_body) }.not_to have_enqueued_job(ReleaseLocalEvictionJob)
+    end
+
+    it 'does not queue the eviction for a result it refused' do
+      expect { call(done_body(universal_apk_sha256: 'xyz')) }.not_to have_enqueued_job(ReleaseLocalEvictionJob)
+    end
+
+    it 'still answers 200 when the eviction cannot be queued' do
+      allow(ReleaseLocalEvictionJob).to receive(:perform_later).and_raise(RuntimeError, 'queue is down')
+
+      call(done_body)
+
+      expect(response).to have_http_status(:ok)
+      expect(release.reload.ci_compile_state).to eq('done')
+    end
+
     it 'refuses a malformed body with 422 and changes nothing, so CI can send it again' do
       [done_body(universal_apk_sha256: 'xyz'), done_body(universal_apk_size: 0),
        done_body(universal_apk_key: ''), done_body(compressed_apks_key: nil),

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_04_130000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_04_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -437,6 +437,32 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_04_130000) do
     t.index ["user_id"], name: "index_publisher_profiles_on_user_id", unique: true
   end
 
+  create_table "release_uploads", force: :cascade do |t|
+    t.bigint "channel_id", null: false
+    t.string "content_type"
+    t.datetime "created_at", null: false
+    t.bigint "declared_size", null: false
+    t.text "error"
+    t.string "etag"
+    t.datetime "expires_at"
+    t.string "filename", null: false
+    t.jsonb "form_options", default: {}, null: false
+    t.string "multipart_upload_id"
+    t.bigint "release_id"
+    t.string "staging_key"
+    t.string "state", default: "awaiting_bytes", null: false
+    t.datetime "updated_at", null: false
+    t.datetime "uploaded_at"
+    t.bigint "uploaded_size"
+    t.bigint "user_id"
+    t.index ["channel_id"], name: "index_release_uploads_on_channel_id"
+    t.index ["release_id"], name: "index_release_uploads_on_release_id", unique: true
+    t.index ["staging_key"], name: "index_release_uploads_on_staging_key", unique: true
+    t.index ["state", "expires_at"], name: "index_release_uploads_on_state_and_expires_at"
+    t.index ["user_id"], name: "index_release_uploads_on_user_id"
+    t.check_constraint "declared_size > 0", name: "release_uploads_declared_size_positive"
+  end
+
   create_table "releases", force: :cascade do |t|
     t.string "branch"
     t.string "build_version"
@@ -700,6 +726,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_04_130000) do
   add_foreign_key "metadata", "releases", on_delete: :cascade
   add_foreign_key "metadata", "users", on_delete: :cascade
   add_foreign_key "publisher_profiles", "users", on_delete: :cascade
+  add_foreign_key "release_uploads", "channels", on_delete: :cascade
+  add_foreign_key "release_uploads", "releases", on_delete: :nullify
+  add_foreign_key "release_uploads", "users", on_delete: :nullify
   add_foreign_key "releases", "channels", on_delete: :cascade
   add_foreign_key "releases", "users", column: "play_approved_by_id"
   add_foreign_key "releases", "users", column: "play_rejected_by_id"
