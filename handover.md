@@ -1292,7 +1292,7 @@ So the work is **keeping it true**, not building a path: a rule enforced only by
 3. **The spec is a source scan plus a route listing,** so it catches a new door written in the usual way (a controller, a job, a route) but not one built by metaprogramming or by a gem. It is a tripwire, not a proof.
 4. Not run: no Ruby, Rails or database in the sandbox. If CI is red the spec's assumptions are the first suspect: the route spec path form (`/hooks/hyperswitch(.:format)`), and that an API upload with no token answers 4xx (the unauthorized error is rescued in `Api::BaseController`).
 
-### 🟡 Task 40: CI-only release processing — Zealot stops compiling, splitting, signing, compressing and holding release files (operator-directed 2026-10-04; DOCS ONLY, nothing below is built; the two earlier Task 40 patches are NOT in this repo; **40a to 40g, 40h-a and 40h-b built (40a, 40b, 40c, 40d, 40e, 40f, 40g, 40h-a, 40h-b), written NOT run**, the rest not built)
+### 🟡 Task 40: CI-only release processing — Zealot stops compiling, splitting, signing, compressing and holding release files (operator-directed 2026-10-04; DOCS ONLY, nothing below is built; the two earlier Task 40 patches are NOT in this repo; **40a to 40g, 40g-2, 40h-a, 40h-b and the Zealot half of 40h-c built (40a, 40b, 40c, 40d, 40e, 40f, 40g, 40g-2, 40h-a, 40h-b, 40h-c-1), written NOT run**, the rest not built)
 
 **Why.** Render's web service (`plan: free`, 512Mi) was killed for memory (`server_failed`, `oomKilled`, `memoryLimit 512Mi`) at 2026-10-03 21:00:58 and 2026-10-04 02:59:31, each time just after an upload started the bundletool compile (see the 2026-10-04 Task 34f session-log entry). Task 34f only mitigated this (`ZEALOT_WORKER_CONCURRENCY=1`, mirror before compile, restore from storage). The operator's direction is to remove the cause: all heavy work moves to GitHub Actions in the storage repo, and Zealot stops doing it.
 
@@ -1420,9 +1420,11 @@ The earlier session's one patch exceeded the six-file slice guide. Cut it:
 | 40e ✅ | **Serve and index the APK.** `Release#file?` accepts a stored copy; download serves the universal APK; the index carries the APK's SHA-256 and size and republishes on `done` | 40a | `release.rb`, `release_download.rb`, `CatalogIndex::Serializer`, specs | an evicted AAB release downloads as `.apk` and its index hash matches the bytes | medium: D-Store/Storeapp verify the hash |
 | 40f ✅ | **Evict the local AAB** after the four checks | 40e | eviction job, callback controller (one line), specs | file gone from disk, download still works | low once 40e is in |
 | 40g ✅ | **Sweeper** for stale `dispatched` releases | 40a | job + cron entry in `good_job.rb`, spec | a stale release becomes `failed` | low |
+| 40g-2 ✅ | **Sweeper for `release_uploads`**: expire `awaiting_bytes` rows never finalized (and delete the staged object), fail `uploaded` rows nobody processed | 40h-b | job + cron entry in `good_job.rb`, `.env.example`, spec | a stale awaiting row becomes `expired`, a stale uploaded row becomes `failed` | low; no migration |
 | 40h-a ✅ | **Staging record and R2 staging service.** `release_uploads` table and model with states (`awaiting_bytes`, `uploaded`, `processing`, `failed`, `expired`, `done`); a staging service for presigned PUT (and multipart), HEAD with size, delete; config and env | 40a | migration + `schema.rb`, model, `app/services/` staging service, `.env.example`, `render.yaml`, specs | a row is created, a presigned URL is returned, HEAD reports the size (fake S3) | low, additive |
 | 40h-b ✅ | **Upload session and finalize for the console and the API.** Both doors keep their auth; finalize checks the size and marks `uploaded`; **the CI dispatch moved to 40i-a** (the workflow it dispatches does not exist yet). Old multipart endpoint stays behind a flag | 40h-a, 40b | controllers, routes, policies, specs, **rewrite of `manual_upload_only_spec.rb`** (see Task 39 paragraph) | an authenticated owner gets a URL and can finalize; an unauthenticated caller gets neither | **medium**: new door, the tripwire changes |
-| 40h-c | **Console and client upload to the presigned URL.** Form JS with progress; Storeapp workflow and docs move to session, PUT, finalize (cross-repo) | 40h-b | frontend JS, view, locale (`en.yml` and `zh-CN.yml` together), docs, Storeapp workflow | a browser upload reaches R2 and finalizes | medium; cross-repo |
+| 40h-c-1 ✅ | **Console form uploads to the presigned URL.** A Stimulus controller runs session, PUT (with progress), finalize when the flag is on; the form helper adds it only then; messages in both locales; `docs/direct_upload.md` | 40h-b | `direct_upload_controller.js`, `controllers/index.js`, `releases_helper.rb`, `releases/_form.html.slim`, `direct_upload.{en,zh-CN}.yml`, `docs/direct_upload.md`, spec | with the flag on, a browser upload reaches R2 and finalizes; with it off the form is unchanged | low; flag off by default |
+| 40h-c-2 ⛔ blocked | **Storeapp's release workflow moves from the multipart POST to session, PUT, finalize** (other repo, its own patch) | 40i-a, the R2 bucket | `Zapier-codes/Storeapp` workflow and docs | a Storeapp release build reaches R2, finalizes and becomes a held release | medium; cross-repo. **Blocked, see the 40h-c result** |
 | 40i-a | **Stage-1 workflow and callback.** CI reads the manifest and icon; callback with OIDC (or HMAC) verification; idempotent; synchronous answer with the release id | 40h-a, 40c | workflow YAML, callback controller, verifier service, specs | a valid callback with the right claims is accepted; wrong repo, replay, wrong state refused | medium |
 | 40i-b | **Create the real `Release` from the metadata.** One transaction, status `held`, existing validations re-run; failure marks the upload `failed` and creates nothing; storage-backed releases accepted by the create-time validations | 40i-a | `release.rb`, `release_parser.rb`, specs | a wrong package name never creates a `Release`; a good one creates a held release | **high**; split again if it exceeds the slice guide |
 | 40i-c | **Stage-2 callback and release.** CI uploads to the final tag, callback verifies files and certificate, unholds unless `hold` was asked, republishes the index; staging object deleted | 40i-b, 40d, 40e | callback, serializer trigger, workflow, specs | a finished upload becomes an available, installable release | medium |
@@ -1620,6 +1622,52 @@ Order: 40a → 40b → 40c → 40d → 40e → 40f, then 40g, then 40h-a → 40h
 **Revert.** `db:rollback` (reversible), delete the job and its spec, revert the two hunks in the dispatch job, the cron hunk, the `.env.example` hunk and the two added expectations in the dispatch spec.
 
 **Next.** 40h-b (upload session and finalize, with the `manual_upload_only_spec.rb` rewrite) depends on 40h-a and 40b, both in. It can be written without the R2 bucket; running it end to end needs the bucket, CORS, lifecycle rule and the four `R2_STAGING_*` variables (commands in the 40h-a result).
+
+#### 40g-2 result (built; written, NOT run; no testing by instruction)
+
+**What it is.** `ReleaseUploadSweeperJob`, a cron job (every 15 minutes, queue `schedule`, `release_upload_sweeper` in `config/initializers/good_job.rb`). **No migration, no route, no locale key.** It touches only `release_uploads` rows, which exist only while direct upload is switched on, so deploying it changes nothing today.
+
+**Behaviour.**
+- `awaiting_bytes` -> `expired` when `expires_at + ReleaseUploadFinalizer::GRACE` (30 minutes) has passed, the same moment finalize itself starts answering 409. The staged object is then deleted (best effort: a failed delete is logged and the row stays `expired`; the bucket's lifecycle rule on `staging/` is the backstop; nothing is called if the staging bucket is not configured).
+- `uploaded` -> `failed` when `uploaded_at` is older than `RELEASE_UPLOAD_STALE_AFTER_MINUTES` (default 90; unset, zero, negative or non-numeric falls back). The object is kept. **Until 40i-a exists nothing picks an `uploaded` row up, so with the flag on, every finalized upload fails after the limit with "received but not processed ... Upload it again."** That is correct and is one more reason the flag stays off until 40i-a.
+- `processing`, `done`, `failed`, `expired` are never touched. Every write is conditional on the state and time still being what was read, so a finalize or a callback that lands in between wins.
+
+**Choices flagged.** (1) `processing` is not swept: a release already exists for it and the CI callbacks own that state; a run that dies there is 40g's job (the compile) or a later slice. (2) `stale_awaiting` (40h-a) is reused with a grace-adjusted cutoff rather than changed. (3) Expiry is logged at `info`, an unprocessed upload at `warn`; no email or notification.
+
+**Not verified:** everything. No Ruby in the sandbox. Files: `app/jobs/release_upload_sweeper_job.rb`, `config/initializers/good_job.rb`, `.env.example`, `spec/jobs/release_upload_sweeper_job_spec.rb`. If CI is red, look first at the `allow(ReleaseUpload).to receive(:stale_awaiting).and_wrap_original` race example and the beginless `...cutoff` ranges (Rails 7+).
+
+**Revert.** Delete the job and its spec, the cron hunk and the `.env.example` hunk. No data to undo.
+
+#### 40h-c-1 result (built; written, NOT run; no testing by instruction)
+
+**What it is.** The Zealot half of 40h-c: the console upload form sends the file straight to the staging bucket when direct upload is on. **No migration, no route, no Ruby service.** With the flag off (the default) the form renders exactly as before, so deploying this changes nothing for users. The Storeapp half is a separate slice, **40h-c-2, blocked** (see below).
+
+**Files (8: one JS controller, its registration, a helper, one view, two locale files, a doc and a spec; each layer is small).** `app/frontend/javascript/controllers/direct_upload_controller.js` (new), `app/frontend/javascript/controllers/index.js` (one registration), `app/helpers/releases_helper.rb` (new), `app/views/releases/_form.html.slim`, `config/locales/zealot/direct_upload.en.yml` and `.zh-CN.yml` (new, so the existing locale files are untouched), `docs/direct_upload.md` (new), `spec/requests/release_direct_upload_form_spec.rb` (new).
+
+**What it does.** `ReleasesHelper#direct_upload_form_html(channel)` returns an empty hash until `ReleaseUploadSession.enabled?` is true; then it puts `data-controller="direct-upload"`, the `submit` action, `data-turbo="false"`, the console session URL (`/channels/:channel/release_uploads`) and the localized messages (JSON) on the form, and the form also renders a hidden status area (progress bar, message, back link). On submit the controller: with no file chosen, does nothing (the normal submit and its validation run); otherwise prevents the submit, `POST`s the session (JSON, CSRF header, same-origin) with `filename`, `size`, `content_type` (only when the browser knows it) and the form fields Zealot accepts, `PUT`s the file to `upload_url` with an `XMLHttpRequest` (the only API that reports upload progress; every header the session lists is sent, nothing else, no cookies), then `POST`s finalize. A failure at any step shows the server's own error (or a localized fallback), re-enables the form and keeps the file chosen. A finished upload shows "received" with a link back to the channel; **no release exists yet at that point**, by design (40i).
+
+**Choices flagged, not silently made.**
+1. **`release_version` and `build_version` are not forwarded.** The session accepts only `ReleaseUploadSession::FORM_OPTION_KEYS`, and the file's manifest is the source of truth once CI has read it (40i-a). Whether the typed values should override the manifest in the multipart path today was not checked; the direct path simply ignores them.
+2. **Blank fields are left out** of the session request, so `form_options` stays tidy. The checkbox's hidden `"0"` is sent as `"0"` when unchecked, `"1"` when checked.
+3. **No file-type check in the browser** (40h-b choice 3 stands): a file that is not an app is refused by CI's stage 1, never as a release.
+4. **No resume, no multipart PUT.** One `PUT`, which covers every file under the 2 GiB cap (R2 allows 5 GiB per PUT). A dropped connection means starting again; a PUT started inside the two-hour URL life can finish after it, which finalize tolerates for 30 more minutes.
+5. **Turbo is off for this one form** so the controller's own submit handling is the only one that runs. No other page changes.
+6. **The R2 CORS rule is a hard requirement for this form** (the browser PUT is cross-origin). The rule in "R2 staging bucket: terminal commands" allows `PUT` and `HEAD` from the console origin and exposes `ETag`; it was not exercised.
+7. **The message text promises that the build will appear in the channel.** That is only true once 40i-a to 40i-c exist; it is safe today because the form shows it only when the flag is on, and the flag must stay off until 40i-a lands.
+
+**Not verified:** everything. Nothing was run: no Ruby, no browser, no R2, not even a syntax check of the JS, Slim or YAML. Things to look at first if it misbehaves: the Slim line continuation on the back link in `_form.html.slim`; `f.button :submit, data: ...` rendering the target attribute; `simple_form_for ... html: {}` receiving an empty hash with the flag off; whether `ReleasesHelper` is picked up automatically (`include_all_helpers` was not found disabled); the locale files loading from `config/locales/zealot/` (Rails' default recursive glob, the same way `api_tokens.*.yml` is loaded); `Object` Stimulus values parsing the JSON string.
+
+**Revert.** Delete the controller, the helper, the two locale files, the doc and the spec; revert the registration hunk and restore the old `_form.html.slim`. No data to undo.
+
+**40h-c-2 is BLOCKED (Storeapp workflow). What blocks it, so the operator can unblock it fully:**
+1. **40i-a does not exist.** Finalize stops at `uploaded`; nothing reads the file or creates a release. If Storeapp's release workflow moved to session, PUT, finalize now, its builds would reach R2 and then sit in `uploaded` forever, so Storeapp would **stop publishing**. The multipart endpoint is not behind a flag yet (it is untouched until 40k), so keeping Storeapp on it is the safe state. 40i-a (stage-1 workflow in the storage repo, callback verification, dispatch from finalize) is the next Zealot slice and can be written without the operator, but needs Decision 9 below to be final.
+2. **The R2 staging bucket does not exist.** Without it the doors answer 404 whatever the flag says. To do: create the bucket, the CORS rule, the lifecycle rule and the Object Read and Write token (commands in "R2 staging bucket: terminal commands"), then set `R2_STAGING_BUCKET`, `R2_STAGING_ENDPOINT`, `R2_STAGING_ACCESS_KEY_ID`, `R2_STAGING_SECRET_ACCESS_KEY` on `zealot-web`. A second R2 token for CI (read and delete) is needed for 40i-a; its env names are chosen there.
+3. **Decision 9 (OIDC or HMAC for the CI callback) is still open.** The recommendation is OIDC (no long-lived secret). Say "OIDC" or "HMAC" and 40i-a is unblocked. Decision 3 (where the signing key lives) gates stage 2 (40i-c) and the first real compile, not 40i-a.
+4. **It is another repo.** The change is a patch against `Zapier-codes/Storeapp` (its release workflow and docs), delivered separately; it should be built only after 40i-a is in and the flag has been proved on the console form.
+
+**Do not set `RELEASE_UPLOAD_SESSIONS_ENABLED=true` before 40i-a lands**, and do not move any CI to the new endpoints before then.
+
+**Next.** 40i-a (stage-1 workflow and verified callback) unblocks the chain; it needs only Decision 9 to be answered to be written, and the bucket plus the CI token to be run. A `40g-2` sweeper for `release_uploads` (expire stale `awaiting_bytes`, fail `uploaded` rows nobody picks up) is independent.
 
 #### 40h-b result (built; written, NOT run; no testing by instruction)
 
@@ -5520,6 +5568,22 @@ them is already modernized.
   at it.
 
 ## Session log
+
+### 2026-10-04 -- Task 40g-2: sweeper for direct uploads (operator: "on to the next task", no testing; written, NOT run)
+- **Base:** `origin/develop` is still `713f1365`, so the 40h-c-1 patch from the previous turn had not been pushed. **This one combined patch (40h-c-1 + 40g-2) replaces it; apply only this one. If the 40h-c-1 patch was already applied or pushed, `git am` fails loudly: say so and the next session rebases to a 40g-2-only patch.**
+- **Picked because:** the board's next slice, 40i-a, is blocked (below). 40g-2 is independent, needs nothing from the operator and cleans up after 40h-b.
+- **Built:** see "40g-2 result" in the Task 40 entry.
+- **Not verified:** everything. No Ruby in the sandbox; the operator said no testing.
+- **Behaviour change on deploy:** none (no rows exist while direct upload is off; no migration). `.rb` files change, so the push starts `Anthropic - Build & Deploy develop`.
+- **Blocked, needs the operator (40i-a, then 40h-c-2):** Decision 9 (OIDC or HMAC for the CI callback; recommended OIDC) is unanswered; the R2 staging bucket, CORS, lifecycle rule and tokens do not exist yet (commands under "R2 staging bucket: terminal commands"); 40i-a also needs a second R2 token for CI. Say "OIDC" or "HMAC" and 40i-a is written next.
+
+### 2026-10-04 -- Task 40h-c-1: the console upload form sends the file straight to the staging bucket (operator: "jump to the next task", no testing; written, NOT run)
+- **Base:** `develop` @ `713f1365` (the 40g + 40h-b commit, already in this clone, so no rebase). One combined patch on top of it.
+- **Picked because:** the board's order after 40h-b is 40h-c. It was cut in two because its Storeapp half is another repo and is blocked: **40h-c-1** (the Zealot console form) is built, **40h-c-2** (Storeapp's workflow) is not.
+- **Built:** see "40h-c-1 result" in the Task 40 entry: a Stimulus controller (session, PUT with progress, finalize), a helper that adds it to the form only while `ReleaseUploadSession.enabled?`, localized messages (en and zh-CN), `docs/direct_upload.md`, and a request spec.
+- **Not verified:** everything. No Ruby, browser or R2 in the sandbox, and the operator said no testing; not even a syntax check was run.
+- **Behaviour change on deploy:** none for users (the flag is off, so the form is the plain multipart form). The JS bundle and `.rb` files change, so the push starts `Anthropic - Build & Deploy develop`.
+- **Blocked, needs the operator:** 40h-c-2 and any end-to-end run. What blocks it: 40i-a does not exist, the R2 staging bucket does not exist, Decision 9 (OIDC or HMAC) is unanswered, and Storeapp is a separate repo. The full list is in the 40h-c-1 result. **Do not set `RELEASE_UPLOAD_SESSIONS_ENABLED` before 40i-a lands.**
 
 ### 2026-10-04 -- Task 40h-b: upload session and finalize for the console and the API (operator: "Continue", no testing; written, NOT run)
 - **Base:** `origin/develop` tip is still `2ae8b594`. This session delivers **one combined patch (40g + 40h-b) against `2ae8b594`**, because the 40g patch from the previous turn had not been confirmed applied (`origin/develop` had not moved when this was built). **It replaces the 40g-only patch; apply only this one. If the 40g patch was already applied or pushed, `git am` fails loudly: say so and the next session rebases to a 40h-b-only patch.**

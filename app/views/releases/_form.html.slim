@@ -1,7 +1,9 @@
-= simple_form_for(@release, url: channel_releases_path(@channel)) do |f|
+- direct_upload = ReleaseUploadSession.enabled?
+
+= simple_form_for(@release, url: channel_releases_path(@channel), html: direct_upload_form_html(@channel)) do |f|
   = f.error_notification
 
-  = f.input :file, required: false
+  = f.input :file, required: false, input_html: { data: { direct_upload_target: 'file' } }
   = f.input :release_version
   = f.input :build_version
   = f.input :release_type
@@ -11,4 +13,12 @@
   = f.input :changelog, input_html: { rows: 10, cols: 10 }
   = f.input :play_store_target, as: :boolean
 
-  = f.button :submit
+  = f.button :submit, data: { direct_upload_target: 'submit' }
+
+  - if direct_upload
+    .hidden.mt-4 data-direct-upload-target="status" role="status" aria-live="polite"
+      progress.d-progress.d-progress-primary.w-full value="0" max="100" data-direct-upload-target="progress"
+      p.mt-2.text-sm data-direct-upload-target="message"
+      .hidden.mt-3 data-direct-upload-target="done"
+        = link_to t('releases.direct_upload.back_to_channel'), friendly_channel_overview_path(@channel), \
+          class: 'd-btn d-btn-sm', data: { turbo_frame: '_top' }

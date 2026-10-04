@@ -1,0 +1,10 @@
+zh-CN:
+  releases:
+    direct_upload:
+      opening: 正在准备上传...
+      sending: "正在上传 {percent}%"
+      finishing: 正在确认上传...
+      done: 上传已收到。Zealot 读取完成后，构建会出现在此渠道中，您可以离开此页面。
+      failed: 无法完成上传，请重试。
+      send_failed: 无法将文件发送到存储，请检查网络后重试。
+      back_to_channel: 返回渠道

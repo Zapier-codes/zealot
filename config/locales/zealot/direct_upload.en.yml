@@ -1,0 +1,10 @@
+en:
+  releases:
+    direct_upload:
+      opening: Preparing the upload...
+      sending: "Uploading {percent}%"
+      finishing: Checking the upload...
+      done: Upload received. The build will appear in this channel once Zealot has finished reading it. You can leave this page.
+      failed: The upload could not be completed. Please try again.
+      send_failed: The file could not be sent to storage. Check your connection and try again.
+      back_to_channel: Back to the channel

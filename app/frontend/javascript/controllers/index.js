@@ -36,4 +36,7 @@ application.register("counter", CounterController)
 import GlobeController from "./globe_controller"
 application.register("globe", GlobeController)
 
+import DirectUploadController from "./direct_upload_controller"
+application.register("direct-upload", DirectUploadController)
+
 import "./admin"

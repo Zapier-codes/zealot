@@ -32,6 +32,11 @@ CRON_JOBS_SETUP = lambda do
       cron: '*/15 * * * *',
       class: 'CiCompileSweeperJob',
       description: 'Fail releases whose CI compile was queued or dispatched but never reported back'
+    },
+    release_upload_sweeper: {
+      cron: '*/15 * * * *',
+      class: 'ReleaseUploadSweeperJob',
+      description: 'Expire direct uploads never finalized and fail finalized ones nobody processed'
     }
   }
 
