@@ -111,13 +111,49 @@ RSpec.describe ReleaseUploadSweeperJob do
     end
   end
 
-  it 'never touches processing, done, failed or expired rows' do
-    rows = %w[processing done failed expired].map do |state|
+  # Task 40i-c: a processing row has a held release with no file; if stage 2 never reports, it is failed.
+  describe 'processing' do
+    let(:metadata) do
+      { 'kind' => 'aab', 'package_name' => 'com.example.app', 'version_code' => 3, 'version_name' => '1.0',
+        'file_sha256' => 'a' * 64, 'file_size' => 100 }
+    end
+
+    # The real path to `processing`: a reported upload that the release builder turned into a held release.
+    def make_processing(stage1_at:)
+      upload = make_upload(state: 'uploaded')
+      upload.update_columns(uploaded_size: 100, stage1_at: Time.current, metadata: metadata)
+      ReleaseUploadReleaseBuilder.new(upload.reload, staging: staging).call
+      upload.reload.tap { |row| row.update_columns(stage1_at: stage1_at) }
+    end
+
+    it 'fails a row whose stage 2 never reported, writes the reason on the held release and keeps it held' do
+      upload = make_processing(stage1_at: 3.hours.ago)
+
+      described_class.perform_now
+
+      expect(upload.reload.state).to eq('failed')
+      expect(upload.error).to include('did not finish')
+      expect(upload.release.reload).to have_attributes(status: 'held', ci_compile_state: 'failed')
+      expect(upload.release.ci_compile_error).to include('upload it again')
+    end
+
+    it 'leaves a row whose stage 1 just reported alone' do
+      upload = make_processing(stage1_at: 5.minutes.ago)
+
+      described_class.perform_now
+
+      expect(upload.reload.state).to eq('processing')
+      expect(upload.release.reload.ci_compile_state).to be_nil
+    end
+  end
+
+  it 'never touches done, failed or expired rows, nor an uploaded or processing row that is still fresh' do
+    rows = %w[done failed expired].map do |state|
       make_upload(state: state, expires_at: 3.hours.ago, uploaded_at: 3.hours.ago)
     end
 
     described_class.perform_now
 
-    expect(rows.map { |r| r.reload.state }).to eq(%w[processing done failed expired])
+    expect(rows.map { |r| r.reload.state }).to eq(%w[done failed expired])
   end
 end

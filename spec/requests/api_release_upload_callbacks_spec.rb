@@ -116,4 +116,86 @@ RSpec.describe 'Api::ReleaseUploadCallbacks', type: :request do
       expect(response).to have_http_status(:unauthorized)
     end
   end
+
+  # Task 40i-c: the second report of the same workflow run. Same door, same OIDC token, same workflow file.
+  describe 'stage 2' do
+    let(:staging) { instance_double(ReleaseUploadStaging, delete: true, delete_sibling: true) }
+    let(:storage) { instance_double(ReleaseStorage, exist?: true) }
+    let(:release) do
+      upload.update_columns(metadata: { 'kind' => 'apk', 'package_name' => 'com.example.app', 'version_code' => 3,
+                                        'version_name' => '1.0', 'file_sha256' => 'a' * 64, 'file_size' => 2048 },
+                            stage1_at: Time.current)
+      ReleaseUploadReleaseBuilder.new(upload.reload, staging: staging).call.release
+    end
+    let(:keys) { ReleaseStorage.new(release, adapter: nil).staged_keys(filename: 'app.apk') }
+    let(:report) { { state: 'ok', file_key: keys[:file], file_sha256: 'a' * 64 } }
+
+    def stage2(id = upload.id, auth: 'Bearer good-token', params: report)
+      headers = auth ? { 'Authorization' => auth } : {}
+      post "/api/release_uploads/#{id}/stage2", params: params.to_json,
+                                                headers: headers.merge('Content-Type' => 'application/json')
+    end
+
+    before do
+      allow(verifier).to receive(:call).with('good-token').and_return({})
+      allow(ReleaseUploadStaging).to receive(:new).and_return(staging)
+      allow(ReleaseStorage).to receive(:new).and_wrap_original do |original, rel, **options|
+        options.key?(:adapter) ? original.call(rel, **options) : storage
+      end
+      release
+    end
+
+    it 'finishes the release the first report made, creating none, and answers 200' do
+      expect { stage2 }.not_to change(Release, :count)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body).to include('upload_id' => upload.id, 'state' => 'done', 'stage' => 2,
+                                              'release_id' => release.id, 'status' => 'available')
+      expect(release.reload).to have_attributes(status: 'available', file_storage_key: keys[:file])
+      expect(upload.reload.state).to eq('done')
+    end
+
+    it 'is idempotent' do
+      stage2
+      expect { stage2 }.not_to change { release.reload.updated_at }
+      expect(response).to have_http_status(:ok)
+    end
+
+    it 'answers 422 and fails the upload when the file is not in storage' do
+      allow(storage).to receive(:exist?).and_return(false)
+      stage2
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response.parsed_body).to include('state' => 'failed')
+      expect(release.reload).to have_attributes(status: 'held', file_storage_key: nil)
+    end
+
+    it 'records a failure report from CI' do
+      stage2(params: { state: 'failed', error: 'bundletool failed' })
+
+      expect(response).to have_http_status(:ok)
+      expect(upload.reload).to have_attributes(state: 'failed', error: 'bundletool failed')
+    end
+
+    it 'answers 409 for an upload whose first report has not been made, and 404 for an unknown one' do
+      other = ReleaseUpload.create!(channel: channel, filename: 'other.apk', declared_size: 10)
+      other.update_columns(state: 'uploaded', uploaded_size: 10)
+      expect { stage2(other.id) }.not_to change(Release, :count)
+      expect(response).to have_http_status(:conflict)
+
+      stage2(0)
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it 'refuses a missing header and a token the verifier rejects, before it looks the upload up' do
+      stage2(auth: nil)
+      expect(response).to have_http_status(:unauthorized)
+      expect(response.parsed_body).to eq('error' => 'Unauthorized')
+
+      allow(verifier).to receive(:call).and_raise(GithubOidcVerifier::Invalid, 'bad signature')
+      stage2(0)
+      expect(response).to have_http_status(:unauthorized)
+      expect(upload.reload.state).to eq('processing')
+    end
+  end
 end

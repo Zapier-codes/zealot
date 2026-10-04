@@ -416,6 +416,9 @@ Rails.application.routes.draw do
     # Task 40i-a: the stage-1 workflow reports what it read from a staged upload. Authenticated by GitHub's OIDC
     # token only (GithubOidcVerifier); creates no release. See Api::ReleaseUploadCallbacksController.
     post 'release_uploads/:id/stage1', to: 'release_upload_callbacks#stage1'
+    # Task 40i-c: the same workflow's second report (files uploaded, bundle built). Same OIDC door; it updates the
+    # release stage 1 made and creates none. See ReleaseUploadFinisher.
+    post 'release_uploads/:id/stage2', to: 'release_upload_callbacks#stage2'
 
     resources :debug_files, except: %i[new edit create] do
       collection do

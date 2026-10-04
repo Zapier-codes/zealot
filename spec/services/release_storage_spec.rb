@@ -64,6 +64,37 @@ RSpec.describe ReleaseStorage do
     end
   end
 
+  # Task 40i-c: the keys stage 2 must have uploaded under, derived from the release and never from CI's word.
+  describe '#staged_keys' do
+    let(:release) { double('Release', id: 9, app: double(id: 3)) }
+    let(:storage) { described_class.new(release, adapter: nil) }
+
+    it 'names the file, the universal APK and the compressed set under the release' do
+      expect(storage.staged_keys(filename: 'app.aab')).to eq(
+        file: 'uploads/apps/a3/r9/binary/app.aab',
+        universal: 'uploads/apps/a3/r9/pipeline/universal.apk',
+        compressed: 'uploads/apps/a3/r9/pipeline/release.apks.br'
+      )
+    end
+
+    it 'adds the icon key only when an icon extension is given' do
+      expect(storage.staged_keys(filename: 'app.apk', icon_extension: '.png')[:icon])
+        .to eq('uploads/apps/a3/r9/icons/icon.png')
+      expect(storage.staged_keys(filename: 'app.apk')).not_to have_key(:icon)
+    end
+
+    it 'maps to the same GitHub tag and asset names the workflow uploads' do
+      keys = storage.staged_keys(filename: 'app.aab', icon_extension: '.webp')
+      located = keys.transform_values { |key| ReleaseStorage::GithubAdapter.location_for(key) }
+
+      expect(located.values.map(&:first).uniq).to eq(['a3-r9'])
+      expect(located.transform_values(&:last)).to eq(
+        file: 'app.aab', universal: 'pipeline__universal.apk', compressed: 'pipeline__release.apks.br',
+        icon: 'icons__icon.webp'
+      )
+    end
+  end
+
   describe '#with_local_file' do
     let(:tmp) { Dir.mktmpdir }
     let(:release) { double('Release', id: 9, app: double(id: 4)) }

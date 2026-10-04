@@ -127,6 +127,31 @@ RSpec.describe ReleaseUploadStaging do
     end
   end
 
+  # Task 40i-c: the icon stage 1 put beside the file is deleted with it, but only from this upload's own prefix.
+  describe '#delete_sibling' do
+    let(:icon_key) { "#{File.dirname(upload.staging_key)}/icon.png" }
+
+    it 'deletes an object beside the staged file' do
+      expect(staging.delete_sibling(upload, icon_key)).to be(true)
+      expect(client.api_requests.last).to include(operation_name: :delete_object)
+      expect(client.api_requests.last[:params]).to include(bucket: 'zealot-staging', key: icon_key)
+    end
+
+    it 'refuses a key outside the upload\'s own prefix, and one that climbs out of it' do
+      expect { staging.delete_sibling(upload, 'staging/a1/u999/other/icon.png') }.to raise_error(ArgumentError)
+      expect { staging.delete_sibling(upload, "#{File.dirname(upload.staging_key)}/../x.png") }
+        .to raise_error(ArgumentError)
+      expect { staging.delete_sibling(upload, nil) }.to raise_error(ArgumentError)
+    end
+
+    it 'raises a storage error when R2 refuses' do
+      client.stub_responses(:delete_object, 'AccessDenied')
+
+      expect { staging.delete_sibling(upload, icon_key) }
+        .to raise_error(ReleaseStorage::StorageError, /R2 delete failed/)
+    end
+  end
+
   describe 'multipart' do
     it 'starts an upload and returns its id' do
       client.stub_responses(:create_multipart_upload, upload_id: 'mp-1')

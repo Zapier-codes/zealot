@@ -103,6 +103,20 @@ class ReleaseUploadStaging
     raise ReleaseStorage::StorageError, "R2 delete failed for #{upload.staging_key}: #{e.message}"
   end
 
+  # Task 40i-c: removes another object stage 1 put beside the file (the icon). Only a key under this upload's
+  # own prefix is accepted, so a report can never make Zealot delete someone else's staged file.
+  def delete_sibling(upload, key)
+    prefix = "#{File.dirname(key_for(upload))}/"
+    unless key.to_s.start_with?(prefix) && !key.to_s.include?('..')
+      raise ArgumentError, 'the key is not under this upload'
+    end
+
+    @client.delete_object(bucket: @bucket, key: key)
+    true
+  rescue Aws::Errors::ServiceError => e
+    raise ReleaseStorage::StorageError, "R2 delete failed for #{key}: #{e.message}"
+  end
+
   # @return [String] the multipart upload id; the caller stores it on the record
   def start_multipart(upload)
     params = { bucket: @bucket, key: key_for(upload) }

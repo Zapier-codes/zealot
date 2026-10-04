@@ -4,10 +4,14 @@
 #
 #   awaiting_bytes -> expired   the client never finalized inside the window plus the finalize grace
 #   uploaded       -> failed    finalized, but nothing picked the file up within the limit
+#   processing     -> failed    (Task 40i-c) stage 1 made the release but stage 2 never reported back
 #
 # For an `expired` row the staged object is deleted too (best effort: the bucket's lifecycle rule on `staging/`
 # is the backstop, so a delete that fails is only logged). A `failed` row keeps its object for CI to retry.
-# `processing` and `done` are never touched: a release exists for them and the CI callbacks own those states.
+# `done` is never touched. A `processing` row has a release (held, with no file); when stage 2 does not report
+# within the same limit, counted from the stage-1 report, the row is failed and the reason is written on the held
+# release's `ci_compile_error`, exactly as a `failed` report from CI would. The release stays held: it has no
+# file, so it must not become available. The owner deletes it and uploads again.
 #
 # Why GRACE: finalize accepts a call until `expires_at + ReleaseUploadFinalizer::GRACE`, so the sweeper waits
 # the same time; a PUT that started inside the window can finish after it.
@@ -34,6 +38,7 @@ class ReleaseUploadSweeperJob < ApplicationJob
     now = Time.current
     expire_unfinished(now)
     fail_unclaimed(now)
+    fail_unfinished(now)
   end
 
   private
@@ -62,6 +67,34 @@ class ReleaseUploadSweeperJob < ApplicationJob
     rescue StandardError => e
       logger.error("[ReleaseUploadSweeperJob] upload #{upload.id}: #{e.message}")
     end
+  end
+
+  # Task 40i-c
+  def fail_unfinished(now)
+    cutoff = now - self.class.stale_after
+    ReleaseUpload.where(state: 'processing', stage1_at: ...cutoff).find_each do |upload|
+      changed = ReleaseUpload.where(id: upload.id, state: 'processing').where(stage1_at: ...cutoff)
+                             .update_all(state: 'failed', updated_at: Time.current, error: unfinished_reason)
+      next unless changed.positive?
+
+      fail_held_release(upload)
+      logger.warn("[ReleaseUploadSweeperJob] upload #{upload.id} never finished stage 2; marked failed")
+    rescue StandardError => e
+      logger.error("[ReleaseUploadSweeperJob] upload #{upload.id}: #{e.message}")
+    end
+  end
+
+  def fail_held_release(upload)
+    return if upload.release_id.blank?
+
+    Release.where(id: upload.release_id)
+           .update_all(ci_compile_state: 'failed', ci_compile_error: unfinished_reason,
+                       ci_compile_finished_at: Time.current)
+  end
+
+  def unfinished_reason
+    "CI did not finish preparing the files within #{self.class.stale_after.in_minutes.round} minutes. " \
+      'Delete this release and upload it again.'
   end
 
   def unclaimed_reason

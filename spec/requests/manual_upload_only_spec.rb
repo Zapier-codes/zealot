@@ -26,6 +26,11 @@ require 'rails_helper'
 # builder is reached only from the report intake, and the intake only from the callback controller; and a
 # callback for an upload nobody finalized creates no release.
 #
+# Task 40i-c adds the stage-2 callback (`POST /api/release_uploads/:id/stage2`). It creates no release: it only
+# finishes the one stage 1 made, through `ReleaseUploadFinisher`, which is reached from the controller alone and
+# may not create or mark a release. The last examples pin that, and that the door refuses every call without a
+# valid token or for an upload nobody finalized.
+#
 # Task 40i-a adds the stage-1 callback (`POST /api/release_uploads/:id/stage1`). It is a door that needs NO user
 # credential, so it is pinned at the end of this file: it must authenticate with the GitHub OIDC verifier before
 # anything else, create no release and write no staging row (it only updates one), and refuse every call without
@@ -218,6 +223,52 @@ RSpec.describe 'Manual upload only (f.viii)', type: :request do
 
     expect do
       post "/api/release_uploads/#{upload.id}/stage1", params: report.to_json,
+                                                       headers: { 'Authorization' => 'Bearer good-token',
+                                                                  'Content-Type' => 'application/json' }
+    end.not_to change(Release, :count)
+
+    expect(response).to have_http_status(:conflict)
+    expect(upload.reload.state).to eq('awaiting_bytes')
+  end
+
+  # --- Task 40i-c: the callback-side finisher ---
+
+  it 'reaches the stage-2 finisher from exactly one place, the OIDC-guarded callback controller' do
+    callers = source_files.select { |f| File.read(f).match?(/ReleaseUploadFinisher\.new/) }.map { |f| relative(f) }
+    callers -= ['app/services/release_upload_finisher.rb'] # its own usage example in the header comment
+    expect(callers).to eq(['app/controllers/api/release_upload_callbacks_controller.rb'])
+  end
+
+  it 'lets the stage-2 finisher create no release, mark no intake and fetch nothing from a URL' do
+    text = File.read(Rails.root.join('app/services/release_upload_finisher.rb'))
+
+    forbidden = Regexp.union(/upload_file/, /\breleases\.(create|build)/, /Release\.(create|new|build)/,
+                             /ReleaseUpload\.(create|new)/, /storage_intake_kind/,
+                             /ReleaseUploadReleaseBuilder/, /open-uri|URI\.open|Net::HTTP|Faraday|HTTParty/)
+    expect(text).not_to match(forbidden)
+  end
+
+  it 'refuses a stage-2 callback with no token, with the shared compile token, and changes nothing' do
+    expect do
+      post '/api/release_uploads/1/stage2', params: { state: 'failed' }
+      expect(response.status).to be >= 400
+      post '/api/release_uploads/1/stage2', params: { state: 'failed' },
+                                            headers: { 'Authorization' => 'Bearer not-a-jwt' }
+      expect(response.status).to eq(401)
+    end.not_to(change { [Release.count, ReleaseUpload.count] })
+  end
+
+  it 'finishes nothing for an upload nobody finalized, even with a token the verifier accepts' do
+    app = create(:app, name: 'Tripwire app 2')
+    channel = app.schemes.create!(name: 'Main').channels.create!(name: 'Android', device_type: :android)
+    upload = ReleaseUpload.create!(channel: channel, filename: 'app.apk', declared_size: 10)
+    verifier = instance_double(GithubOidcVerifier, call: {})
+    allow(GithubOidcVerifier).to receive(:new).and_return(verifier)
+    stub_const('ENV', ENV.to_h.merge('CI_OIDC_AUDIENCE' => 'https://zealot.example'))
+    report = { state: 'ok', file_key: 'uploads/apps/a1/r1/binary/app.apk', file_sha256: 'a' * 64 }
+
+    expect do
+      post "/api/release_uploads/#{upload.id}/stage2", params: report.to_json,
                                                        headers: { 'Authorization' => 'Bearer good-token',
                                                                   'Content-Type' => 'application/json' }
     end.not_to change(Release, :count)

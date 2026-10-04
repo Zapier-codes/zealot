@@ -1,4 +1,4 @@
-# Task 40i-a: the stage-1 workflow. Copy this file into the STORAGE repo as
+# Tasks 40i-a and 40i-c: the upload workflow (stage 1 reads, stage 2 builds). Copy this file into the STORAGE repo as
 # `.github/workflows/read-upload.yml` (the repo named by GITHUB_STORAGE_REPO / CI_COMPILE_REPO on Render), on the
 # branch CI_COMPILE_REF names (default main). It does not belong in the Zealot repo's own `.github/workflows/`
 # (see "Which workflow is the deploy pipeline?" in handover.md).
@@ -17,21 +17,38 @@
 # If any step fails, the last step reports `state: failed` with a reason, so a broken run shows up on the upload
 # instead of leaving it waiting.
 #
-# This workflow reads and reports only. It builds, signs and compresses nothing, and it does not create a
-# release: Zealot creates the release from the report (slice 40i-b), and the heavy stage 2 is slice 40i-c.
+# Two jobs, so the file is parsed with the least privilege:
+#   read   (contents read, the R2 token, no signing key) reads and reports (stage 1). Zealot answers with the
+#          release it made, held, and the storage tag its files go under.
+#   build  (Task 40i-c; needs `read`; contents write, the R2 token and the signing key) downloads the staged file
+#          again, checks it is the file `read` hashed, uploads it and the icon to the storage release
+#          `a<app>-r<release>`, and for a bundle builds and signs the universal APK and the Brotli-compressed
+#          device-split set (as compile-aab.yml does). It then reports once more (POST
+#          /api/release_uploads/<upload_id>/stage2) with the same kind of OIDC token. Zealot derives every storage
+#          key itself, checks each object is in the storage release (and the signing certificate, when
+#          CI_COMPILE_EXPECT_CERT_SHA256 is set on Render) and only then makes the release available (unless the
+#          owner asked to hold it) and deletes the staged objects. An APK is stored as uploaded: nothing is built.
 #
 # Storage-repo SECRETS (Settings > Secrets and variables > Actions > Secrets):
 #   R2_STAGING_CI_ACCESS_KEY_ID      } an R2 API token (Object Read and Write, scoped to the staging bucket)
 #   R2_STAGING_CI_SECRET_ACCESS_KEY  } created for CI, not the one Render uses
+#   RELEASE_KEYSTORE_BASE64          } stage 2, bundles only: the organisation .jks (`base64 -w0 release.jks`),
+#   RELEASE_KEYSTORE_PASSWORD        } its password, the key alias and the key password (leave RELEASE_KEY_PASSWORD
+#   RELEASE_KEY_ALIAS                } unset if it equals the keystore password). The same four secrets and the
+#   RELEASE_KEY_PASSWORD             } same certificate as compile-aab.yml and the Storeapp patch.
 # Storage-repo VARIABLES (same page, Variables tab):
 #   ZEALOT_URL            https://<your zealot host>, no trailing path. Must equal CI_OIDC_AUDIENCE on Render
 #                         (or https://<ZEALOT_DOMAIN> when that is what Render has).
 #   R2_STAGING_ENDPOINT   https://<account id>.r2.cloudflarestorage.com
 #   R2_STAGING_BUCKET     the staging bucket name
+#   RELEASE_CERT_SHA256   optional; the signing certificate's SHA-256 (hex, with or without colons). When set,
+#                         stage 2 refuses to upload anything signed by another certificate.
 #   BUNDLETOOL_VERSION    optional; default below (only used for .aab files)
 #   BUNDLETOOL_SHA256     optional; SHA-256 of that bundletool jar; checked when set
 #
-# Needs `id-token: write` (below) and nothing else: no write access to the repo, no release token.
+# Job `read` needs `id-token: write` and nothing else (no write access to the repo). Job `build` also needs
+# `contents: write`, to create the storage release and upload to it with the run's own GITHUB_TOKEN; no other
+# token is used. The storage repo should be private (Task 40 decision 5).
 #
 # Not run. Written without testing (operator's standing instruction); parsed as YAML and its shell steps
 # syntax-checked with `bash -n` only. What has never been exercised: the aapt2 output patterns, the bundletool
@@ -76,6 +93,13 @@ jobs:
     name: Read upload ${{ inputs.upload_id }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # What `build` needs from the stage-1 answer and report. Nothing here is secret.
+    outputs:
+      release_id: ${{ steps.callback.outputs.release_id }}
+      storage_tag: ${{ steps.callback.outputs.storage_tag }}
+      file_sha256: ${{ steps.callback.outputs.file_sha256 }}
+      icon_key: ${{ steps.callback.outputs.icon_key }}
+      icon_sha256: ${{ steps.callback.outputs.icon_sha256 }}
     steps:
       # Inputs reach the shell only through env, never by pasting ${{ }} into a script, and are checked against
       # strict patterns first. A bad value fails here, before anything is downloaded.
@@ -280,6 +304,14 @@ jobs:
             --data @"$WORK/body.json")"
           cat "$WORK/callback.out"; echo
           [[ $code == 200 ]] || { echo "::error::Zealot answered HTTP $code"; exit 1; }
+          # Zealot made the release (held) and names the tag its files go under; stage 2 uses both.
+          {
+            echo "release_id=$(jq -r '.release_id // empty' "$WORK/callback.out")"
+            echo "storage_tag=$(jq -r '.storage_tag // empty' "$WORK/callback.out")"
+            echo "file_sha256=$(jq -r '.file_sha256 // empty' "$WORK/body.json")"
+            echo "icon_key=$(jq -r '.icon_key // empty' "$WORK/body.json")"
+            echo "icon_sha256=$(jq -r '.icon_sha256 // empty' "$WORK/body.json")"
+          } >> "$GITHUB_OUTPUT"
 
       # Runs only when an earlier step failed: tells Zealot, so the upload shows `failed` with a reason.
       - name: Report the failure to Zealot
@@ -304,5 +336,301 @@ jobs:
             --data "$body" || true
 
       - name: Remove the working files
+        if: always()
+        run: rm -rf "${WORK:-/nonexistent}"
+
+  # Task 40i-c: stage 2. Runs only when `read` succeeded, i.e. Zealot accepted the report and made the held release.
+  build:
+    name: Build upload ${{ inputs.upload_id }}
+    needs: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      # Values from `read` and the inputs reach the shell only through env, are checked against strict patterns,
+      # and every storage name used below is derived here from the tag, never taken from a free-form value.
+      - name: Check the inputs
+        env:
+          UPLOAD_ID: ${{ inputs.upload_id }}
+          STAGING_KEY: ${{ inputs.staging_key }}
+          FILENAME: ${{ inputs.filename }}
+          RELEASE_ID: ${{ needs.read.outputs.release_id }}
+          TAG: ${{ needs.read.outputs.storage_tag }}
+          FILE_SHA256: ${{ needs.read.outputs.file_sha256 }}
+          ICON_KEY: ${{ needs.read.outputs.icon_key }}
+          ICON_SHA256: ${{ needs.read.outputs.icon_sha256 }}
+          ZEALOT_URL: ${{ vars.ZEALOT_URL }}
+          R2_ENDPOINT: ${{ vars.R2_STAGING_ENDPOINT }}
+          R2_BUCKET: ${{ vars.R2_STAGING_BUCKET }}
+          R2_KEY_ID: ${{ secrets.R2_STAGING_CI_ACCESS_KEY_ID }}
+          R2_SECRET: ${{ secrets.R2_STAGING_CI_SECRET_ACCESS_KEY }}
+          KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASS: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          [[ $UPLOAD_ID =~ ^[0-9]+$ ]] || fail "upload_id must be digits"
+          [[ $STAGING_KEY =~ ^staging/a([0-9]+)/u[0-9]+/[0-9a-f]{32}/[A-Za-z0-9._-]+$ ]] || fail "staging_key has an unexpected shape"
+          staged_app="${BASH_REMATCH[1]}"
+          [[ $FILENAME =~ ^[A-Za-z0-9._-]+\.(apk|aab)$ ]] || fail "filename must be a plain name ending in .apk or .aab"
+          [[ ${STAGING_KEY##*/} == "$FILENAME" ]] || fail "filename does not match the end of staging_key"
+          [[ $RELEASE_ID =~ ^[0-9]+$ ]] || fail "stage 1 gave no release id"
+          [[ $TAG =~ ^a([0-9]+)-r([0-9]+)$ ]] || fail "stage 1 gave no storage tag like a12-r345"
+          [[ ${BASH_REMATCH[1]} == "$staged_app" ]] || fail "the storage tag belongs to another app than the staged file"
+          [[ ${BASH_REMATCH[2]} == "$RELEASE_ID" ]] || fail "the storage tag belongs to another release than the release id"
+          [[ $FILE_SHA256 =~ ^[0-9a-f]{64}$ ]] || fail "stage 1 gave no file hash"
+          if [[ -n $ICON_KEY ]]; then
+            [[ $ICON_KEY =~ ^staging/a[0-9]+/u[0-9]+/[0-9a-f]{32}/icon\.(png|webp)$ ]] || fail "icon_key has an unexpected shape"
+            [[ ${ICON_KEY%/*} == "${STAGING_KEY%/*}" ]] || fail "the icon is not beside the staged file"
+            [[ $ICON_SHA256 =~ ^[0-9a-f]{64}$ ]] || fail "stage 1 gave no icon hash"
+          fi
+          [[ -n ${ZEALOT_URL:-} && $ZEALOT_URL =~ ^https:// ]] || fail "ZEALOT_URL must be set and start with https://"
+          [[ -n ${R2_ENDPOINT:-} && $R2_ENDPOINT =~ ^https:// ]] || fail "R2_STAGING_ENDPOINT must be set and start with https://"
+          [[ -n ${R2_BUCKET:-} ]] || fail "the repository variable R2_STAGING_BUCKET is not set"
+          [[ -n ${R2_KEY_ID:-} && -n ${R2_SECRET:-} ]] || fail "the R2_STAGING_CI_* secrets are not set"
+          if [[ $FILENAME == *.aab ]]; then
+            [[ -n ${KEYSTORE_B64:-} ]] || fail "the secret RELEASE_KEYSTORE_BASE64 is not set"
+            [[ -n ${KEYSTORE_PASS:-} ]] || fail "the secret RELEASE_KEYSTORE_PASSWORD is not set"
+            [[ -n ${KEY_ALIAS:-} ]] || fail "the secret RELEASE_KEY_ALIAS is not set"
+          fi
+          prefix="uploads/apps/a${staged_app}/r${RELEASE_ID}"
+          {
+            echo "WORK=${RUNNER_TEMP}/build-${UPLOAD_ID}"
+            echo "KIND=${FILENAME##*.}"
+            echo "STORAGE_PREFIX=${prefix}"
+            echo "ICON_EXT=${ICON_KEY##*.}"
+          } >> "$GITHUB_ENV"
+
+      - name: Set up Java
+        if: endsWith(inputs.filename, '.aab')
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Cache bundletool
+        if: endsWith(inputs.filename, '.aab')
+        id: bt-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/bundletool
+          key: bundletool-${{ env.BUNDLETOOL_VERSION }}
+
+      - name: Get bundletool
+        if: endsWith(inputs.filename, '.aab') && steps.bt-cache.outputs.cache-hit != 'true'
+        env:
+          BUNDLETOOL_SHA256: ${{ vars.BUNDLETOOL_SHA256 }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/bundletool
+          curl -fsSL --retry 3 -o ~/bundletool/bundletool.jar \
+            "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar"
+          if [[ -n ${BUNDLETOOL_SHA256:-} ]]; then
+            echo "${BUNDLETOOL_SHA256}  $HOME/bundletool/bundletool.jar" | sha256sum -c -
+          else
+            echo "::warning::BUNDLETOOL_SHA256 is not set; the bundletool jar was not checked against a known hash"
+          fi
+
+      - name: Install Brotli
+        if: endsWith(inputs.filename, '.aab')
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq brotli
+
+      # The file is downloaded again (this is a new runner) and must be byte-for-byte the file `read` hashed and
+      # Zealot recorded; a file swapped in the bucket between the two jobs stops the run here.
+      - name: Download the staged file (and icon) from R2 and check their hashes
+        env:
+          STAGING_KEY: ${{ inputs.staging_key }}
+          FILENAME: ${{ inputs.filename }}
+          FILE_SHA256: ${{ needs.read.outputs.file_sha256 }}
+          ICON_KEY: ${{ needs.read.outputs.icon_key }}
+          ICON_SHA256: ${{ needs.read.outputs.icon_sha256 }}
+          R2_ENDPOINT: ${{ vars.R2_STAGING_ENDPOINT }}
+          R2_BUCKET: ${{ vars.R2_STAGING_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_STAGING_CI_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STAGING_CI_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$WORK"
+          aws s3 cp "s3://${R2_BUCKET}/${STAGING_KEY}" "$WORK/$FILENAME" --endpoint-url "$R2_ENDPOINT" --only-show-errors
+          got="$(sha256sum "$WORK/$FILENAME" | cut -d' ' -f1)"
+          [[ $got == "$FILE_SHA256" ]] || { echo "::error::the staged file is not the file that was read in stage 1"; exit 1; }
+          if [[ -n $ICON_KEY ]]; then
+            aws s3 cp "s3://${R2_BUCKET}/${ICON_KEY}" "$WORK/icon.${ICON_EXT}" --endpoint-url "$R2_ENDPOINT" --only-show-errors
+            got="$(sha256sum "$WORK/icon.${ICON_EXT}" | cut -d' ' -f1)"
+            [[ $got == "$ICON_SHA256" ]] || { echo "::error::the staged icon is not the icon that was read in stage 1"; exit 1; }
+          fi
+          echo "AAB_PATH=$WORK/$FILENAME" >> "$GITHUB_ENV"
+
+      # The keystore and its passwords exist only on the runner's temp disk, in files readable by this user only,
+      # and are removed in the last step whatever happens. Passwords go to bundletool as `file:` values, never
+      # `pass:`, so they are not visible in the process list (the rule BundletoolService follows).
+      - name: Write the signing key to temp files
+        if: endsWith(inputs.filename, '.aab')
+        env:
+          KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASS: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          KEY_PASS: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$WORK/keys"
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$WORK/keys/release.jks"
+          printf '%s' "$KEYSTORE_PASS" > "$WORK/keys/ks.pass"
+          printf '%s' "${KEY_PASS:-$KEYSTORE_PASS}" > "$WORK/keys/key.pass"
+          [[ -s "$WORK/keys/release.jks" ]] || { echo "::error::RELEASE_KEYSTORE_BASE64 did not decode to a keystore"; exit 1; }
+
+      - name: Build the split set and the universal APK
+        if: endsWith(inputs.filename, '.aab')
+        env:
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          bt() { java -jar "$HOME/bundletool/bundletool.jar" "$@"; }
+          sign=(--ks "$WORK/keys/release.jks" --ks-key-alias "$KEY_ALIAS"
+                --ks-pass "file:$WORK/keys/ks.pass" --key-pass "file:$WORK/keys/key.pass")
+
+          # Device-split set, exactly the mode Zealot used (no asset-pack config).
+          bt build-apks --bundle "$AAB_PATH" --output "$WORK/release.apks" --mode=default "${sign[@]}"
+
+          # Universal APK: one installable file for a store with no Play-style split installer.
+          bt build-apks --bundle "$AAB_PATH" --output "$WORK/universal.apks" --mode=universal "${sign[@]}"
+          unzip -p "$WORK/universal.apks" universal.apk > "$WORK/universal.apk"
+          [[ -s "$WORK/universal.apk" ]] || { echo "::error::bundletool produced no universal.apk"; exit 1; }
+
+      - name: Read the signing certificate
+        if: endsWith(inputs.filename, '.aab')
+        env:
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          EXPECTED: ${{ vars.RELEASE_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          cert=""
+          # Preferred: the certificate actually inside the APK (apksigner ships with the runner's Android SDK).
+          apksigner="$(ls -1 "${ANDROID_HOME:-/nonexistent}"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1 || true)"
+          if [[ -n $apksigner ]]; then
+            cert="$("$apksigner" verify --print-certs "$WORK/universal.apk" 2>/dev/null \
+              | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1 | tr 'A-F' 'a-f')"
+          fi
+          # Fallback: the certificate of the key that did the signing (same key, read from the keystore).
+          if [[ -z $cert ]]; then
+            echo "::notice::apksigner not found or unreadable; reading the certificate from the keystore instead"
+            cert="$(keytool -list -v -keystore "$WORK/keys/release.jks" -alias "$KEY_ALIAS" \
+              -storepass:file "$WORK/keys/ks.pass" 2>/dev/null \
+              | sed -n 's/^ *SHA256: //p' | head -1 | tr -d ':' | tr 'A-F' 'a-f')"
+          fi
+          [[ $cert =~ ^[0-9a-f]{64}$ ]] || { echo "::error::could not read the signing certificate's SHA-256"; exit 1; }
+
+          if [[ -n ${EXPECTED:-} ]]; then
+            want="$(printf '%s' "$EXPECTED" | tr -d ':[:space:]' | tr 'A-F' 'a-f')"
+            [[ $cert == "$want" ]] || { echo "::error::the signing certificate does not match RELEASE_CERT_SHA256; nothing was uploaded"; exit 1; }
+          else
+            echo "::warning::RELEASE_CERT_SHA256 is not set; the signing certificate was not checked against an expected one"
+          fi
+          echo "CERT_SHA256=$cert" >> "$GITHUB_ENV"
+
+      - name: Compress the split set with Brotli
+        if: endsWith(inputs.filename, '.aab')
+        run: |
+          set -euo pipefail
+          brotli -q 11 -f -o "$WORK/release.apks.br" "$WORK/release.apks"
+          [[ -s "$WORK/release.apks.br" ]] || { echo "::error::brotli produced no output"; exit 1; }
+
+      # Asset names follow the storage adapter's own mapping (GithubAdapter.location_for): key
+      # `.../binary/app.aab` becomes asset `app.aab`, `.../icons/icon.png` becomes `icons__icon.png`,
+      # `.../pipeline/universal.apk` becomes `pipeline__universal.apk`, all in the release tagged `a<app>-r<release>`.
+      # The release is created the way the adapter creates it (a prerelease; its notes say it is managed).
+      - name: Upload the files to the storage release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.read.outputs.storage_tag }}
+          FILENAME: ${{ inputs.filename }}
+          ICON_KEY: ${{ needs.read.outputs.icon_key }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --prerelease --title "$TAG" \
+              --notes "Zealot release storage. Managed automatically; do not edit." \
+              || gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+          fi
+          upload=("$WORK/$FILENAME")
+          if [[ -n $ICON_KEY ]]; then
+            cp "$WORK/icon.${ICON_EXT}" "$WORK/icons__icon.${ICON_EXT}"
+            upload+=("$WORK/icons__icon.${ICON_EXT}")
+          fi
+          if [[ $KIND == aab ]]; then
+            cp "$WORK/universal.apk" "$WORK/pipeline__universal.apk"
+            cp "$WORK/release.apks.br" "$WORK/pipeline__release.apks.br"
+            upload+=("$WORK/pipeline__universal.apk" "$WORK/pipeline__release.apks.br")
+          fi
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber "${upload[@]}"
+
+      - name: Report to Zealot (stage 2)
+        env:
+          UPLOAD_ID: ${{ inputs.upload_id }}
+          FILENAME: ${{ inputs.filename }}
+          ZEALOT_URL: ${{ vars.ZEALOT_URL }}
+          FILE_SHA256: ${{ needs.read.outputs.file_sha256 }}
+          ICON_KEY: ${{ needs.read.outputs.icon_key }}
+          ICON_SHA256: ${{ needs.read.outputs.icon_sha256 }}
+        run: |
+          set -euo pipefail
+          body="$(jq -n --arg state ok --arg fkey "$STORAGE_PREFIX/binary/$FILENAME" --arg fsha "$FILE_SHA256" \
+            '{state: $state, file_key: $fkey, file_sha256: $fsha}')"
+          if [[ -n $ICON_KEY ]]; then
+            body="$(jq --arg ikey "$STORAGE_PREFIX/icons/icon.${ICON_EXT}" --arg isha "$ICON_SHA256" \
+              '. + {icon_key: $ikey, icon_sha256: $isha}' <<<"$body")"
+          fi
+          if [[ $KIND == aab ]]; then
+            body="$(jq --arg ukey "$STORAGE_PREFIX/pipeline/universal.apk" \
+              --arg usha "$(sha256sum "$WORK/universal.apk" | cut -d' ' -f1)" \
+              --argjson usize "$(stat -c %s "$WORK/universal.apk")" \
+              --arg ckey "$STORAGE_PREFIX/pipeline/release.apks.br" \
+              --argjson csize "$(stat -c %s "$WORK/release.apks.br")" --arg cert "$CERT_SHA256" \
+              '. + {universal_apk_key: $ukey, universal_apk_sha256: $usha, universal_apk_size: $usize,
+                    compressed_apks_key: $ckey, compressed_size: $csize, cert_sha256: $cert}' <<<"$body")"
+          fi
+          base="${ZEALOT_URL%/}"
+          token="$(curl -fsSL --max-time 30 \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${base}" | jq -r '.value')"
+          [[ -n $token && $token != null ]] || { echo "::error::could not get an OIDC token"; exit 1; }
+          echo "::add-mask::$token"
+          code="$(curl -sS -o "$WORK/callback2.out" -w '%{http_code}' --retry 3 --retry-all-errors --max-time 60 \
+            -X POST "${base}/api/release_uploads/${UPLOAD_ID}/stage2" \
+            -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" --data "$body")"
+          cat "$WORK/callback2.out"; echo
+          [[ $code == 200 ]] || { echo "::error::Zealot answered HTTP $code"; exit 1; }
+          echo "STAGE2_DONE=1" >> "$GITHUB_ENV"
+
+      # Runs only when an earlier step failed and Zealot did not accept the result: tells Zealot, so the upload
+      # shows `failed` with a reason (and the held release says why it has no file). A 409 here is fine.
+      - name: Report the failure to Zealot
+        if: failure()
+        env:
+          UPLOAD_ID: ${{ inputs.upload_id }}
+          ZEALOT_URL: ${{ vars.ZEALOT_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          [[ ${STAGE2_DONE:-} != 1 && -n ${ZEALOT_URL:-} && -n ${UPLOAD_ID:-} ]] || exit 0
+          base="${ZEALOT_URL%/}"
+          token="$(curl -fsSL --max-time 30 \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${base}" | jq -r '.value')" || exit 0
+          [[ -n $token && $token != null ]] || exit 0
+          echo "::add-mask::$token"
+          body="$(jq -n --arg e "The stage-2 build failed. See ${RUN_URL}" '{state: "failed", error: $e}')"
+          curl -sS -o /dev/null --retry 3 --retry-all-errors --max-time 60 \
+            -X POST "${base}/api/release_uploads/${UPLOAD_ID}/stage2" \
+            -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" \
+            --data "$body" || true
+
+      - name: Remove the working files and the key files
         if: always()
         run: rm -rf "${WORK:-/nonexistent}"

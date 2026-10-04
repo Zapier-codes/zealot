@@ -145,6 +145,21 @@ class ReleaseStorage
     ReleaseStorage::GithubAdapter.location_for(binary_key('app')).first
   end
 
+  # Task 40i-c: the keys stage 2 (CI) must have uploaded a staged upload's files under, derived here from the
+  # release and never taken from CI's word. The callback compares CI's reported keys with these and records
+  # these, so a mismatch between CI's asset naming and the adapter's mapping fails loudly instead of leaving a
+  # key that points at nothing. `universal` and `compressed` exist only for a bundle (an APK is served as is).
+  #
+  # @param filename [String] the uploaded file's (sanitised) name, e.g. `app.aab`
+  # @param icon_extension [String, nil] `.png` or `.webp` when stage 1 found an icon
+  # @return [Hash{Symbol=>String}]
+  def staged_keys(filename:, icon_extension: nil)
+    keys = { file: binary_key(filename), universal: artifact_key('universal.apk'),
+             compressed: artifact_key('release.apks.br') }
+    keys[:icon] = icon_key("icon#{icon_extension}") if icon_extension.present?
+    keys
+  end
+
   # Task 19d: yields a local filesystem path to the release's primary file,
   # guaranteed to exist for the duration of the block, whether or not this
   # host still has the local copy CarrierWave originally wrote. Callers that

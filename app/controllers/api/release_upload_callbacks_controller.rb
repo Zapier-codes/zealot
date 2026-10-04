@@ -21,11 +21,33 @@
 # report the release checks refuse is answered 422 with `state: "failed"` and creates nothing. Idempotent: see
 # `ReleaseUploadIntake`.
 #
+# Task 40i-c: the same workflow run reports a second time, after it has uploaded the files to the storage repo
+# and (for a bundle) built the signed universal APK and the split set:
+#
+#   POST /api/release_uploads/:id/stage2
+#     { "state": "ok", "file_key": "uploads/apps/a3/r7/binary/app.aab", "file_sha256": "<64 hex>",
+#       "icon_key": "uploads/apps/a3/r7/icons/icon.png", "icon_sha256": "<64 hex>",
+#       "universal_apk_key": "...", "universal_apk_sha256": "<64 hex>", "universal_apk_size": 123,
+#       "compressed_apks_key": "...", "compressed_size": 45, "cert_sha256": "<64 hex>" }
+#     { "state": "failed", "error": "why" }
+#   200 { "upload_id": 1, "state": "done", "stage": 2, "release_id": 7, "status": "available" }
+#
+# It is authenticated by the same OIDC token and the same workflow file as stage 1 (both stages are jobs of
+# `read-upload.yml`), and the release it finishes is the one stage 1 made: `ReleaseUploadFinisher` updates that
+# release and creates none. See the finisher for the rules (state, idempotency, keys derived by Zealot, objects
+# checked in storage before anything is recorded).
+#
 # Not verified: no Ruby in the sandbox this was written in; nothing was run.
 class Api::ReleaseUploadCallbacksController < Api::BaseController
   PERMITTED = %i[
     state error kind package_name version_code version_name app_label min_sdk target_sdk file_sha256 file_size
     icon_key icon_sha256
+  ].freeze
+
+  # Task 40i-c: what the stage-2 report may carry. Everything else is dropped.
+  STAGE2_PERMITTED = %i[
+    state error file_key file_sha256 icon_key icon_sha256 universal_apk_key universal_apk_sha256
+    universal_apk_size compressed_apks_key compressed_size cert_sha256
   ].freeze
 
   before_action :authenticate_workflow!
@@ -34,6 +56,14 @@ class Api::ReleaseUploadCallbacksController < Api::BaseController
     upload = ReleaseUpload.find(params[:id])
     body = params.permit(*PERMITTED, abis: []).to_h
     result = ReleaseUploadIntake.new(upload, body).call
+    render json: result.payload, status: result.http
+  end
+
+  # Task 40i-c
+  def stage2
+    upload = ReleaseUpload.find(params[:id])
+    body = params.permit(*STAGE2_PERMITTED).to_h
+    result = ReleaseUploadFinisher.new(upload, body).call
     render json: result.payload, status: result.http
   end
 
