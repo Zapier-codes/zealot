@@ -1292,7 +1292,7 @@ So the work is **keeping it true**, not building a path: a rule enforced only by
 3. **The spec is a source scan plus a route listing,** so it catches a new door written in the usual way (a controller, a job, a route) but not one built by metaprogramming or by a gem. It is a tripwire, not a proof.
 4. Not run: no Ruby, Rails or database in the sandbox. If CI is red the spec's assumptions are the first suspect: the route spec path form (`/hooks/hyperswitch(.:format)`), and that an API upload with no token answers 4xx (the unauthorized error is rescued in `Api::BaseController`).
 
-### 🟡 Task 40: CI-only release processing — Zealot stops compiling, splitting, signing, compressing and holding release files (operator-directed 2026-10-04; DOCS ONLY, nothing below is built; the two earlier Task 40 patches are NOT in this repo; **40a to 40g, 40g-2, 40h-a, 40h-b, 40i-a, 40i-b, 40i-c and the Zealot half of 40h-c built (40a, 40b, 40c, 40d, 40e, 40f, 40g, 40g-2, 40h-a, 40h-b, 40h-c-1, 40i-a, 40i-b, 40i-c), written NOT run**, the rest not built)
+### 🟡 Task 40: CI-only release processing — Zealot stops compiling, splitting, signing, compressing and holding release files (operator-directed 2026-10-04; DOCS ONLY, nothing below is built; the two earlier Task 40 patches are NOT in this repo; **40a to 40g, 40g-2, 40h-a, 40h-b, 40i-a, 40i-b, 40i-c, 40j and the Zealot half of 40h-c built (40a, 40b, 40c, 40d, 40e, 40f, 40g, 40g-2, 40h-a, 40h-b, 40h-c-1, 40i-a, 40i-b, 40i-c, 40j), written NOT run**, the rest not built)
 
 **Why.** Render's web service (`plan: free`, 512Mi) was killed for memory (`server_failed`, `oomKilled`, `memoryLimit 512Mi`) at 2026-10-03 21:00:58 and 2026-10-04 02:59:31, each time just after an upload started the bundletool compile (see the 2026-10-04 Task 34f session-log entry). Task 34f only mitigated this (`ZEALOT_WORKER_CONCURRENCY=1`, mirror before compile, restore from storage). The operator's direction is to remove the cause: all heavy work moves to GitHub Actions in the storage repo, and Zealot stops doing it.
 
@@ -1428,7 +1428,7 @@ The earlier session's one patch exceeded the six-file slice guide. Cut it:
 | 40i-a ✅ | **Stage-1 workflow and callback.** CI reads the manifest and icon; callback with OIDC (or HMAC) verification; idempotent; synchronous answer with the release id | 40h-a, 40c | workflow YAML, callback controller, verifier service, specs | a valid callback with the right claims is accepted; wrong repo, replay, wrong state refused | medium |
 | 40i-b ✅ | **Create the real `Release` from the metadata.** One transaction on a locked staging row, status `held`, the form's own validations re-run; a refusal marks the upload `failed` and creates nothing; a release can be created with no mounted file. Built as two TSF slices in one commit: **40i-b-1** (model guards + `ReleaseUploadReleaseBuilder`) and **40i-b-2** (the intake calls it; the answer carries `release_id` and `storage_tag`) | 40i-a | `release.rb`, `release_storage.rb`, `release_upload_release_builder.rb`, `release_upload_intake.rb`, callback controller (comment), 4 specs incl. the tripwire. **No migration** | a wrong package name never creates a `Release`; a good one creates a held release; a replay creates no second one | **high**; revert = see the 40i-b result |
 | 40i-c ✅ | **Stage-2 callback and release.** CI uploads to the final tag, builds and signs a bundle's universal APK and split set, and calls back; Zealot derives the keys, checks the hashes, the objects and the certificate, then records the keys, unholds unless `hold` was asked, queues the deferred email, deletes the staged objects. Built as `ReleaseUploadFinisher` + `POST /api/release_uploads/:id/stage2` + a `build` job in `read-upload.yml` + a sweeper rule for a stage 2 that never reports | 40i-b, 40d, 40e | finisher (new), callback controller, routes, `release_storage.rb` (`#staged_keys`), `release_upload_staging.rb` (`#delete_sibling`), sweeper job, `docs/ci/read-upload.yml`, `.env.example`, 7 specs incl. the tripwire. **No migration** | a finished upload becomes an available, installable release; a replay changes nothing; a bad report changes nothing or fails the upload and leaves the release held | **high**; revert = see the 40i-c result |
-| 40j | **SDK injection and delta patches in CI** (D and E) | 40d | `proxy_sdk_injection_job.rb`, `delta_service.rb`, workflow | no Python, bundletool or bspatch on Render | medium |
+| 40j ✅ | **SDK injection in CI** (D). Delta patches (E) are **not built**: nothing calls `Anthropic::DeltaService` or `store_delta_patch` and the `delta` download action no longer exists (see the 40j result), so there is nothing to move; the dead code is listed for 40k. Built: three `build`-job steps in `read-upload.yml` (check out `zealot-ci/`, install apktool/androguard/uber-apk-signer, inject), `lib/proxy_sdk_patcher.py` made CI-ready, and the finisher accepts `sdk_injected` / `injected_file_sha256` | 40d, 40i-c | `lib/proxy_sdk_patcher.py`, `release_upload_finisher.rb`, callback controller, `docs/ci/read-upload.yml`, finisher spec. **No migration** | with `SDK_INJECTION=true` the stored, served file is the patched, org-signed APK; with it unset nothing changes | medium; off unless the variable is set |
 | 40k | **Delete the local code paths**, including the old multipart upload endpoint and `AppFileUploader` for releases: `ReleaseFileMirrorJob`, `patched_file_path`, local-first `ReleaseDownload`, `AnthropicAssetDeliveryJob`'s Ruby compile, after everything above has served from storage | 40e to 40j | those files, specs | `grep` for `file.path` and `icon.path` finds nothing in `app/` | medium; last |
 
 Order: 40a → 40b → 40c → 40d → 40e → 40f, then 40g, then 40h-a → 40h-b → 40h-c → 40i-a → 40i-b → 40i-c → 40j, and 40k last. 40h to 40k (including the 40h-x and 40i-x cuts) are now **required** (operator decision, see above), not optional. A session takes 1 to 3 slices. Slices 40a, 40b and 40g are safe to do first because they change no behaviour.
@@ -1856,6 +1856,35 @@ Then, in the Cloudflare dashboard (tokens are created there or through the API, 
 **Operator setup this adds.** In the storage repo: secrets `RELEASE_KEYSTORE_BASE64`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS` (and `RELEASE_KEY_PASSWORD` if it differs); optional variable `RELEASE_CERT_SHA256`. Recopy `docs/ci/read-upload.yml` into the storage repo. On Render, `CI_COMPILE_EXPECT_CERT_SHA256` is recommended. **Only after one real upload has gone through end to end on a test app** turn on `RELEASE_UPLOAD_SESSIONS_ENABLED` (and `CI_COMPILE_ENABLED`).
 
 **Next.** **40j** (SDK injection and delta in CI, decided: keep SDK injection in CI) is unblocked by 40d. **40h-c-2** (Storeapp's workflow) is now unblocked by 40i-c. 40k last.
+
+#### 40j result (built; written, NOT run; no testing by instruction; `ruby -c`, `py_compile`, YAML parse and `bash -n` only)
+
+**What it is.** SDK injection (Task 40 D) moves from Render to the stage-2 `build` job. Behind the repository variable `SDK_INJECTION=true` (off unless set). For a bundle the patcher runs on the signed universal APK, so the universal APK Zealot serves and indexes (hash, size) is the patched one and the bundle stays as uploaded for Play. For an APK the patched file replaces the stored file and the report carries `sdk_injected: true` and `injected_file_sha256`, which the finisher records as `file_sha256` (the hash the catalog publishes, as the old mirror job did after the injector swapped the file). The uploaded file's hash is still checked against stage 1. `injected_file_sha256` without the flag is refused. The old Render path (`ProxySdkInjectionJob`, `ProxySdk::Injector`) is untouched and still runs for non-staged releases; it goes in 40k.
+
+**Delta patches (E): not built, on purpose.** `grep` shows `Anthropic::DeltaService` and `ReleaseStorage#store_delta_patch` have no caller, `Download::ReleasesController` has no `delta` action (its header says a past commit removed it; the route is a dead line), and `ENABLE_DELTA_PATCHING` is read by nothing. A CI step would produce files nobody can request. 40k should delete the service, the storage method, the route and the flag. Say so if you want a delta step built anyway.
+
+**The patcher (`lib/proxy_sdk_patcher.py`).** Three changes, all behind defaults that keep the old behaviour: (1) the androguard import tries `androguard.core.dex` (4.x) then the old path, and with neither the class names fall back to the defaults the function already used when it could not read the DEX; (2) the keystore, alias, passwords and signer jar come from `ZEALOT_*` environment variables when set (CI sets them from the organisation keystore, so a patched APK has the same certificate as everything else), else the old throwaway debug key; (3) `--overwrite` is passed to uber-apk-signer.
+
+**A bug found on the way.** Without `--overwrite`, uber-apk-signer writes `<name>-aligned-signed.apk` beside its input and leaves the input unsigned. The old Render flow checked only that the unsigned file existed, so it probably served unsigned APKs. Not verified (it never worked on Render: androguard failed on import), but the flag is now passed.
+
+**Workflow (`docs/ci/read-upload.yml`).** New steps in `build`, all `if: vars.SDK_INJECTION == 'true'`: check out `zealot-ci/` from the storage repo, install `apktool`, `androguard>=4,<5` and uber-apk-signer 1.3.0 (jar hash checked when `APKSIGNER_SHA256` is set), then inject. Java and the key-file step now also run for an APK when injection is on, and the input check requires `PROXIES_API_KEY` and the keystore secrets in that case. The patched file is signed with the organisation key, so the bundle certificate check still holds.
+
+**Choices flagged, not silently made.**
+1. **Keystore passwords reach uber-apk-signer as command-line arguments** (it has no file option), visible in the runner's process list for the duration of the step. The runner is ephemeral and GitHub masks the secrets in logs; the alternative is signing with `apksigner` from the Android SDK using `file:` passwords, which means changing the patcher's signing call.
+2. **Every Android release is injected when the variable is on**, as on Render. There is no per-app switch.
+3. **A Play-target bundle's original is kept for Play and its universal APK is patched.** An APK with `play_store_target` was already dropped at creation (40i-b choice 5).
+4. **The patcher and the DEX are copies in the storage repo** (`zealot-ci/`). They drift from `lib/proxy_sdk_patcher.py` and `proxies_sdk.dex` unless recopied; the setup list says which files.
+5. **Injection failure fails the run**, so the upload fails and the release stays held with CI's reason. There is no fallback to serving the unpatched file.
+
+**Specs.** Finisher: an injected APK records the patched hash, an uninjected one keeps the uploaded hash, a missing or malformed injected hash is refused, an injected hash without the flag is refused, a bundle needs nothing extra and ignores an injected file hash.
+
+**Not verified.** Nothing ran. Never exercised: the patcher under androguard 4 (the `DEX` name and `get_classes()` are from memory of 4.x), `apktool` from Ubuntu's package on a modern APK, uber-apk-signer's flags, the sparse checkout, and the finisher specs. If CI is red, start with the finisher spec, then the workflow run's `Inject the SDK` step.
+
+**Revert.** Revert the three patcher hunks, the `injection_problem`/`injected_apk?` methods, the two permitted params and the `file_sha256` line in the finisher, the finisher examples, and the workflow's header lines, the extra `if` conditions and the three injection steps. No data to undo.
+
+**Operator setup this adds (only to turn injection on).** In the storage repo: commit `zealot-ci/proxy_sdk_patcher.py` and `zealot-ci/proxies_sdk.dex`; add the secret `PROXIES_API_KEY`; set the variable `SDK_INJECTION=true`; optionally `APKSIGNER_SHA256`. Recopy `docs/ci/read-upload.yml`.
+
+**Next.** **40h-c-2** (Storeapp's workflow moves to session, PUT, finalize; other repo, its own patch) is unblocked. **40k** (delete the local code paths, and the dead delta code) comes last and needs the flags on and a real upload proven first.
 
 #### Rules for the next session
 
@@ -5666,6 +5695,14 @@ them is already modernized.
   at it.
 
 ## Session log
+
+### 2026-10-04 -- Task 40j: SDK injection in CI, delta patches found dead (operator: "check the origin and continue to the next task"; no testing; patch file; written, NOT run)
+- **Base:** `origin/develop` was still `7d4224b9` (40i-b), so the 40i-c patch had **not** been applied. This session's commit sits on top of 40i-c; the delivered patch file holds both commits and applies once on `7d4224b9`.
+- **Picked because:** it is the board's next slice and nothing blocks it (Decision 4 answered: keep SDK injection, in CI).
+- **Built:** see "40j result". Delta (E) deliberately not built: no caller, no download action.
+- **Verified:** `ruby -c`, `python3 -m py_compile`, YAML parse and `bash -n` on every `run` block. **Not verified:** everything else.
+- **Behaviour change on deploy:** none for users. `.rb` files change, so the push starts the deploy workflow.
+- **Needs the operator:** apply and push; the 40i-c setup, plus the 40j setup only to turn injection on.
 
 ### 2026-10-04 -- Task 40i-c: stage-2 callback and release (operator: "continue to the next task"; no testing; patch file; written, NOT run)
 - **Base:** `develop` @ `7d4224b9` (the 40i-b commit), cloned fresh. One combined patch on top of it.

@@ -38,6 +38,15 @@
 # "new build" email stage 1 deferred is queued, and the staged file and icon are deleted (best effort: the
 # bucket's lifecycle rule is the backstop).
 #
+# Task 40j: SDK injection ran in CI before the report, so the file Zealot serves is the patched one.
+# - a bundle: the universal APK (hash, size) CI reports is already the patched, org-signed one; nothing else
+#   changes, and the bundle itself stays as uploaded for Play;
+# - an APK: CI replaced the stored file with the patched APK and reports `sdk_injected: true` with
+#   `injected_file_sha256`; that becomes the release's `file_sha256`, which the catalog publishes (the old local
+#   flow did the same: the mirror job hashed the file after the injector had swapped it). `file_sha256` stays the
+#   hash of the UPLOADED file in the report and is still checked against what stage 1 read.
+# `injected_file_sha256` without `sdk_injected` is refused; for a bundle it is ignored (the bundle is not replaced).
+#
 # Not verified: no Ruby beyond `ruby -c` in the sandbox this was written in; nothing was run.
 class ReleaseUploadFinisher
   Result = Struct.new(:code, :http, :payload, keyword_init: true)
@@ -119,7 +128,21 @@ class ReleaseUploadFinisher
     return 'file_sha256 does not match the file that was read' unless same_hash?(body['file_sha256'],
                                                                                   metadata['file_sha256'])
 
-    icon_problem(keys) || bundle_problem(keys)
+    icon_problem(keys) || injection_problem || bundle_problem(keys)
+  end
+
+  # Task 40j
+  def injection_problem
+    injected = ActiveModel::Type::Boolean.new.cast(body['sdk_injected']) == true
+    sha = body['injected_file_sha256']
+    return 'injected_file_sha256 was sent without sdk_injected' if sha.present? && !injected
+    return nil unless injected && !bundle?
+
+    SHA256_FORMAT.match?(sha.to_s.downcase) ? nil : 'injected_file_sha256 must be 64 hex characters'
+  end
+
+  def injected_apk?
+    !bundle? && ActiveModel::Type::Boolean.new.cast(body['sdk_injected']) == true
   end
 
   def same_hash?(reported, known)
@@ -217,6 +240,7 @@ class ReleaseUploadFinisher
 
   def release_attributes(row, keys)
     attributes = { file_storage_key: keys[:file] }
+    attributes[:file_sha256] = body['injected_file_sha256'].to_s.downcase if injected_apk?
     attributes.merge!(icon_storage_key: keys[:icon], icon_sha256: metadata['icon_sha256']) if keys[:icon]
     attributes.merge!(bundle_attributes(keys)) if bundle?
     attributes[:status] = 'available' unless hold_requested?(row)

@@ -6,13 +6,24 @@ import subprocess
 import tempfile
 import re
 
-from androguard.core.bytecodes.dvm import DalvikVMFormat
+# Task 40j: androguard 4 moved the DEX reader (`androguard.core.bytecodes.dvm` -> `androguard.core.dex`), which
+# is why this script failed on import on Render. Try both; with neither, the class names fall back to the defaults
+# `get_sdk_signatures` already uses when it cannot read the DEX.
+try:
+    from androguard.core.dex import DEX as DalvikVMFormat
+except ImportError:
+    try:
+        from androguard.core.bytecodes.dvm import DalvikVMFormat
+    except ImportError:
+        DalvikVMFormat = None
 
 def get_sdk_signatures(dex_path):
     print(f"[*] Analyzing {dex_path} to find SDK signatures...")
     try:
         with open(dex_path, 'rb') as f:
             dex_data = f.read()
+        if DalvikVMFormat is None:
+            raise ImportError('androguard is not installed')
         dvm = DalvikVMFormat(dex_data)
         
         sdk_class = None
@@ -115,7 +126,13 @@ def patch(input_file, output_file, sdk_dex_path, api_key):
     work_dir = tempfile.mkdtemp()
     target_apk = input_file
 
-    keystore = os.path.expanduser('~/.zealot/debug.keystore')
+    # Task 40j: CI signs with the organisation keystore (ZEALOT_KEYSTORE and friends, set by the workflow, which
+    # also writes the files); with none set this is the old behaviour, a throwaway key under ~/.zealot.
+    keystore = os.environ.get('ZEALOT_KEYSTORE') or os.path.expanduser('~/.zealot/debug.keystore')
+    ks_alias = os.environ.get('ZEALOT_KS_ALIAS', 'androiddebugkey')
+    ks_pass = os.environ.get('ZEALOT_KS_PASS', 'android')
+    key_pass = os.environ.get('ZEALOT_KEY_PASS', ks_pass if os.environ.get('ZEALOT_KEYSTORE') else 'android')
+    signer_jar = os.environ.get('ZEALOT_APKSIGNER_JAR', '/usr/local/bin/apksigner.jar')
     if not os.path.exists(keystore):
         os.makedirs(os.path.dirname(keystore), exist_ok=True)
         print("[*] Generating Zealot signing keystore...")
@@ -184,13 +201,16 @@ def patch(input_file, output_file, sdk_dex_path, api_key):
             # uber-apk-signer handles zipalign and V1/V2 signing. 
             # --allowResign ensures it overwrites the output file if it exists.
             subprocess.run([
-                'java', '-jar', '/usr/local/bin/apksigner.jar',
+                'java', '-jar', signer_jar,
                 '-a', output_file,
                 '--ks', keystore,
-                '--ksAlias', 'androiddebugkey',
-                '--ksPass', 'android',
-                '--ksKeyPass', 'android',
-                '--allowResign'
+                '--ksAlias', ks_alias,
+                '--ksPass', ks_pass,
+                '--ksKeyPass', key_pass,
+                '--allowResign',
+                # Task 40j: without this uber-apk-signer writes `<name>-aligned-signed.apk` beside the
+                # unsigned file and leaves the unsigned one at `output_file`.
+                '--overwrite'
             ], check=True)
             return True
         else:

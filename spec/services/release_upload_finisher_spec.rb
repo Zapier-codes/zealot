@@ -203,6 +203,54 @@ RSpec.describe ReleaseUploadFinisher do
     end
   end
 
+  # Task 40j: CI injected the Proxies SDK before reporting.
+  describe 'SDK injection' do
+    it 'records the patched APK\'s hash as the release\'s file hash, and still checks the uploaded file\'s' do
+      result = finish(apk_report.merge('sdk_injected' => true, 'injected_file_sha256' => 'E' * 64))
+
+      expect(result).to have_attributes(code: :finished, http: 200)
+      expect(release.reload).to have_attributes(status: 'available', file_sha256: 'e' * 64)
+    end
+
+    it 'keeps the uploaded file\'s hash when nothing was injected' do
+      finish
+
+      expect(release.reload.file_sha256).to eq('a' * 64)
+    end
+
+    it 'refuses an injected APK with no valid injected hash, and changes nothing' do
+      expect(finish(apk_report.merge('sdk_injected' => true))).to have_attributes(code: :malformed, http: 422)
+      expect(finish(apk_report.merge('sdk_injected' => true, 'injected_file_sha256' => 'xyz')).http).to eq(422)
+      expect(upload.reload.state).to eq('processing')
+    end
+
+    it 'refuses an injected hash that comes without the flag' do
+      result = finish(apk_report.merge('injected_file_sha256' => 'e' * 64))
+
+      expect(result).to have_attributes(code: :malformed, http: 422)
+      expect(result.payload[:error]).to match(/without sdk_injected/)
+    end
+
+    context 'for a bundle' do
+      let(:filename) { 'app.aab' }
+      let(:kind) { 'aab' }
+
+      it 'needs nothing extra: the universal APK reported is the patched one, the bundle\'s hash is unchanged' do
+        result = finish(aab_report.merge('sdk_injected' => true))
+
+        expect(result).to have_attributes(code: :finished, http: 200)
+        expect(release.reload).to have_attributes(file_sha256: 'a' * 64, universal_apk_sha256: 'c' * 64)
+      end
+
+      it 'ignores an injected file hash, which only an APK has' do
+        result = finish(aab_report.merge('sdk_injected' => true, 'injected_file_sha256' => 'e' * 64))
+
+        expect(result).to have_attributes(code: :finished, http: 200)
+        expect(release.reload.file_sha256).to eq('a' * 64)
+      end
+    end
+  end
+
   describe 'a report that does not check out' do
     it 'refuses a file key that is not where Zealot expects it, and changes nothing' do
       result = finish(report.merge('file_key' => 'uploads/apps/a9/r9/binary/app.apk'))

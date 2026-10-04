@@ -47,7 +47,7 @@ class Api::ReleaseUploadCallbacksController < Api::BaseController
   # Task 40i-c: what the stage-2 report may carry. Everything else is dropped.
   STAGE2_PERMITTED = %i[
     state error file_key file_sha256 icon_key icon_sha256 universal_apk_key universal_apk_sha256
-    universal_apk_size compressed_apks_key compressed_size cert_sha256
+    universal_apk_size compressed_apks_key compressed_size cert_sha256 sdk_injected injected_file_sha256
   ].freeze
 
   before_action :authenticate_workflow!
