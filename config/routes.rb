@@ -366,6 +366,8 @@ Rails.application.routes.draw do
         # Task 40h-b: direct-to-storage upload (session, then finalize); user token or per-app token.
         post :upload_sessions, to: 'apps/upload_sessions#create'
         post 'upload_sessions/:id/finalize', to: 'apps/upload_sessions#finalize', as: :finalize_upload_session
+        # Task 40h-c-2: the outcome of an upload, polled by the CI that opened it.
+        get 'upload_sessions/:id', to: 'apps/upload_sessions#show', as: :upload_session
 
         get :latest, to: 'apps/latest#show'
         get :version_exist, to: 'apps/version_exist#show'

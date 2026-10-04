@@ -7,6 +7,14 @@
 #
 #   POST /api/apps/upload_sessions                -> 201 { id, upload_url, method, headers, expires_at, size }
 #   POST /api/apps/upload_sessions/:id/finalize   -> 200 { id, state } | 4xx/503 { error }
+#   GET  /api/apps/upload_sessions/:id            -> 200 { id, state, error?, release_id?, app_id?, ... } (Task 40h-c-2)
+#
+# Task 40h-c-2: `show` is how a CI that opened a session learns the outcome. Finalize answers as soon as the
+# bytes are in staging; CI then reads the file and builds (minutes), and the release exists only from the first
+# callback. The caller polls `show` until `state` is `done` (the release is finished: `release_id`, `app_id`,
+# `release_version`, `build_version`, `release_url` and the release `status` are present, `held` when the upload
+# asked for `hold`) or `failed` (`error` says why). Same credentials and same ownership rule as finalize: only
+# the user who opened the upload sees it, and a per-app token only its own app. Read-only; it changes nothing.
 #
 # `channel_key` is required: a session is for an EXISTING channel, so it never creates an app, a scheme or a
 # channel (a first upload still goes through the multipart endpoint). The caller must pass
@@ -29,7 +37,7 @@ class Api::Apps::UploadSessionsController < Api::BaseController
   before_action :validate_user_token, unless: :app_token_presented?
   before_action :require_sessions_enabled
   before_action :set_channel, only: :create
-  before_action :set_upload, only: :finalize
+  before_action :set_upload, only: %i[finalize show]
   before_action :confine_app_token, if: :app_token_presented?
   before_action :authorize_upload
 
@@ -47,7 +55,23 @@ class Api::Apps::UploadSessionsController < Api::BaseController
     render json: { id: @upload.id, state: @upload.reload.state, error: result.error }.compact, status: result.http
   end
 
+  # Task 40h-c-2
+  def show
+    render json: status_payload(@upload.reload)
+  end
+
   private
+
+  # `compact` drops what is not known yet (no release before stage 1, no error unless failed).
+  def status_payload(upload)
+    release = upload.release
+    {
+      id: upload.id, state: upload.state, error: upload.error.presence,
+      release_id: release&.id, app_id: release&.app&.id, status: release&.status,
+      release_version: release&.release_version, build_version: release&.build_version,
+      release_url: release&.release_url
+    }.compact
+  end
 
   def require_sessions_enabled
     head :not_found unless ReleaseUploadSession.enabled?

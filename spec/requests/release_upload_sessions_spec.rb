@@ -194,6 +194,88 @@ RSpec.describe 'Direct upload sessions', type: :request do
         expect(upload.reload.state).to eq('awaiting_bytes')
       end
     end
+
+    # Task 40h-c-2: the CI that opened the session polls this for the outcome.
+    describe 'show' do
+      let!(:upload) { ReleaseUpload.create!(channel: channel, user: owner, filename: 'app.aab', declared_size: 5000) }
+
+      def api_show(id = upload.id, **options)
+        get "/api/apps/upload_sessions/#{id}", **options
+      end
+
+      it 'answers the state of a session that has no release yet, without release fields' do
+        api_show(params: { token: owner.token })
+
+        expect(response).to have_http_status(:ok)
+        expect(response.parsed_body).to eq('id' => upload.id, 'state' => 'awaiting_bytes')
+      end
+
+      it 'carries the reason of a failed upload' do
+        upload.update_columns(state: 'failed', error: 'package name does not match')
+
+        api_show(params: { token: owner.token })
+
+        expect(response.parsed_body).to include('state' => 'failed', 'error' => 'package name does not match')
+      end
+
+      it 'carries the release once there is one, with the fields the CI checks' do
+        release = double('Release', id: 77, app: app, status: 'held', release_version: '1.2.3',
+                                    build_version: '104', release_url: 'https://zealot.example/r/77')
+        allow_any_instance_of(ReleaseUpload).to receive(:release).and_return(release)
+        upload.update_columns(state: 'done')
+
+        api_show(params: { token: owner.token })
+
+        expect(response.parsed_body).to include('state' => 'done', 'release_id' => 77, 'app_id' => app.id,
+                                                'status' => 'held', 'release_version' => '1.2.3',
+                                                'build_version' => '104')
+      end
+
+      it 'works with a per-app token for its own app' do
+        token = AppApiToken.issue!(app: app, name: 'ci', created_by: owner)
+
+        api_show(headers: bearer(token.secret))
+
+        expect(response).to have_http_status(:ok)
+      end
+
+      it 'answers 404 to a different user and 404 for an unknown id' do
+        api_show(params: { token: stranger.token })
+        expect(response).to have_http_status(:not_found)
+
+        api_show(0, params: { token: owner.token })
+        expect(response).to have_http_status(:not_found)
+      end
+
+      it 'refuses a request with no credential' do
+        api_show
+
+        expect(response).to have_http_status(:unauthorized).or have_http_status(:unprocessable_entity)
+      end
+
+      it 'refuses a per-app token for another app than the upload belongs to' do
+        other = AppApiToken.issue!(app: other_app, name: 'ci', created_by: owner)
+        other_app.create_owner(owner)
+
+        api_show(headers: bearer(other.secret))
+
+        expect(response.status).to be_between(403, 404)
+      end
+
+      it 'changes nothing' do
+        expect { api_show(params: { token: owner.token }) }.not_to(change { upload.reload.attributes })
+      end
+
+      context 'when direct upload is switched off' do
+        let(:enabled) { false }
+
+        it 'answers 404' do
+          api_show(params: { token: owner.token })
+
+          expect(response).to have_http_status(:not_found)
+        end
+      end
+    end
   end
 
   describe 'console door' do
