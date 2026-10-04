@@ -180,6 +180,13 @@ services:
   - key: ZEALOT_SEPARATE_WORKER
     value: false
 
+  # 2026-10-04: GoodJob runs embedded in this 512Mi web process with up to 5 jobs at once (the default).
+  # An upload starts the bundletool compile (a JVM), TeardownJob, the SDK patcher and the storage mirror
+  # together, and Render killed the instance for memory both times (events: oomKilled, memoryLimit 512Mi,
+  # 2026-10-03 21:00 and 2026-10-04 02:59). One job at a time keeps the compile from sharing memory.
+  - key: ZEALOT_WORKER_CONCURRENCY
+    value: 1
+
   # Anthropic: OOM fix, phase 2 continued -- the other suspected OOM
   # contributor flagged in handover.md, untouched by the scheduler fix.
   # Caps ImageMagick's own memory/map/area use per operation so a single

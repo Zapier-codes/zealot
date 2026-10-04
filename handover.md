@@ -5073,6 +5073,15 @@ them is already modernized.
 
 ## Session log
 
+### 2026-10-04 -- Task 34f: compile survives a restart; mirror bug fixed (operator-directed; written, NOT run)
+- **Evidence (Render events, read in the operator's Termux):** `server_failed` with `oomKilled`, `memoryLimit 512Mi`, at 2026-10-03 21:00:58 and 2026-10-04 02:59:31, each time just after an upload started the bundletool compile. Neither was a deploy: the `4f08809` deploy ended at 20:24 and the 02:08 redeploy ended at 02:13. **This corrects the earlier note that the operator's push killed the first compile; it was an out-of-memory kill both times.**
+- **Bug 1:** `ReleaseFileMirrorJob` raised `undefined method 'patched_file_path'` (release_file_mirror_job.rb:49), so the copy to storage never finished. Cause: the column's migration (`20240102000000`) is back-dated and production never applied it. Fix: `20261004120000_ensure_patched_file_path_on_releases.rb` adds the column only if missing; `db/schema.rb` version bumped to match.
+- **Bug 2:** `AnthropicAssetDeliveryJob` read `release.file.path` directly, so after a restart wiped the disk it answered `AAB not found`. Fix: it now runs the mirror first (inline, failures logged and ignored) and compiles through `ReleaseStorage#with_local_file`, which restores the stored copy when the local one is gone.
+- **Memory:** `ZEALOT_WORKER_CONCURRENCY=1` added to `render.yaml` so the compile no longer shares 512Mi with TeardownJob, the SDK patcher and the mirror. The variable must also be set on the live service (the file alone changes nothing). If the compile is still killed, the next step is a plan with more memory; not decided.
+- **Not changed:** the SDK injection step (`Internal app detected. Overwriting original with patched APK`; `proxy_sdk_patcher.py` fails on `androguard.core.bytecodes`). Open question for the operator whether it should run on Appstore.
+- **Not verified:** everything. No Ruby in this sandbox, so not even `ruby -c`. No spec added for the job (none exists today).
+- **Needs the operator:** apply and push the patch, run the migration, set `ZEALOT_WORKER_CONCURRENCY=1` on the service, redeploy with `imageUrl`, delete release 2 and the `v1.1.3` release and tag, then dispatch the Storeapp run.
+
 - **This session**: built the landing page, animated counters, dual-marquee
   partners/sponsors strip, and the auth-page glass upgrade described above.
   Patch generated from a single commit on

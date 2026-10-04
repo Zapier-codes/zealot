@@ -18,28 +18,48 @@ class AnthropicAssetDeliveryJob < ApplicationJob
     return unless release&.file&.path
     return unless release.file.path.to_s.end_with?('.aab')
 
+    # Copy the upload to durable storage BEFORE compiling. The compile is the heaviest step on this
+    # instance, and a restart during it (2026-10-03 21:00 and 2026-10-04 02:59, both OOM kills at 512Mi)
+    # wipes the local disk; with no stored copy the retry could only answer "AAB not found".
+    ensure_mirrored(release)
+    release.reload
+
     work_dir = Dir.mktmpdir('anthropic-pad-')
     begin
-      process_release(release, work_dir, pack_config)
+      # with_local_file uses the local copy when it is there and downloads the stored copy when it is not,
+      # so a retry after a restart can still compile.
+      ReleaseStorage.new(release).with_local_file do |path|
+        process_release(release, work_dir, pack_config, path)
+      end
     ensure
       FileUtils.remove_entry(work_dir, true)
     end
   rescue Anthropic::BundletoolService::BundletoolNotFoundError,
          Anthropic::BrotliService::BrotliNotFoundError => e
     logger.warn("[AnthropicAssetDeliveryJob] tooling unavailable, skipping: #{e.message}")
+  rescue ReleaseStorage::MissingFileError => e
+    logger.error("[AnthropicAssetDeliveryJob] release #{release_id}: #{e.message}")
   rescue StandardError => e
     logger.error("[AnthropicAssetDeliveryJob] failed for release #{release_id}: #{e.full_message}")
   end
 
   private
 
-  def process_release(release, work_dir, pack_config)
+  # Runs the mirror inline (it skips anything already stored) and never lets a mirror failure stop the
+  # compile: the mirror logs its own errors, and the compile then runs from the local copy as before.
+  def ensure_mirrored(release)
+    ReleaseFileMirrorJob.perform_now(release.id)
+  rescue StandardError => e
+    logger.error("[AnthropicAssetDeliveryJob] release #{release.id}: mirror before compile failed: #{e.message}")
+  end
+
+  def process_release(release, work_dir, pack_config, aab_path)
     # Org-wide key (task #5, made a singleton this session) — every release
     # through this pipeline is signed with the same key regardless of
     # which App it belongs to. See AndroidSigningKey#current.
     signing_key = AndroidSigningKey.current
 
-    result = Anthropic::AssetPackService.new(release.file.path).process(
+    result = Anthropic::AssetPackService.new(aab_path).process(
       output_dir: work_dir,
       pack_config: pack_config,
       signing_key: signing_key
