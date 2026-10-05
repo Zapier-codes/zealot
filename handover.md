@@ -7828,3 +7828,10 @@ them is already modernized.
 - **Not verified:** that any spec passes; that the migration and the hand-edited `db/schema.rb` agree; any call to Google beyond the two reads recorded in the docs; that the badge renders; rubocop (the gem is not installed here; only the line length was checked by hand).
 - **Behaviour change on deploy:** none visible. A new empty table and a badge that shows only when a registration row exists. Because `.rb`, `.slim` and migration files change, this push **does** start the deploy workflow and redeploys Zealot.
 - **Needs the operator:** the five steps under "Task 36b", "Order the operator should follow".
+
+
+## Task 40o: No rejections, CI signs everything, payment gateway for manual uploads (Session fix)
+
+- Removed `REQUIRE_ORG_SIGNED_APKS` rejection logic. CI unconditionally injects SDK and signs both AABs and APKs.
+- Manual dashboard uploads (`source: 'web'`) are kept `held` until payment is confirmed.
+- API uploads (`source: 'api'`) bypass payment and become `available` immediately.

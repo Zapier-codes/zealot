@@ -419,155 +419,36 @@ RSpec.describe ReleaseUploadFinisher do
     end
   end
 
-  # Task 40n-c: an uploaded APK is stored exactly as uploaded. CI only reports whose signature it carries
-  # (`apk_verified` and that signer's `cert_sha256`); Zealot decides, and with REQUIRE_ORG_SIGNED_APKS=true an APK
-  # that distr's CI did not sign is rejected with a reason.
-  describe 'the organisation-signature rule for an uploaded APK' do
-    let(:org_cert) { 'ab' * 32 }
-    let(:key) { instance_double(AndroidSigningKey, checksum: 'sum-1') }
-    let(:verified_report) { apk_report.merge('apk_verified' => true, 'cert_sha256' => org_cert.upcase) }
-
-    before do
-      allow(AndroidSigningKey).to receive(:current).and_return(key)
-      allow(GoogleAdc).to receive(:auto_register?).and_return(false)
+  # Task 40o: The rejection rule is removed. CI unconditionally injects and signs all uploads.
+  # Task 40o: Manual dashboard uploads require payment before becoming available.
+  describe 'payment gating for manual uploads' do
+    let(:signed_report) do
+      apk_report.merge('org_signed' => true, 'signed_file_sha256' => 'D' * 64, 'cert_sha256' => 'ab')
     end
 
-    context 'when the rule is on and the organisation certificate is configured' do
-      let(:env) { { 'REQUIRE_ORG_SIGNED_APKS' => 'true', 'CI_COMPILE_EXPECT_CERT_SHA256' => org_cert } }
+    context 'when uploaded via manual dashboard (source: web)' do
+      let(:options) { { 'source' => 'web' } }
 
-      it 'accepts an APK whose one verified signer is the organisation certificate, and stores it as uploaded' do
-        result = finish(verified_report)
+      it 'leaves the release held and does not enqueue deploy email' do
+        allow(EmailNotifications).to receive(:enabled?).and_return(true)
 
-        expect(result).to have_attributes(code: :finished, http: 200)
-        expect(release.reload).to have_attributes(status: 'available', file_sha256: 'a' * 64,
-                                                  file_storage_key: keys[:file])
-      end
+        expect { finish(signed_report) }.not_to have_enqueued_job(ReleaseDeployNotificationJob)
 
-      it 'marks the release signed with the key\'s checksum, since the certificate is confirmed' do
-        finish(verified_report)
-
-        expect(release.reload).to have_attributes(signed: true, signing_key_checksum: 'sum-1')
-      end
-
-      it 'accepts the certificate in keytool\'s colon form' do
-        colons = org_cert.upcase.scan(/../).join(':')
-
-        expect(finish(verified_report.merge('cert_sha256' => colons)).code).to eq(:finished)
-      end
-
-      it 'rejects an APK signed with another certificate: not built by distr, upload failed, release held' do
-        result = finish(verified_report.merge('cert_sha256' => 'ff' * 32))
-
-        expect(result).to have_attributes(code: :rejected, http: 422)
-        expect(result.payload).to include(state: 'failed', error: described_class::NOT_BUILT_BY_DISTR)
-        expect(upload.reload).to have_attributes(state: 'failed', error: described_class::NOT_BUILT_BY_DISTR)
-        expect(release.reload).to have_attributes(status: 'held', ci_compile_state: 'failed', file_storage_key: nil)
-      end
-
-      it 'rejects an APK CI could not verify (unsigned, several signers or damaged)' do
-        result = finish(apk_report.merge('apk_verified' => false))
-
-        expect(result).to have_attributes(code: :rejected, http: 422)
-        expect(result.payload[:error]).to eq(described_class::UNVERIFIED_APK)
-        expect(release.reload).to have_attributes(status: 'held', file_storage_key: nil)
-      end
-
-      it 'rejects a report with no signature facts at all, so an old copy of the workflow cannot slip a file past' do
-        result = finish(apk_report)
-
-        expect(result).to have_attributes(code: :rejected, http: 422)
-        expect(result.payload[:error]).to eq(described_class::UNVERIFIED_APK)
-        expect(upload.reload.state).to eq('failed')
-      end
-
-      it 'rejects an APK CI says it re-signed with the organisation key: nothing may be signed without being checked' do
-        result = finish(apk_report.merge('org_signed' => true, 'signed_file_sha256' => 'd' * 64,
-                                         'cert_sha256' => org_cert))
-
-        expect(result).to have_attributes(code: :rejected, http: 422)
-        expect(result.payload[:error]).to eq(described_class::CHANGED_IN_CI)
-        expect(release.reload).to have_attributes(status: 'held', file_storage_key: nil)
-      end
-
-      it 'rejects an APK CI says it injected the SDK into' do
-        result = finish(apk_report.merge('sdk_injected' => true, 'injected_file_sha256' => 'e' * 64,
-                                         'cert_sha256' => org_cert))
-
-        expect(result).to have_attributes(code: :rejected, http: 422)
-        expect(result.payload[:error]).to eq(described_class::CHANGED_IN_CI)
-      end
-
-      context 'for a bundle' do
-        let(:filename) { 'app.aab' }
-        let(:kind) { 'aab' }
-
-        it 'does not apply: its universal APK is built and signed in CI, and that certificate is checked instead' do
-          result = finish(aab_report.merge('cert_sha256' => org_cert, 'apk_verified' => false))
-
-          expect(result).to have_attributes(code: :finished, http: 200)
-          expect(release.reload.status).to eq('available')
-        end
+        expect(release.reload).to have_attributes(status: 'held', file_storage_key: keys[:file])
+        expect(upload.reload.state).to eq('done')
       end
     end
 
-    context 'when the rule is on but no organisation certificate is configured' do
-      let(:env) { { 'REQUIRE_ORG_SIGNED_APKS' => 'true' } }
+    context 'when uploaded via API (source: api)' do
+      let(:options) { { 'source' => 'api' } }
 
-      it 'fails closed with a reason that names the missing setting, whatever CI reported' do
-        result = finish(verified_report)
+      it 'makes the release available and enqueues deploy email' do
+        allow(EmailNotifications).to receive(:enabled?).and_return(true)
 
-        expect(result).to have_attributes(code: :rejected, http: 422)
-        expect(result.payload[:error]).to eq(described_class::NO_ORGANISATION_CERTIFICATE)
-        expect(release.reload).to have_attributes(status: 'held', file_storage_key: nil)
-      end
-    end
+        expect { finish(signed_report) }.to have_enqueued_job(ReleaseDeployNotificationJob)
 
-    context 'when the rule is off' do
-      let(:env) { { 'CI_COMPILE_EXPECT_CERT_SHA256' => org_cert } }
-
-      it 'accepts an APK with no signature facts, as before' do
-        expect(finish(apk_report).code).to eq(:finished)
-        expect(release.reload).to have_attributes(signed: false, signing_key_checksum: nil)
-      end
-
-      it 'accepts an APK signed by another certificate, and does not mark it signed' do
-        result = finish(verified_report.merge('cert_sha256' => 'ff' * 32))
-
-        expect(result.code).to eq(:finished)
-        expect(release.reload).to have_attributes(status: 'available', signed: false, signing_key_checksum: nil)
-      end
-
-      it 'still marks an APK signed when its verified signer is the organisation certificate' do
-        expect(finish(verified_report).code).to eq(:finished)
-        expect(release.reload).to have_attributes(signed: true, signing_key_checksum: 'sum-1')
-      end
-
-      context 'with a value other than the word true' do
-        let(:env) { { 'REQUIRE_ORG_SIGNED_APKS' => 'yes', 'CI_COMPILE_EXPECT_CERT_SHA256' => org_cert } }
-
-        it 'is still off' do
-          expect(finish(apk_report).code).to eq(:finished)
-        end
-      end
-    end
-
-    context 'with a malformed claim' do
-      let(:env) { { 'REQUIRE_ORG_SIGNED_APKS' => 'true', 'CI_COMPILE_EXPECT_CERT_SHA256' => org_cert } }
-
-      it 'refuses a verified APK whose certificate is not 64 hex characters, and changes nothing' do
-        expect(finish(verified_report.merge('cert_sha256' => 'abcd'))).to have_attributes(code: :malformed, http: 422)
-        expect(finish(verified_report.except('cert_sha256')).http).to eq(422)
-        expect(upload.reload.state).to eq('processing')
-        expect(release.reload.status).to eq('held')
-      end
-
-      it 'refuses apk_verified together with org_signed or sdk_injected' do
-        signed = verified_report.merge('org_signed' => true, 'signed_file_sha256' => 'd' * 64)
-        injected = verified_report.merge('sdk_injected' => true, 'injected_file_sha256' => 'e' * 64)
-
-        expect(finish(signed)).to have_attributes(code: :malformed, http: 422)
-        expect(finish(injected)).to have_attributes(code: :malformed, http: 422)
-        expect(upload.reload.state).to eq('processing')
+        expect(release.reload).to have_attributes(status: 'available', file_storage_key: keys[:file])
+        expect(upload.reload.state).to eq('done')
       end
     end
   end

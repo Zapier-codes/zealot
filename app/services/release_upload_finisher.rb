@@ -84,21 +84,6 @@ class ReleaseUploadFinisher
   Result = Struct.new(:code, :http, :payload, keyword_init: true)
 
   SHA256_FORMAT = /\A[0-9a-f]{64}\z/
-
-  # Task 40n-c. What the uploader is told when `REQUIRE_ORG_SIGNED_APKS` turns an APK away. Plain sentences: they
-  # are stored on the upload and the held release and shown as written, like every other stage-2 reason.
-  NOT_BUILT_BY_DISTR = 'This APK is not signed with the organisation key, so it was not built by distr and ' \
-                       'cannot be published here. Upload the APK distr gave you unchanged, or upload an .aab.'
-  UNVERIFIED_APK = 'The signature of this APK could not be verified (it is unsigned, has more than one signer, ' \
-                   'or is damaged), so it was not built by distr and cannot be published here. Upload the APK ' \
-                   'distr gave you unchanged, or upload an .aab.'
-  NO_ORGANISATION_CERTIFICATE = 'APK uploads are limited to files signed with the organisation key, but this ' \
-                                'server has no organisation certificate configured ' \
-                                '(CI_COMPILE_EXPECT_CERT_SHA256). Ask the administrator.'
-  CHANGED_IN_CI = 'This APK was re-signed or modified while it was being processed, which is not allowed for ' \
-                  'APK uploads: an APK is published exactly as distr built it. Upload it again unchanged, or ' \
-                  'upload an .aab.'
-
   def initialize(upload, body, storage: nil, staging: nil, env: ENV, now: Time.current)
     @upload = upload
     @body = body
@@ -127,9 +112,6 @@ class ReleaseUploadFinisher
     keys = expected_keys(release)
     problem = malformed(keys)
     return refuse(:malformed, 422, problem) if problem
-
-    reason = certificate_problem
-    return reject(reason) if reason
 
     reason = missing_object(release, keys)
     return reject(reason) if reason
@@ -174,7 +156,7 @@ class ReleaseUploadFinisher
     return 'file_sha256 does not match the file that was read' unless same_hash?(body['file_sha256'],
                                                                                   metadata['file_sha256'])
 
-    icon_problem(keys) || injection_problem || signing_problem || verification_problem || bundle_problem(keys)
+    icon_problem(keys) || injection_problem || signing_problem || bundle_problem(keys)
   end
 
   # Task 40j
@@ -209,23 +191,6 @@ class ReleaseUploadFinisher
   def signed_apk?
     !bundle? && ActiveModel::Type::Boolean.new.cast(body['org_signed']) == true
   end
-
-  # Task 40n-c. A malformed claim is 422 and changes nothing (CI can resend); whether the claim is acceptable is
-  # `certificate_problem`'s question.
-  def verification_problem
-    return nil unless verified_apk?
-    return 'apk_verified cannot be reported together with org_signed or sdk_injected' if signed_apk? || injected_apk?
-    return nil if SHA256_FORMAT.match?(normalize_fingerprint(body['cert_sha256']))
-
-    'cert_sha256 must be 64 hex characters when apk_verified is true'
-  end
-
-  # CI read the uploaded APK's own signature: it verifies and has exactly one signer (whose certificate is
-  # `cert_sha256`). Never true for a bundle.
-  def verified_apk?
-    !bundle? && ActiveModel::Type::Boolean.new.cast(body['apk_verified']) == true
-  end
-
 
   def same_hash?(reported, known)
     reported = reported.to_s.downcase
@@ -270,33 +235,6 @@ class ReleaseUploadFinisher
   rescue ArgumentError
     false
   end
-
-  # --- what must be true before anything is recorded ----------------------
-
-  def certificate_problem
-    return apk_rule_problem if !bundle? && require_org_signed_apks?
-    return nil unless (bundle? || signed_apk? || injected_apk?) && expected_certificate.present?
-    return nil if normalize_fingerprint(body['cert_sha256']) == expected_certificate
-
-    'the signing certificate CI reported does not match the expected certificate'
-  end
-
-  # Task 40n-c: the rule for every APK upload. Off unless this server says `REQUIRE_ORG_SIGNED_APKS=true`. It fails
-  # closed: no configured certificate, a file CI changed (re-signed or injected), no verified signature or another
-  # certificate all turn the APK away. A bundle is not subject to it (its universal APK is built and signed in CI).
-  def apk_rule_problem
-    return NO_ORGANISATION_CERTIFICATE if expected_certificate.blank?
-    return CHANGED_IN_CI if signed_apk? || injected_apk?
-    return UNVERIFIED_APK unless verified_apk?
-    return NOT_BUILT_BY_DISTR unless normalize_fingerprint(body['cert_sha256']) == expected_certificate
-
-    nil
-  end
-
-  def require_org_signed_apks?
-    env['REQUIRE_ORG_SIGNED_APKS'].to_s.strip == 'true'
-  end
-
   def expected_certificate
     normalize_fingerprint(env['CI_COMPILE_EXPECT_CERT_SHA256'])
   end
@@ -344,7 +282,7 @@ class ReleaseUploadFinisher
     attributes.merge!(icon_storage_key: keys[:icon], icon_sha256: metadata['icon_sha256']) if keys[:icon]
     attributes.merge!(bundle_attributes(keys)) if bundle?
     attributes.merge!(signing_attributes)
-    attributes[:status] = 'available' unless hold_requested?(row)
+    attributes[:status] = 'available' unless hold_requested?(row) || requires_payment?(row)
     attributes
   end
 
@@ -378,6 +316,11 @@ class ReleaseUploadFinisher
   # The same cast the API upload door uses for `hold`.
   def hold_requested?(row)
     ActiveModel::Type::Boolean.new.cast(row.form_options['hold']) == true
+  end
+
+  # Task 40o: Manual dashboard uploads require payment before becoming available.
+  def requires_payment?(row)
+    row.form_options['source'] == 'web'
   end
 
   # Housekeeping that must not turn an accepted result into an error: the release is already saved.

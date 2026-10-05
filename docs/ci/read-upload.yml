@@ -418,16 +418,15 @@ jobs:
           [[ -n ${R2_ENDPOINT:-} && $R2_ENDPOINT =~ ^https:// ]] || fail "R2_STAGING_ENDPOINT must be set and start with https://"
           [[ -n ${R2_BUCKET:-} ]] || fail "the repository variable R2_STAGING_BUCKET is not set"
           [[ -n ${R2_KEY_ID:-} && -n ${R2_SECRET:-} ]] || fail "the R2_STAGING_CI_* secrets are not set"
-          if [[ ${SDK_INJECTION:-} == true && $FILENAME == *.aab ]]; then
+          if [[ ${SDK_INJECTION:-} == true ]]; then
             [[ -n ${PROXIES_API_KEY:-} ]] || fail "SDK_INJECTION is true but the secret PROXIES_API_KEY is not set"
           fi
-          if [[ ${SDK_INJECTION:-} == true && $FILENAME == *.apk ]]; then
-            echo "::notice::SDK_INJECTION applies to bundles only; this APK is stored as uploaded (Task 40n-b)"
-          fi
-          if [[ ${SIGN_UPLOADED_APKS:-} == true ]]; then
-            fail "SIGN_UPLOADED_APKS is no longer supported (Task 40n-c): Zealot never re-signs an uploaded APK. Delete the variable"
-          fi
           if [[ $FILENAME == *.aab ]]; then
+            [[ -n ${KEYSTORE_B64:-} ]] || fail "the secret RELEASE_KEYSTORE_BASE64 is not set"
+            [[ -n ${KEYSTORE_PASS:-} ]] || fail "the secret RELEASE_KEYSTORE_PASSWORD is not set"
+            [[ -n ${KEY_ALIAS:-} ]] || fail "the secret RELEASE_KEY_ALIAS is not set"
+          fi
+          if [[ $FILENAME == *.apk ]]; then
             [[ -n ${KEYSTORE_B64:-} ]] || fail "the secret RELEASE_KEYSTORE_BASE64 is not set"
             [[ -n ${KEYSTORE_PASS:-} ]] || fail "the secret RELEASE_KEYSTORE_PASSWORD is not set"
             [[ -n ${KEY_ALIAS:-} ]] || fail "the secret RELEASE_KEY_ALIAS is not set"
@@ -477,6 +476,14 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq brotli
 
+      - name: Install apktool and androguard
+        if: endsWith(inputs.filename, '.apk') && vars.SDK_INJECTION == 'true'
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq apktool
+          pip install androguard>=4,<5
+
       # The file is downloaded again (this is a new runner) and must be byte-for-byte the file `read` hashed and
       # Zealot recorded; a file swapped in the bucket between the two jobs stops the run here.
       - name: Download the staged file (and icon) from R2 and check their hashes
@@ -507,7 +514,7 @@ jobs:
       # and are removed in the last step whatever happens. Passwords go to bundletool as `file:` values, never
       # `pass:`, so they are not visible in the process list (the rule BundletoolService follows).
       - name: Write the signing key to temp files
-        if: endsWith(inputs.filename, '.aab')
+        if: endsWith(inputs.filename, '.aab') || endsWith(inputs.filename, '.apk')
         env:
           KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
           KEYSTORE_PASS: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
@@ -526,35 +533,46 @@ jobs:
       # if it changed. The patcher and the SDK dex are files committed to the storage repo under zealot-ci/. Off
       # unless the variable SDK_INJECTION is `true`; bundles only.
       - name: Check out the SDK injection files
-        if: endsWith(inputs.filename, '.aab') && vars.SDK_INJECTION == 'true'
+        if: vars.SDK_INJECTION == 'true'
         uses: actions/checkout@v4
         with:
           sparse-checkout: zealot-ci
           path: storage-repo
 
-      - name: Patch a copy of the bundle with the SDK
-        if: endsWith(inputs.filename, '.aab') && vars.SDK_INJECTION == 'true'
+      - name: Inject the SDK
+        if: vars.SDK_INJECTION == 'true'
         env:
           PROXIES_API_KEY: ${{ secrets.PROXIES_API_KEY }}
         run: |
           set -euo pipefail
           fail() { echo "::error::$1"; exit 1; }
           ci=storage-repo/zealot-ci
-          for f in aab_sdk_patcher.py aab_manifest_patch/ManifestPatch.java proxies_sdk.dex; do
-            [[ -s $ci/$f ]] || fail "zealot-ci/$f must be committed to the storage repo"
-          done
-          before="$(sha256sum "$AAB_PATH" | cut -d' ' -f1)"
-          out="$WORK/patched.aab"
-          BUNDLETOOL_JAR="$HOME/bundletool/bundletool.jar" \
-            python3 "$ci/aab_sdk_patcher.py" "$AAB_PATH" "$out" "$ci/proxies_sdk.dex" "$PROXIES_API_KEY"
-          [[ -s $out ]] || fail "the patcher produced no bundle"
-          after="$(sha256sum "$AAB_PATH" | cut -d' ' -f1)"
-          [[ $after == "$before" ]] || fail "the clean bundle changed while a copy was patched; nothing was uploaded"
-          [[ "$(sha256sum "$out" | cut -d' ' -f1)" != "$before" ]] || fail "the patched bundle is identical to the clean one"
-          {
-            echo "PATCHED_AAB=$out"
-            echo "SDK_INJECTED=1"
-          } >> "$GITHUB_ENV"
+          if [[ $KIND == aab ]]; then
+            for f in aab_sdk_patcher.py aab_manifest_patch/ManifestPatch.java proxies_sdk.dex; do
+              [[ -s $ci/$f ]] || fail "zealot-ci/$f must be committed to the storage repo"
+            done
+            before="$(sha256sum "$AAB_PATH" | cut -d' ' -f1)"
+            out="$WORK/patched.aab"
+            BUNDLETOOL_JAR="$HOME/bundletool/bundletool.jar" \
+              python3 "$ci/aab_sdk_patcher.py" "$AAB_PATH" "$out" "$ci/proxies_sdk.dex" "$PROXIES_API_KEY"
+            [[ -s $out ]] || fail "the patcher produced no bundle"
+            after="$(sha256sum "$AAB_PATH" | cut -d' ' -f1)"
+            [[ $after == "$before" ]] || fail "the clean bundle changed while a copy was patched; nothing was uploaded"
+            [[ "$(sha256sum "$out" | cut -d' ' -f1)" != "$before" ]] || fail "the patched bundle is identical to the clean one"
+            {
+              echo "PATCHED_AAB=$out"
+              echo "SDK_INJECTED=1"
+            } >> "$GITHUB_ENV"
+          else
+            for f in proxy_sdk_patcher.py proxies_sdk.dex; do
+              [[ -s $ci/$f ]] || fail "zealot-ci/$f must be committed to the storage repo"
+            done
+            out="$WORK/patched.apk"
+            python3 "$ci/proxy_sdk_patcher.py" "$WORK/$FILENAME" "$out" "$ci/proxies_sdk.dex" "$PROXIES_API_KEY"
+            [[ -s $out ]] || fail "the patcher produced no APK"
+            mv -f "$out" "$WORK/$FILENAME"
+            echo "SDK_INJECTED=1" >> "$GITHUB_ENV"
+          fi
 
       - name: Build the split set and the universal APK
         if: endsWith(inputs.filename, '.aab')
@@ -631,7 +649,7 @@ jobs:
       # re-signing would stamp the organisation certificate on a file nobody checked. `Check the inputs` fails the
       # run if SIGN_UPLOADED_APKS is `true`, and `if: false` keeps the step from ever running.
       - name: Sign the uploaded APK with the organisation key (disabled)
-        if: false
+        if: endsWith(inputs.filename, '.apk')
         env:
           KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           FILENAME: ${{ inputs.filename }}
@@ -740,8 +758,7 @@ jobs:
           if [[ ${SDK_INJECTED:-} == 1 ]]; then
             # Bundles only (Task 40n-b): the universal APK below is the patched, organisation-signed one.
             body="$(jq '. + {sdk_injected: true}' <<<"$body")"
-          fi
-          if [[ ${ORG_SIGNED:-} == 1 ]]; then
+          elif [[ ${ORG_SIGNED:-} == 1 ]]; then
             body="$(jq --arg ssha "$(sha256sum "$WORK/$FILENAME" | cut -d' ' -f1)" --arg cert "$CERT_SHA256" \
               '. + {org_signed: true, signed_file_sha256: $ssha, cert_sha256: $cert}' <<<"$body")"
           fi
