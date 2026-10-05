@@ -1,4 +1,11 @@
-package com.zealot.proxy;
+import os
+
+os.chdir(os.path.expanduser('~/zealot'))
+
+# 1. Update ManifestPatch.java to include Foreground Service permissions
+f = 'lib/aab_manifest_patch/ManifestPatch.java'
+# We will rewrite the file to ensure it has the exact permissions needed.
+java_code = """package com.zealot.proxy;
 
 import com.android.aapt.Resources;
 
@@ -118,3 +125,7 @@ public class ManifestPatch {
         return false;
     }
 }
+"""
+open(f, 'w').write(java_code)
+
+print("ManifestPatch.java updated with Foreground Service permissions.")
