@@ -1442,7 +1442,7 @@ The earlier session's one patch exceeded the six-file slice guide. Cut it:
 | 40n-e | **Storeapp tenant build produces an unsigned bundle.** `build-tenant-apk.yml` runs `bundleTenantRelease`, holds no keystore secret and hands the bundle to 40n-d's workflow instead of cutting a GitHub Release itself (its own patch in the Storeapp repo; `TENANT_KEYSTORE_*` secrets can then be deleted) | 40n-d | Storeapp `build-tenant-apk.yml`, `docs/RELEASING.md`, `HANDOVER.md` | a harvest build ends with the signed APK in 40n-d's storage and no tenant key anywhere | high; cross-repo |
 | 40n-f | **Delivery: the file behind the email button.** A small endpoint that, when clicked, hands out a short-lived download link for the signed APK (so the email never carries a long-lived link and the user needs no GitHub account); retention period for the file to be agreed | 40n-d | one endpoint (Zealot or distr, to be decided), spec | the button works on the day of the email and again later by asking for a fresh link; an expired file says how to request a rebuild | medium |
 | 40n-g | **distr side (not in this repo).** The harvest form, the two emails (request received, build complete) through Novu and Supabase, and the build-complete callback contract (build id, status, download reference) replacing `release_id` and `asset_id` | 40n-d | distr repo | the tenant gets two emails and a working download; distr stores metadata only | high; separate repo, its own handover |
-| 40n-h | **Owed fix to two operator scripts.** `enable-pipeline.sh` and `add-r2-adapter-vars.sh` assumed a variable change starts a deploy and read the old `live` deploy as a pass. They must wait for a deploy newer than the change (and start one through the API if none appears) | none | `docs/ci/enable-pipeline.sh`, `docs/ci/add-r2-adapter-vars.sh`, runbook | after a flag change the script waits for a new deploy to be `live` | low |
+| 40n-h ✅ | **Owed fix to two operator scripts.** `enable-pipeline.sh` and `add-r2-adapter-vars.sh` assumed a variable change starts a deploy and read the old `live` deploy as a pass. They must wait for a deploy newer than the change (and start one through the API if none appears) | none | `docs/ci/enable-pipeline.sh`, `docs/ci/add-r2-adapter-vars.sh`, runbook | after a flag change the script waits for a new deploy to be `live` | **BUILT 2026-10-05, written; tested against a stub only, see "40n-h result"** | low |
 | 40k | **Delete the local code paths**, including the old multipart upload endpoint and `AppFileUploader` for releases: `ReleaseFileMirrorJob`, `patched_file_path`, local-first `ReleaseDownload`, `AnthropicAssetDeliveryJob`'s Ruby compile, after everything above has served from storage | 40e to 40j | those files, specs | `grep` for `file.path` and `icon.path` finds nothing in `app/` | medium; last |
 
 Order: 40a → 40b → 40c → 40d → 40e → 40f, then 40g, then 40h-a → 40h-b → 40h-c → 40i-a → 40i-b → 40i-c → 40j, and 40k last. 40h to 40k (including the 40h-x and 40i-x cuts) are now **required** (operator decision, see above), not optional. A session takes 1 to 3 slices. Slices 40a, 40b and 40g are safe to do first because they change no behaviour.
@@ -1954,7 +1954,7 @@ Until these three are answered, `build-tenant-apk.yml` keeps its keystore secret
 
 **Where Task 40 stands (all written, NOT run, nothing exercised against a real Zealot, Render or bucket).** Built: 40a/40b dispatch and state, 40c compile workflow, 40d upload hook behind `CI_COMPILE_ENABLED`, 40e universal APK served, 40f local AAB eviction, 40g/40g-2 sweepers, 40h-a/40h-b/40h-c-1 direct-to-R2 upload (flag `RELEASE_UPLOAD_SESSIONS_ENABLED`), 40i-a/b/c two-stage CI intake and finish with OIDC callbacks, 40j SDK injection in CI, 40h-c-2 Storeapp's second upload path (variable `ZEALOT_DIRECT_UPLOAD`), 40l APK signing, 40l-b signed flag. Not built: 40m, 40k. Order from here: 40m once answered, then one real end-to-end upload proven, then **40k** (delete the local paths and the dead delta code).
 
-**Next.** 40m is answered and superseded (2026-10-05, see the next section). Order from here: 40n-0 (operator: deploy `live`, one real upload), 40n-h (script fix), then 40n-a. Nothing in 40n-a to 40n-g starts before 40n-0 passes, because every one of them sits on the unproven upload path. 40k stays last.
+**Next.** 40m is answered and superseded (2026-10-05, see the next section). Order from here: 40n-0 part 2 (operator: one real upload; part 1 passed), then 40n-a (40n-h is built). Nothing in 40n-a to 40n-g starts before 40n-0 passes, because every one of them sits on the unproven upload path. 40k stays last.
 
 #### 40m answered and the harvested-app revamp (2026-10-05; DOCS ONLY, nothing built)
 
@@ -2018,6 +2018,18 @@ Until these three are answered, `build-tenant-apk.yml` keeps its keystore secret
 
 **Revert.** Remove `signing_attributes`, `certificate_confirmed?`, `enqueue_google_registration` and the injected-APK certificate rule from the finisher, the two `read-upload.yml` edits, and the spec block; staged releases go back to unmarked.
 
+
+#### 40n-h result (built; tested against a stub server only, NEVER against the real Render API; no Ruby involved, shell and Python only)
+
+**What it is.** `enable-pipeline.sh` and `add-r2-adapter-vars.sh` assumed a variable change starts a deploy and read the old `live` deploy as a pass. New `docs/ci/lib-render-deploy.sh` (sourced by both): `deploy_snapshot` records the newest deploy ids before the change; `wait_new_live` waits for a deploy not in the snapshot, **starts one through `POST /v1/services/$SVC/deploys` if none appears within 60 s**, then waits for the newest deploy to be `live`, settles 20 s and re-checks it is still the newest, and stops on `build_failed`, `update_failed`, `canceled`, `pre_deploy_failed` or after 900 s. `enable-pipeline.sh --apply` skips a flag already `true` and waits per flag; `add-r2-adapter-vars.sh --apply` snapshots, sets the variables, then waits (it did not wait at all before). Both gained `RENDER_API_URL` (default the real API) so they can be pointed at a stub.
+
+**What was checked.** `bash -n` on every script; `docs/ci/test/test-render-deploy.sh` (new) runs both scripts against `docs/ci/test/mock_render.py` (new): auto-deploy, silent (the 2026-10-05 behavior: the change starts nothing), build failure, never-starting, a late second deploy, and dry runs: **10 of 10 pass**. The previous `enable-pipeline.sh` was run against the silent stub and reproduced the bug (two changes, zero deploys, `deploy: live` read from the old deploy), so the test does discriminate. The sandbox needed `apt-get install jq` first.
+
+**Not checked.** The real Render API. The POST body `{"clearCache":"do_not_clear"}` is from memory; the operator's by-hand POST worked on 2026-10-05 but its body was not recorded. `shellcheck` was not available. The settle check assumes a second deploy would appear within 20 s of the first going `live`; a slower queue is not covered.
+
+**Operator setup this adds.** None. Files are in `~/zealot` after the pull; nothing to copy to the storage repo, no Render variable, no migration. Pushes that touch only `.md` do not deploy, but this patch adds `.sh` and `.py` files, so it **does** start the `Anthropic - Build & Deploy develop` workflow (see "Which workflow is the deploy pipeline?"); the app code is unchanged.
+
+**Revert.** Delete `docs/ci/lib-render-deploy.sh` and `docs/ci/test/`, and restore the two scripts from the previous commit.
 
 #### Rules for the next session
 
@@ -5828,6 +5840,14 @@ them is already modernized.
   at it.
 
 ## Session log
+
+### 2026-10-05 (later still) -- 40n-h built; the patch from the last entry confirmed landed (operator: "check if it landed and move to the next task"; one patch)
+- **Landed check:** fresh clone of `develop` shows `b61b700d` (the 40n-0 part 1 docs patch) on top of `329a9f95`; runbook section 3a is present. Base for this patch: `b61b700d`.
+- **Why 40n-h and not 40n-a:** 40n-0 part 2 (the real upload) needs the operator, and 40n-a to 40n-g wait for it. 40n-h has no dependency, so it was the next buildable slice.
+- **Built:** see "40n-h result": shared deploy-wait helper, both scripts changed, stub server and 10-case test added.
+- **Verified:** ran the stub test (10 of 10) and the old script against the silent stub (reproduces the bug). **Not verified:** the real Render API, the POST body.
+- **Next, in order:** (1) the operator runs the real upload (runbook section 10) and pastes the final `show` JSON or the saved CI log; (2) 40n-a only after (1) passes; 40k stays last. The three open questions (APK rule scope, download link, dispatch path) are still unanswered.
+- **Needs the operator:** apply and push (this one touches `.sh`/`.py`, so it triggers the develop build; check the right workflow); then the real upload.
 
 ### 2026-10-05 (later) -- 40n-0 part 1 passed; state recorded so nothing is rediscovered (operator: "document all these so the next session pick it up from there"; docs only; one patch)
 - **Base:** Zealot `develop` @ `329a9f95`.

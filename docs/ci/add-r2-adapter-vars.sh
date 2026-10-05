@@ -6,15 +6,18 @@
 #   bash ~/zealot/docs/ci/add-r2-adapter-vars.sh            # dry run: shows what it would add
 #   bash ~/zealot/docs/ci/add-r2-adapter-vars.sh --apply    # adds the missing ones
 # Never overwrites a variable that already has a value. Never prints a secret (10-char fingerprint only).
-# Setting a Render variable starts a deploy: run this BEFORE enable-pipeline.sh, and wait for `live`.
+# Setting a Render variable may start a deploy; with --apply the script now waits for a NEW deploy to be live (and
+# starts one through the API if Render does not), so it can be followed straight by enable-pipeline.sh (Task 40n-h).
 # Needs: curl, jq, sha256sum. Uses RENDER_API_KEY or RENDER_TOKEN (already set).
 set -u
 for f in "$HOME/.zealot.env" "$HOME/.render.env"; do [ -f "$f" ] && . "$f"; done
 RENDER_API_KEY="${RENDER_API_KEY:-${RENDER_TOKEN:-}}"
 : "${RENDER_API_KEY:?no Render key: set RENDER_API_KEY or RENDER_TOKEN}"
 SVC="${RENDER_SERVICE_ID:-srv-dalsvf942hec73dk2vg0}"
-API="https://api.render.com/v1"
+API="${RENDER_API_URL:-https://api.render.com/v1}"   # override only for tests against a stub
 auth=(-H "Authorization: Bearer $RENDER_API_KEY")
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$HERE/lib-render-deploy.sh"   # deploy_snapshot, wait_new_live (Task 40n-h)
 APPLY=0; [ "${1:-}" = "--apply" ] && APPLY=1
 
 vars="{}"; cursor=""
@@ -51,6 +54,7 @@ done <<< "$pairs"
 [ -z "$todo" ] && { echo "Nothing to add."; exit 0; }
 [ "$APPLY" -ne 1 ] && { echo "Dry run: nothing changed. Re-run with --apply."; exit 0; }
 
+deploy_snapshot || exit 2
 for t in $todo; do
   target=${t%%:*}; source=${t#*:}
   jq -n --arg v "$(rv "$source")" '{value:$v}' \
@@ -58,4 +62,6 @@ for t in $todo; do
     || { echo "failed to set $target"; exit 2; }
   echo "set $target"
 done
-echo "Done. Render starts a deploy; wait for it to be live, then run enable-pipeline.sh."
+echo "Variables set. Waiting for a new deploy to be live:"
+wait_new_live "$DEPLOY_SNAP" || exit $?
+echo "Done. The deploy is live; next: enable-pipeline.sh."

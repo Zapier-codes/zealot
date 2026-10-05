@@ -101,8 +101,8 @@ until that passes (section 10).
 3. Render variables complete (section 6, `check-render-env.sh` reports none MISSING) and the deploy is `live`.
 4. Turn on, one at a time, **last**: `CI_COMPILE_ENABLED=true`, then `RELEASE_UPLOAD_SESSIONS_ENABLED=true`
    (both on Render). `bash docs/ci/enable-pipeline.sh` (dry run) runs every gate of steps 1 to 3 and the by-hand
-   comparisons of section 5/6; `--apply` then sets the two flags in this order, waiting for the deploy to be
-   `live` after each. It stops before changing anything if a gate is BLOCKED. Then, if wanted, `SIGN_UPLOADED_APKS=true` in the storage repo (re-signs plain APKs
+   comparisons of section 5/6; `--apply` then sets the two flags in this order, waiting after each for a **new** deploy to be
+   `live` (40n-h; a flag already `true` is skipped). It stops before changing anything if a gate is BLOCKED. Then, if wanted, `SIGN_UPLOADED_APKS=true` in the storage repo (re-signs plain APKs
    with the org key; apps already installed from another key then cannot update, see the 40l result).
 5. One real end-to-end upload (operator), then 40k. Upload how-to: `docs/direct_upload.md`.
 
@@ -193,12 +193,36 @@ wrongly listed the `R2_*` trio as required; it is fixed. The operator chose to h
 staging-only, the adapter stays `github`, credentials only added): `bash docs/ci/add-r2-adapter-vars.sh --apply` copies
 `R2_STAGING_BUCKET/ENDPOINT/ACCESS_KEY_ID/SECRET_ACCESS_KEY` into `R2_BUCKET/ENDPOINT/ACCESS_KEY_ID/SECRET_ACCESS_KEY`
 (never overwrites, refuses unless the adapter is `github`). Nothing reads them until someone sets the adapter to `r2`, and
-then they would point at the staging bucket, so give `r2` its own bucket and token first. Run it BEFORE `enable-pipeline.sh`
-(each Render variable change starts a deploy). Optional: `R2_STAGING_REGION`, `CI_COMPILE_REPO`,
+then they would point at the staging bucket, so give `r2` its own bucket and token first. Run it BEFORE `enable-pipeline.sh`.
+Since 40n-h it waits for a NEW deploy to be `live` itself (see "Deploy waiting" below). Optional: `R2_STAGING_REGION`, `CI_COMPILE_REPO`,
 `ADC_AUTO_REGISTER` (off today by design), `CI_READ_UPLOAD_WORKFLOW`.
 
 Google ADC variables (separate from Task 40): `~/sync-adc.sh --apply` compares `ADC_REFRESH_TOKEN`,
 `CLIENT_ID`, `CLIENT_SECRET` between the phone and Render and sets what is missing.
+
+### Deploy waiting (Task 40n-h; built, tested against a stub only)
+
+`enable-pipeline.sh` and `add-r2-adapter-vars.sh` used to read "the latest deploy" right after a variable change, which was still
+the old `live` one, and reported success before any new deploy existed (2026-10-05: nothing newer than the old deploy appeared
+until the operator POSTed one by hand). Both now source `docs/ci/lib-render-deploy.sh`:
+
+1. snapshot the newest deploy ids **before** the change (it compares ids, never clocks);
+2. wait `DEPLOY_GRACE` (60 s) for a deploy that is not in the snapshot; if none appears, start one with
+   `POST /v1/services/$SVC/deploys` (body `{"clearCache":"do_not_clear"}`) and wait for that;
+3. wait until the newest deploy is `live`, wait `DEPLOY_SETTLE` (20 s), and check it is still the newest (a second change can queue a
+   deploy right behind the first);
+4. stop (exit 3) on `build_failed`, `update_failed`, `canceled`, `pre_deploy_failed` or after `DEPLOY_MAX` (900 s); exit 2 when the
+   deploy list cannot be read.
+
+`enable-pipeline.sh` also skips a flag that is already `true`, so running it twice is safe. Tunables are environment variables
+(`DEPLOY_GRACE`, `DEPLOY_POLL`, `DEPLOY_SETTLE`, `DEPLOY_MAX`). `RENDER_API_URL` points a script at a stub.
+
+**What was and was not checked.** `bash docs/ci/test/test-render-deploy.sh` runs both scripts against `docs/ci/test/mock_render.py`
+(auto-deploy, silent, failing, never-starting and late-second-deploy cases, plus dry runs): 10 of 10 pass, and the previous
+`enable-pipeline.sh` was run against the "silent" stub to confirm it reproduced the bug (two changes, no deploy, `deploy: live`
+read from the old one). **Not checked:** the real Render API. In particular the POST body `{"clearCache":"do_not_clear"}` is from
+memory of Render's API, not from a run; the operator's by-hand POST on 2026-10-05 worked, but its body was not recorded. If the
+script's own POST answers 4xx on the first real use, send the output to the session.
 
 ## 7. Zealot's own API, for checks from the phone
 
@@ -238,8 +262,9 @@ Same route family: `POST /api/play_credential` (Play service account), `bin/boot
 ## 9. Still open after this session (updated 2026-10-05, after 40n-0 part 1)
 
 1. **40n-0 part 2: the one real upload** (section 10). Nothing in 40n-a to 40n-g starts before it passes.
-2. 40n-h: fix `enable-pipeline.sh` and `add-r2-adapter-vars.sh` so they wait for a deploy **newer than the change** (they read
-   the old `live` deploy as a pass; seen 2026-10-05, the operator had to POST a deploy by hand). Docs-and-scripts only.
+2. ~~40n-h~~ **built** (`docs/ci/lib-render-deploy.sh`): both scripts now wait for a deploy **newer than the change**. Tested only
+   against a stub (`docs/ci/test/test-render-deploy.sh`, 10 checks pass); **never run against the real Render API**. The first real
+   use is the next time a Render variable is changed by either script; read its output, do not assume.
 3. Back up the keystore off the phone (not confirmed done).
 4. Three operator answers still owed (revamp section of `handover.md`): scope of the APK rule (every APK upload or tenant accounts only),
    the file behind the email button (30-day retention is a proposal), the dispatch path for 40n-d.

@@ -2,8 +2,10 @@
 # Task 40: gate checks, then turn the two pipeline flags on, in the runbook's order.
 #   bash ~/zealot/docs/ci/enable-pipeline.sh            # dry run: runs every gate, changes nothing
 #   bash ~/zealot/docs/ci/enable-pipeline.sh --apply    # gates pass -> sets CI_COMPILE_ENABLED=true,
-#                                                       # waits for the deploy to be live, then sets
-#                                                       # RELEASE_UPLOAD_SESSIONS_ENABLED=true
+#                                                       # waits for a NEW deploy to be live (starts one through
+#                                                       # the API if Render does not), then sets
+#                                                       # RELEASE_UPLOAD_SESSIONS_ENABLED=true the same way
+#                                                       # (a flag that is already true is skipped)
 # Needs: curl, jq, gh (logged in), git, sha256sum. Uses RENDER_API_KEY or RENDER_TOKEN (already set).
 # Never prints a secret value. ADC_AUTO_REGISTER and SIGN_UPLOADED_APKS are NOT touched (off by design;
 # see docs/ci/operator-runbook.md section 4).
@@ -15,8 +17,9 @@ SVC="${RENDER_SERVICE_ID:-srv-dalsvf942hec73dk2vg0}"
 STORAGE="${STORAGE_REPO:-Zapier-codes/zealot-storage}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APPLY=0; [ "${1:-}" = "--apply" ] && APPLY=1
-API="https://api.render.com/v1"
+API="${RENDER_API_URL:-https://api.render.com/v1}"   # override only for tests against a stub
 auth=(-H "Authorization: Bearer $RENDER_API_KEY")
+. "$HERE/lib-render-deploy.sh"   # deploy_snapshot, wait_new_live (Task 40n-h)
 
 fail=0
 ok()  { printf '  ok      %s\n' "$1"; }
@@ -78,19 +81,17 @@ setvar() {
     "$API/services/$SVC/env-vars/$1" >/dev/null || { echo "failed to set $1"; exit 2; }
   echo "set $1=$2"
 }
-wait_live() {
-  sleep 8   # give Render time to start the deploy the env change triggers
-  for _ in $(seq 1 60); do
-    s=$(latest_status); echo "  deploy: $s"
-    [ "$s" = live ] && return 0
-    case "$s" in build_failed|update_failed|canceled|pre_deploy_failed) echo "deploy ended '$s'; stop here"; exit 3 ;; esac
-    sleep 10
-  done
-  echo "deploy not live after 10 minutes; stop here"; exit 3
+# Task 40n-h: a flag change is only done when a deploy NEWER than the change is live. The old code read the
+# previous live deploy as a pass.
+apply_flag() {
+  if [ "$(rv "$1")" = "$2" ]; then echo "  $1 is already $2 on Render: skipped"; return 0; fi
+  deploy_snapshot || exit 2
+  setvar "$1" "$2"
+  wait_new_live "$DEPLOY_SNAP" || exit $?
 }
 
 echo "Turning on, one at a time, last:"
-setvar CI_COMPILE_ENABLED true;               wait_live
-setvar RELEASE_UPLOAD_SESSIONS_ENABLED true;  wait_live
+apply_flag CI_COMPILE_ENABLED true
+apply_flag RELEASE_UPLOAD_SESSIONS_ENABLED true
 echo "Done. Next: one real end-to-end upload (docs/direct_upload.md), then 40k."
 echo "Check:  bash $HERE/check-render-env.sh"
