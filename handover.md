@@ -5782,6 +5782,14 @@ them is already modernized.
 
 ## Session log
 
+### 2026-10-05 -- Task 40: `add-r2-adapter-vars.sh`, the four adapter-side R2 variables added from the staging values (operator: "R2 for staging only, we are only adding the credentials"; script and docs only; no application code; one patch)
+- **Base:** Zealot `develop` @ `234f97a3` (the `enable-pipeline.sh` patch, pushed by the operator). First `enable-pipeline.sh` run: gates 1 and 2 passed, gate 3 blocked because the deploy was `update_in_progress`; nothing was changed.
+- **Decision (operator):** `RELEASE_STORAGE_ADAPTER` stays `github`; R2 is staging-only; the `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` (and `R2_BUCKET`, which `r2_adapter.rb` also requires) are added so they exist, nothing else changes.
+- **Built:** `docs/ci/add-r2-adapter-vars.sh`: copies the four `R2_STAGING_*` values already on Render into the four adapter names; dry run by default; `--apply` sets only the ones that are empty; refuses unless the adapter is `github`; prints secrets as fingerprints only. No Cloudflare API call is needed because the values are already on Render, so no Cloudflare token was used.
+- **Caveat recorded:** while the adapter is `github` nothing reads these four (only `release_storage/r2_adapter.rb`, with `r2`). If the adapter is ever set to `r2`, they point at the staging bucket; create a separate release bucket and token first.
+- **Verified:** `bash -n` and a stub run (dry run, adapter-not-github refusal, `--apply`). NOT run against real Render.
+- **Needs the operator:** apply and push; run `add-r2-adapter-vars.sh`, then `--apply`, wait for the deploy to be `live`; then `enable-pipeline.sh` and `--apply`; then one real upload; 40m still waits for an answer.
+
 ### 2026-10-05 -- Task 40: `enable-pipeline.sh`, the gated switch-on of the two missing flags (operator: "fix all that is missing and set it, none is missing anymore"; script and docs only; no application code; one patch)
 - **Base:** Zealot `develop` @ `1f38e1a5` (the check-render-env fix, pushed by the operator).
 - **What was missing:** after the first Render check the only `MISSING` rows were `CI_COMPILE_ENABLED` and `RELEASE_UPLOAD_SESSIONS_ENABLED`, the two flags that are meant to be turned on last (`ADC_AUTO_REGISTER` is optional and stays off by design; `SIGN_UPLOADED_APKS` is untouched).

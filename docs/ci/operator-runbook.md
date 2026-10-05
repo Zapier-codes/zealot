@@ -149,7 +149,12 @@ the storage repo), `CI_COMPILE_CALLBACK_TOKEN`, `CI_COMPILE_EXPECT_CERT_SHA256` 
 nothing signed), the two flags, and the storage adapter set, which depends on `RELEASE_STORAGE_ADAPTER`: with `github` (today's
 value) `GITHUB_STORAGE_REPO` and `GITHUB_STORAGE_TOKEN`; the adapter's own `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`,
 `R2_SECRET_ACCESS_KEY` (not the `R2_STAGING_*` ones) are needed only with `r2`. An earlier draft of the check
-wrongly listed the `R2_*` trio as required; it is fixed. Optional: `R2_STAGING_REGION`, `CI_COMPILE_REPO`,
+wrongly listed the `R2_*` trio as required; it is fixed. The operator chose to have them present anyway (R2 stays
+staging-only, the adapter stays `github`, credentials only added): `bash docs/ci/add-r2-adapter-vars.sh --apply` copies
+`R2_STAGING_BUCKET/ENDPOINT/ACCESS_KEY_ID/SECRET_ACCESS_KEY` into `R2_BUCKET/ENDPOINT/ACCESS_KEY_ID/SECRET_ACCESS_KEY`
+(never overwrites, refuses unless the adapter is `github`). Nothing reads them until someone sets the adapter to `r2`, and
+then they would point at the staging bucket, so give `r2` its own bucket and token first. Run it BEFORE `enable-pipeline.sh`
+(each Render variable change starts a deploy). Optional: `R2_STAGING_REGION`, `CI_COMPILE_REPO`,
 `ADC_AUTO_REGISTER` (off today by design), `CI_READ_UPLOAD_WORKFLOW`.
 
 Google ADC variables (separate from Task 40): `~/sync-adc.sh --apply` compares `ADC_REFRESH_TOKEN`,
