@@ -40,18 +40,58 @@ Render), `~/close-gaps.sh` (**now `docs/ci/close-gaps.sh` in this repo**, copy i
 | Item | State | How known |
 |---|---|---|
 | Render `ADC_REFRESH_TOKEN`, `CLIENT_ID`, `CLIENT_SECRET` | set and verified | `~/sync-adc.sh --apply` output |
-| Storage-repo variables `ZEALOT_URL`, `R2_STAGING_ENDPOINT`, `R2_STAGING_BUCKET` | set, equal to Render | `close-gaps.sh` output ("ok" lines) |
+| Storage-repo variables `ZEALOT_URL`, `R2_STAGING_ENDPOINT`, `R2_STAGING_BUCKET`, `RELEASE_CERT_SHA256` | set, equal to Render, **full values read back 2026-10-05 ~10:15 UTC** (section 3a) | `gh variable list --json name,value` |
 | Storage-repo variable `RELEASE_CERT_SHA256` | set by `close-gaps.sh --apply` | output |
 | Render `CI_COMPILE_EXPECT_CERT_SHA256` | set by `close-gaps.sh --apply` (Render may have redeployed) | output |
 | Storage-repo secrets `RELEASE_KEYSTORE_BASE64`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS` | set by `close-gaps.sh --apply`; the operator then re-set `RELEASE_KEYSTORE_PASSWORD` by hand with `gh secret set` | output |
 | Storage-repo secrets `CI_COMPILE_CALLBACK_TOKEN`, `R2_STAGING_CI_ACCESS_KEY_ID`, `R2_STAGING_CI_SECRET_ACCESS_KEY` | exist (values cannot be compared) | output |
-| Render latest deploy | `live` (2026-10-05 05:57 UTC); whether it came after the certificate variable change was **not** established (look for an "Environment updated" event) | deploy list |
+| Render latest deploy | `live`, created 2026-10-05 07:01:07 UTC, newer than the flag change and the manual POST at 07:00:53 (**superseded, see section 3a**) | deploy list, 2026-10-05 ~10:08 UTC |
 | `read-upload.yml` in the storage repo | was the 40j version (`d01cb1e7`); replaced with `0f115f4c` (40l-b) through the contents API, hashes then equal (commit `d4ccdab3` in the storage repo) | `gh api ... --jq .sha` vs `git hash-object` |
 | Render `R2_STAGING_BUCKET/ENDPOINT/ACCESS_KEY_ID/SECRET_ACCESS_KEY/REGION`, `CI_OIDC_AUDIENCE`, `CI_COMPILE_REPO`, `CI_COMPILE_DISPATCH_TOKEN`, `CI_COMPILE_CALLBACK_TOKEN`, `CI_COMPILE_EXPECT_CERT_SHA256`, `RELEASE_STORAGE_ADAPTER=github` | **set** (secrets by fingerprint only) | `check-render-env.sh` output, 2026-10-05 |
-| Render `GITHUB_STORAGE_REPO`, `GITHUB_STORAGE_TOKEN` | **not yet checked** (the first check version did not list them) | |
-| Render `CI_COMPILE_ENABLED`, `RELEASE_UPLOAD_SESSIONS_ENABLED`, `ADC_AUTO_REGISTER` | **unset** (off), as intended | same output |
-| `SIGN_UPLOADED_APKS`, `CI_COMPILE_ENABLED`, `RELEASE_UPLOAD_SESSIONS_ENABLED` | **off** (nothing said they were turned on) | |
+| Render `GITHUB_STORAGE_REPO`, `GITHUB_STORAGE_TOKEN` | **set** (`Zapier-codes/zealot-storage`; token fingerprint `0a3471110c`) | `check-render-env.sh`, 2026-10-05 ~10:08 UTC |
+| Render `CI_COMPILE_ENABLED`, `RELEASE_UPLOAD_SESSIONS_ENABLED` | **`true`** (turned on by `enable-pipeline.sh --apply`; read back 2026-10-05 ~10:08 UTC). `ADC_AUTO_REGISTER` is **not set** (off, by design) | `check-render-env.sh` |
+| `SIGN_UPLOADED_APKS` (storage repo) | **off** (not in `gh variable list`); must stay off, 40n-c and 40k delete its step | `gh variable list` |
 | 40m (Storeapp tenant signing) | **blocked**, four options in the Task 40 entry, unanswered | |
+
+## 3a. Where things stand now: 40n-0 part 1 PASSED (read back by the operator, 2026-10-05 ~10:05 to 10:15 UTC)
+
+Every line below was pasted back from the operator's phone, so a session should **not** re-ask for any of it.
+Re-check only if something changed since (a new deploy, a variable edit).
+
+**Render (`zealot-web`)**
+- Deploy list (`?limit=3`): `live` created `07:01:07`, then `deactivated` `07:00:53` and `deactivated` `06:52:49`. The
+  commit message shows `null` for all three (API-started deploys carry none; that is normal, not a problem). The live
+  deploy is newer than both the flag change and the manual POST, so the flags are in the running app.
+- `check-render-env.sh` ended "All required variables are set." Set: `R2_STAGING_BUCKET=zealot-staging`,
+  `R2_STAGING_ENDPOINT` (the `3a46f471...` endpoint), `R2_STAGING_ACCESS_KEY_ID` (fingerprint `0303e6930d`),
+  `R2_STAGING_SECRET_ACCESS_KEY` (`3db03143bd`), `R2_STAGING_REGION=auto`, `CI_OIDC_AUDIENCE=https://zealot-deploy-latest.onrender.com`,
+  `CI_COMPILE_REPO=Zapier-codes/zealot-storage`, `CI_COMPILE_DISPATCH_TOKEN` (`9c1bcf8b7a`), `CI_COMPILE_CALLBACK_TOKEN` (`b21a1962f3`),
+  `CI_COMPILE_EXPECT_CERT_SHA256=2412373a...a1e5`, **`CI_COMPILE_ENABLED=true`**, **`RELEASE_UPLOAD_SESSIONS_ENABLED=true`**,
+  `RELEASE_STORAGE_ADAPTER=github`, `GITHUB_STORAGE_REPO=Zapier-codes/zealot-storage`, `GITHUB_STORAGE_TOKEN` (`0a3471110c`).
+- The adapter-side `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` exist and carry the same endpoint and fingerprints
+  as the `R2_STAGING_*` ones (from `add-r2-adapter-vars.sh`). Nothing reads them while the adapter is `github`.
+- `ADC_AUTO_REGISTER` is **not set**: a finished release does not queue Google registration. Intended; turn it on only on purpose.
+- `curl -sI https://zealot-deploy-latest.onrender.com` answers `HTTP/2 200`.
+
+**Storage repo (`Zapier-codes/zealot-storage`)**
+- Variables (full values read with `--json name,value`): `R2_STAGING_BUCKET=zealot-staging`, `R2_STAGING_ENDPOINT=https://3a46f47127565b4cd6c0c937dd15d2e4.r2.cloudflarestorage.com`,
+  `RELEASE_CERT_SHA256=2412373ae44a839f58bed85796707f120b96420bee9365143ce47767b64ea1e5`, `ZEALOT_URL=https://zealot-deploy-latest.onrender.com`.
+  All four equal Render's. `SIGN_UPLOADED_APKS` is not set.
+- Secrets (names only): `CI_COMPILE_CALLBACK_TOKEN`, `R2_STAGING_CI_ACCESS_KEY_ID`, `R2_STAGING_CI_SECRET_ACCESS_KEY`,
+  `RELEASE_KEYSTORE_BASE64`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`. `RELEASE_KEY_PASSWORD` is not needed (section 2).
+  Values cannot be compared; `CI_COMPILE_CALLBACK_TOKEN` is assumed equal to Render's (never proven; a mismatch would show as a callback 401/403).
+- Workflows: `Read upload (Zealot)` id `374946022` and `Compile AAB (Zealot)` id `374946049`, both `active`.
+- `read-upload.yml` blob hash is `0f115f4c6a621b29e0e33299ba206abea8a95644` in the storage repo **and** in `docs/ci/read-upload.yml`
+  here (at the time of writing): the 40l-b version is the one deployed. If a later slice edits that file, recopy it and compare again.
+
+**Not yet done (40n-0 part 2):** one real end-to-end upload. Nothing in Task 40 has run against a real Zealot, Render or bucket
+until that passes (section 10).
+
+**Termux gotchas seen in this session (do not trip on them again)**
+- The phone truncates wide `gh variable list` / `gh secret list` tables (`https://3a46f...`, `RELEASE_CERT_SH...`). Never compare
+  from the table; use `gh variable list -R <repo> --json name,value --jq '.[] | "\(.name)=\(.value)"'`.
+- Several commands pasted at once run together and their output runs together on one line. Read the names, not the layout.
+- `~/distr` is the shell's working directory, not a Zealot checkout. Zealot is `~/zealot`; always use `~/zealot/...` paths.
 
 ## 4. Order to turn the pipeline on (do not reorder)
 
@@ -195,11 +235,61 @@ Same route family: `POST /api/play_credential` (Play service account), `bin/boot
 - **Certificate refused (422):** the reported `cert_sha256` differs from `CI_COMPILE_EXPECT_CERT_SHA256`;
   compare against section 2.
 
-## 9. Still open after this session
+## 9. Still open after this session (updated 2026-10-05, after 40n-0 part 1)
 
-1. 40m: the operator's answer (see the Task 40 entry): `1a, 2b, 3 none installed` or `keep tenant
-   signing, drop 40m`. Treat "unsure whether any tenant APK is installed" as "some installed".
-2. Check `GITHUB_STORAGE_REPO` / `GITHUB_STORAGE_TOKEN` on Render (`check-render-env.sh`, fixed version) and
-   that the live deploy is not older than the certificate variable change.
+1. **40n-0 part 2: the one real upload** (section 10). Nothing in 40n-a to 40n-g starts before it passes.
+2. 40n-h: fix `enable-pipeline.sh` and `add-r2-adapter-vars.sh` so they wait for a deploy **newer than the change** (they read
+   the old `live` deploy as a pass; seen 2026-10-05, the operator had to POST a deploy by hand). Docs-and-scripts only.
 3. Back up the keystore off the phone (not confirmed done).
-4. Turn the flags on in the order of section 4, then one real upload, then 40k.
+4. Three operator answers still owed (revamp section of `handover.md`): scope of the APK rule (every APK upload or tenant accounts only),
+   the file behind the email button (30-day retention is a proposal), the dispatch path for 40n-d.
+5. Done and no longer open: 40m (answered, superseded by 40n), `GITHUB_STORAGE_*` on Render (set), live deploy newer than the
+   certificate and flag changes (yes), flags turned on (yes).
+
+## 10. 40n-0 part 2: the one real end-to-end upload (commands checked against the code, NOT run)
+
+Why: this is the first run of the whole direct-upload and CI path (40a to 40l-b). The routes and parameters below were read from
+`config/routes.rb` and `app/controllers/api/apps/upload_sessions_controller.rb`; the shell block itself has never been executed.
+
+Needs: a throwaway app **with an existing channel** in the Zealot console (a session never creates an app, scheme or channel; the
+first upload of an app still uses the multipart endpoint), a small test `.aab` or `.apk` whose package name matches that app, and a
+versionCode not used before. Use `hold=true` so nothing reaches a store.
+
+```
+. ~/.zealot.env
+Z=https://zealot-deploy-latest.onrender.com
+TOKEN=$(zealot-token)
+FILE=~/storage/downloads/test.aab          # the test file
+CHANNEL_KEY=<channel key of the throwaway app>
+
+SIZE=$(wc -c < "$FILE")
+S=$(curl -sS -X POST "$Z/api/apps/upload_sessions" \
+  -d token="$TOKEN" -d channel_key="$CHANNEL_KEY" \
+  -d filename="$(basename "$FILE")" -d size="$SIZE" -d hold=true)
+echo "$S" | jq .
+ID=$(echo "$S" | jq -r .id); URL=$(echo "$S" | jq -r .upload_url)
+
+# send every header the session lists (a listed Content-Type must be sent exactly, or R2 answers 403 SignatureDoesNotMatch)
+curl -sS -X PUT "$URL" --data-binary "@$FILE" \
+  $(echo "$S" | jq -r '.headers | to_entries[] | "-H \(.key):\(.value)"')
+
+curl -sS -X POST "$Z/api/apps/upload_sessions/$ID/finalize" -d token="$TOKEN" | jq .
+
+# poll the outcome every ~30 s until state is "done" or "failed"
+curl -sS -G "$Z/api/apps/upload_sessions/$ID" -d token="$TOKEN" | jq .
+gh run list -R Zapier-codes/zealot-storage -L 3
+```
+
+**Pass:** the session goes `awaiting_bytes`, `uploaded`, then `done`; `release_id`, `release_version` and `release_url` appear and the
+release is `held` in the console. For a bundle the served file is its universal APK and, because `CI_COMPILE_EXPECT_CERT_SHA256` is
+set, the release should show `signed: true` (40l-b). Report the final `show` JSON.
+
+**Reading the failures**
+- `404` on `upload_sessions`: the flag is off in the running deploy (check the deploy is newer than the flag change).
+- `401`/`403`: wrong credential for the route (`token` is the user token; a per-app token goes only in `Authorization: Bearer zpa_...`, never both).
+- `422` on finalize: R2 holds nothing yet, or the size differs (the row becomes `failed` and the object is deleted). Redo the PUT.
+- `503`: R2 unreachable or not configured; the row is unchanged, retry. Check `R2_STAGING_*` on Render.
+- Stuck in `uploaded` with no run in the storage repo: dispatch failed; check `CI_COMPILE_DISPATCH_TOKEN` (needs Actions read and write on the storage repo) and `CI_COMPILE_REPO`.
+- A run exists and fails: save its log (section 8) and upload it to the session. Callback 401/403 from the run points at the OIDC audience
+  (`ZEALOT_URL` vs `CI_OIDC_AUDIENCE`) or `CI_COMPILE_CALLBACK_TOKEN`; 422 with a certificate message points at `CI_COMPILE_EXPECT_CERT_SHA256` vs `RELEASE_CERT_SHA256`.
+- Stuck with a green run: the 40g-2 sweeper fails the upload after 90 minutes; do not wait, read the run and the `show` JSON now.
