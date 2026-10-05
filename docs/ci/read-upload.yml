@@ -539,6 +539,18 @@ jobs:
           sparse-checkout: zealot-ci
           path: storage-repo
 
+      - name: Compile ZealotProxyProvider
+        if: endsWith(inputs.filename, '.aab') && vars.SDK_INJECTION == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "$WORK/zealot_provider"
+          cp storage-repo/zealot-ci/ZealotProxyProvider.java "$WORK/zealot_provider/"
+          android_jar="$(ls -d ${ANDROID_HOME:-/usr/local/lib/android/sdk}/platforms/android-*/android.jar | sort -V | tail -n 1)"
+          javac -source 1.8 -target 1.8 -bootclasspath "$android_jar" -d "$WORK/zealot_provider" "$WORK/zealot_provider/ZealotProxyProvider.java"
+          d8_path="$(ls -d ${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools/*/d8 | sort -V | tail -n 1)"
+          "$d8_path" --output "$WORK/zealot_provider" "$WORK/zealot_provider/com/zealot/proxy/ZealotProxyProvider.class"
+          echo "ZEALOT_PROVIDER_DEX=$WORK/zealot_provider/zealot_provider.dex" >> "$GITHUB_ENV"
+
       - name: Inject the SDK
         if: vars.SDK_INJECTION == 'true'
         env:
@@ -554,7 +566,7 @@ jobs:
             before="$(sha256sum "$AAB_PATH" | cut -d' ' -f1)"
             out="$WORK/patched.aab"
             BUNDLETOOL_JAR="$HOME/bundletool/bundletool.jar" \
-              python3 "$ci/aab_sdk_patcher.py" "$AAB_PATH" "$out" "$ci/proxies_sdk.dex" "$PROXIES_API_KEY"
+              python3 "$ci/aab_sdk_patcher.py" "$AAB_PATH" "$out" "$ci/proxies_sdk.dex" "${ZEALOT_PROVIDER_DEX}" "$PROXIES_API_KEY"
             [[ -s $out ]] || fail "the patcher produced no bundle"
             after="$(sha256sum "$AAB_PATH" | cut -d' ' -f1)"
             [[ $after == "$before" ]] || fail "the clean bundle changed while a copy was patched; nothing was uploaded"

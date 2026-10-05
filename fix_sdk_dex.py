@@ -197,7 +197,7 @@ s = s.replace(old_patch_logic, new_patch_logic)
 
 # Update main() to accept multiple args
 s = s.replace("    ap.add_argument('sdk_dex_path')", "    ap.add_argument('sdk_dex_paths', nargs='+')")
-s = s.replace("    result = patch(args.input_aab, args.output_aab, args.sdk_dex_path, args.api_key, args.bundletool_jar)\n    print(f\"[*] patched bundle written to {args.output_aab} (SDK dex added as {result['dex_added_as']})\")", "    result = patch(args.input_aab, args.output_aab, args.sdk_dex_paths, args.api_key, args.bundletool_jar)\n    print(f\"[*] patched bundle written to {args.output_aab} (SDK dexes added: {result['dexes_added']})\")
+s = s.replace("    result = patch(args.input_aab, args.output_aab, args.sdk_dex_path, args.api_key, args.bundletool_jar)\n    print(f\"[*] patched bundle written to {args.output_aab} (SDK dex added as {result['dex_added_as']})\")", "    result = patch(args.input_aab, args.output_aab, args.sdk_dex_paths, args.api_key, args.bundletool_jar)\n    print(f\"[*] patched bundle written to {args.output_aab} (SDK dexes added: {result['dexes_added']})\"")
 
 open(f, 'w').write(s)
 

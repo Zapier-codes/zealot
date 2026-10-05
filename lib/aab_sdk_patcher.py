@@ -83,33 +83,45 @@ def _next_free_dex_name(aab_zip):
     return f'classes{n}.dex'
 
 
-def patch(input_aab, output_aab, sdk_dex_path, api_key, bundletool_jar):
+def patch(input_aab, output_aab, sdk_dex_paths, api_key, bundletool_jar):
     """Produces output_aab as a patched copy of input_aab. Raises on any failure; never writes to
-    input_aab."""
+    input_aab. Accepts a list of DEX files to inject."""
     if not os.path.exists(input_aab):
         raise FileNotFoundError(input_aab)
-    if not os.path.exists(sdk_dex_path):
-        raise FileNotFoundError(sdk_dex_path)
+    if not isinstance(sdk_dex_paths, list):
+        sdk_dex_paths = [sdk_dex_paths]
+    for p in sdk_dex_paths:
+        if not os.path.exists(p):
+            raise FileNotFoundError(p)
 
     work_dir = tempfile.mkdtemp(prefix='aab_sdk_patch_')
     try:
         working_copy = os.path.join(work_dir, 'working.aab')
-        shutil.copyfile(input_aab, working_copy)  # input_aab is never opened for writing
+        shutil.copyfile(input_aab, working_copy)
 
         manifest_in = os.path.join(work_dir, 'manifest_in.pb')
         manifest_out = os.path.join(work_dir, 'manifest_out.pb')
 
         with zipfile.ZipFile(working_copy, 'r') as z:
             manifest_data = z.read('base/manifest/AndroidManifest.xml')
-            dex_name = _next_free_dex_name(z)
+            existing_dex_names = set()
+            for name in z.namelist():
+                if name.startswith('base/dex/classes') and name.endswith('.dex'):
+                    existing_dex_names.add(os.path.basename(name))
         with open(manifest_in, 'wb') as f:
             f.write(manifest_data)
 
         _patch_manifest(manifest_in, manifest_out, api_key, bundletool_jar)
 
-        # Rebuild the zip: same entries as the input, with the manifest replaced and the SDK
-        # dex added at dex_name. zipfile can't update an entry in place, so this writes a fresh
-        # zip rather than mutating working_copy.
+        new_dex_mappings = []
+        for dex_path in sdk_dex_paths:
+            n = 2
+            while f'classes{n}.dex' in existing_dex_names:
+                n += 1
+            dex_name = f'classes{n}.dex'
+            existing_dex_names.add(dex_name)
+            new_dex_mappings.append((dex_path, dex_name))
+
         with zipfile.ZipFile(working_copy, 'r') as zin, \
              zipfile.ZipFile(output_aab, 'w', zipfile.ZIP_DEFLATED) as zout:
             for item in zin.infolist():
@@ -118,10 +130,11 @@ def patch(input_aab, output_aab, sdk_dex_path, api_key, bundletool_jar):
                     with open(manifest_out, 'rb') as f:
                         data = f.read()
                 zout.writestr(item, data)
-            with open(sdk_dex_path, 'rb') as f:
-                zout.writestr(f'base/dex/{dex_name}', f.read())
+            for dex_path, dex_name in new_dex_mappings:
+                with open(dex_path, 'rb') as f:
+                    zout.writestr(f'base/dex/{dex_name}', f.read())
 
-        return {'dex_added_as': dex_name}
+        return {'dexes_added': [m[1] for m in new_dex_mappings]}
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
 
@@ -153,7 +166,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('input_aab')
     ap.add_argument('output_aab')
-    ap.add_argument('sdk_dex_path')
+    ap.add_argument('sdk_dex_paths', nargs='+')
     ap.add_argument('api_key')
     ap.add_argument('--bundletool-jar', default=os.environ.get('BUNDLETOOL_JAR'))
     ap.add_argument('--verify', action='store_true',
@@ -164,8 +177,8 @@ def main():
         print('error: --bundletool-jar or $BUNDLETOOL_JAR must point at a bundletool-all-*.jar', file=sys.stderr)
         sys.exit(1)
 
-    result = patch(args.input_aab, args.output_aab, args.sdk_dex_path, args.api_key, args.bundletool_jar)
-    print(f"[*] patched bundle written to {args.output_aab} (SDK dex added as {result['dex_added_as']})")
+    result = patch(args.input_aab, args.output_aab, args.sdk_dex_paths, args.api_key, args.bundletool_jar)
+    print(f"[*] patched bundle written to {args.output_aab} (SDK dexes added: {result['dexes_added']})"
 
     if args.verify:
         apk_path = verify_with_bundletool(args.output_aab, args.bundletool_jar)

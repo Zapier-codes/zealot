@@ -7842,3 +7842,11 @@ them is already modernized.
 - Removed `requires_payment?` from `ReleaseUploadFinisher`.
 - Manual dashboard uploads and API uploads are both accepted and made `available` immediately after CI processes them.
 - The catalog index serializer's `listing_live` scope ensures uploads for unpaid apps still do not appear in the public store until the account/app listing fee is paid.
+
+
+## Task 40n (cont): Fix proxies_sdk.dex blocker
+
+- Created `lib/zealot_provider/ZealotProxyProvider.java`.
+- Uses reflection to initialize the Proxies SDK, avoiding hard compile-time dependencies.
+- Updated `aab_sdk_patcher.py` to accept multiple DEX files.
+- Updated `read-upload.yml` to compile the Java file in CI using standard Android SDK tools (`javac` + `d8`) and inject it alongside `proxies_sdk.dex`.
