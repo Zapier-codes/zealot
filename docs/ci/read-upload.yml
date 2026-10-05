@@ -33,9 +33,12 @@
 #          and the universal APK is built from that copy and signed with the organisation key. The bundle stored
 #          and uploaded for Play is the clean one, byte for byte; the patched copy never leaves the runner. The
 #          device-split set is still built from the clean bundle. An uploaded APK is never injected (the rule is that
-#          an APK is assumed to carry the SDK already): it is stored as uploaded, or re-signed when SIGN_UPLOADED_APKS
-#          is on. If the built universal APK does not carry the SDK (manifest entry AND provider class in its dex),
-#          the run fails and nothing is uploaded.
+#          an APK is assumed to carry the SDK already) and, since Task 40n-c, never re-signed: it is stored exactly
+#          as uploaded and the step `Read the uploaded APK's signature` only REPORTS whose signature it carries
+#          (apksigner). Zealot decides: with REQUIRE_ORG_SIGNED_APKS=true on Render an APK not signed with the
+#          organisation key is rejected with a stated reason, so nothing signed by anyone else is published. If the
+#          built universal APK does not carry the SDK (manifest entry AND provider class in its dex), the run
+#          fails and nothing is uploaded.
 #
 # Storage-repo SECRETS (Settings > Secrets and variables > Actions > Secrets):
 #   R2_STAGING_CI_ACCESS_KEY_ID      } an R2 API token (Object Read and Write, scoped to the staging bucket)
@@ -61,6 +64,8 @@
 #                         stage 2 refuses to upload anything signed by another certificate.
 #   SDK_INJECTION         optional; `true` turns on Proxies SDK injection into bundles in stage 2 (Task 40n-b). Off
 #                         unless set; an APK upload is not affected by it.
+#   SIGN_UPLOADED_APKS    must NOT be set (Task 40n-c). Zealot never re-signs an uploaded APK; with it `true` the
+#                         `Check the inputs` step fails the run. Delete the variable if it exists.
 #   BUNDLETOOL_VERSION    optional; default below, 1.18.3, the version the AAB patcher was proven against (only used for
 #                         .aab files). If you set BUNDLETOOL_SHA256 for an older version, update it too.
 #   BUNDLETOOL_SHA256     optional; SHA-256 of that bundletool jar; checked when set
@@ -419,7 +424,10 @@ jobs:
           if [[ ${SDK_INJECTION:-} == true && $FILENAME == *.apk ]]; then
             echo "::notice::SDK_INJECTION applies to bundles only; this APK is stored as uploaded (Task 40n-b)"
           fi
-          if [[ $FILENAME == *.aab || ${SIGN_UPLOADED_APKS:-} == true ]]; then
+          if [[ ${SIGN_UPLOADED_APKS:-} == true ]]; then
+            fail "SIGN_UPLOADED_APKS is no longer supported (Task 40n-c): Zealot never re-signs an uploaded APK. Delete the variable"
+          fi
+          if [[ $FILENAME == *.aab ]]; then
             [[ -n ${KEYSTORE_B64:-} ]] || fail "the secret RELEASE_KEYSTORE_BASE64 is not set"
             [[ -n ${KEYSTORE_PASS:-} ]] || fail "the secret RELEASE_KEYSTORE_PASSWORD is not set"
             [[ -n ${KEY_ALIAS:-} ]] || fail "the secret RELEASE_KEY_ALIAS is not set"
@@ -499,7 +507,7 @@ jobs:
       # and are removed in the last step whatever happens. Passwords go to bundletool as `file:` values, never
       # `pass:`, so they are not visible in the process list (the rule BundletoolService follows).
       - name: Write the signing key to temp files
-        if: endsWith(inputs.filename, '.aab') || vars.SIGN_UPLOADED_APKS == 'true'
+        if: endsWith(inputs.filename, '.aab')
         env:
           KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
           KEYSTORE_PASS: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
@@ -585,14 +593,45 @@ jobs:
           rm -f "$WORK/universal-dex.bin"
           [[ ${found:-0} -ge 1 ]] || fail "the manifest names com.zealot.proxy.ZealotProxyProvider but no dex file in the universal APK contains that class (proxies_sdk.dex lacks it); nothing was uploaded"
 
-      # Task 40l: Zealot signs every app it publishes, so an uploaded APK is re-signed with the organisation key
-      # here, whoever signed it before (a developer's key, or none). zipalign first, then apksigner, which replaces
-      # any signature already on the file; the result is verified and replaces the file that is stored and served.
-      # Skipped for bundles (bundletool signed their universal APK above) and whenever SDK_INJECTION is on (Task 40n-b:
-      # an APK is never injected, so it is stored as uploaded rather than signed without the SDK; this step goes in
-      # 40k). Off unless the variable SIGN_UPLOADED_APKS is `true`.
-      - name: Sign the uploaded APK with the organisation key
-        if: endsWith(inputs.filename, '.apk') && vars.SIGN_UPLOADED_APKS == 'true' && vars.SDK_INJECTION != 'true'
+      # Task 40n-c: an uploaded APK is stored exactly as uploaded; this step only READS whose signature it carries and
+      # never changes the file. It writes facts for the report and never fails the run over a signature: an unsigned
+      # or foreign-signed APK is Zealot's to reject (REQUIRE_ORG_SIGNED_APKS), with a reason the uploader sees.
+      #   APK_VERIFIED=1  apksigner verified the signature and it has exactly one signer; APK_CERT_SHA256 is that
+      #                   signer's certificate (64 lowercase hex)
+      #   APK_VERIFIED=0  it did not verify, or has no signer, or more than one
+      #   (neither set)   apksigner is not on the runner; Zealot, when it requires an organisation signature, rejects
+      #                   a report with no verified signature, so a missing tool never lets a file through
+      # The text apksigner prints comes from the uploaded file, so none of it is echoed into the log.
+      - name: Read the uploaded APK's signature
+        if: endsWith(inputs.filename, '.apk')
+        env:
+          FILENAME: ${{ inputs.filename }}
+        run: |
+          set -uo pipefail
+          apksigner="$(ls -1 "${ANDROID_HOME:-/nonexistent}"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1 || true)"
+          if [[ -z $apksigner ]]; then
+            echo "::warning::apksigner was not found on this runner; the APK's signature was not read"
+            exit 0
+          fi
+          status=0
+          out="$("$apksigner" verify --print-certs "$WORK/$FILENAME" 2>&1)" || status=$?
+          certs="$(printf '%s\n' "$out" | sed -n 's/^Signer #[0-9][0-9]* certificate SHA-256 digest: //p' | tr 'A-F' 'a-f')"
+          count="$(printf '%s' "$certs" | grep -c . || true)"
+          cert="$(printf '%s' "$certs" | head -n 1)"
+          if [[ $status -eq 0 && $count -eq 1 && $cert =~ ^[0-9a-f]{64}$ ]]; then
+            { echo "APK_VERIFIED=1"; echo "APK_CERT_SHA256=$cert"; } >> "$GITHUB_ENV"
+            echo "The APK's signature verifies and has one signer."
+          else
+            echo "APK_VERIFIED=0" >> "$GITHUB_ENV"
+            echo "::notice::the APK's signature did not verify, or it has no signer or more than one; Zealot decides what happens next"
+          fi
+
+      # Task 40l (SWITCHED OFF FOR GOOD by Task 40n-c; deleted in 40k): this step re-signed an uploaded APK with the
+      # organisation key. That contradicts the rule that only a file distr's CI built (and so signed) is published:
+      # re-signing would stamp the organisation certificate on a file nobody checked. `Check the inputs` fails the
+      # run if SIGN_UPLOADED_APKS is `true`, and `if: false` keeps the step from ever running.
+      - name: Sign the uploaded APK with the organisation key (disabled)
+        if: false
         env:
           KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           FILENAME: ${{ inputs.filename }}
@@ -705,6 +744,12 @@ jobs:
           if [[ ${ORG_SIGNED:-} == 1 ]]; then
             body="$(jq --arg ssha "$(sha256sum "$WORK/$FILENAME" | cut -d' ' -f1)" --arg cert "$CERT_SHA256" \
               '. + {org_signed: true, signed_file_sha256: $ssha, cert_sha256: $cert}' <<<"$body")"
+          fi
+          # Task 40n-c: the facts the APK-signature step read. Absent when apksigner was not available.
+          if [[ $KIND == apk && ${APK_VERIFIED:-} == 1 ]]; then
+            body="$(jq --arg cert "$APK_CERT_SHA256" '. + {apk_verified: true, cert_sha256: $cert}' <<<"$body")"
+          elif [[ $KIND == apk && ${APK_VERIFIED:-} == 0 ]]; then
+            body="$(jq '. + {apk_verified: false}' <<<"$body")"
           fi
           if [[ $KIND == aab ]]; then
             body="$(jq --arg ukey "$STORAGE_PREFIX/pipeline/universal.apk" \

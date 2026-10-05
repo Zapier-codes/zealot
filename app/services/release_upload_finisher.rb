@@ -65,11 +65,39 @@
 # an error. After the commit, for a release marked signed that became available, the Google registration job is
 # queued (it re-checks everything, and only runs when ADC_AUTO_REGISTER is on).
 #
+# Task 40n-c: an uploaded APK is never injected and never re-signed (the 40l re-sign step is switched off). Stage 2
+# only READS the signature inside it (`apksigner verify --print-certs`) and reports `apk_verified` (the signature
+# verified and has exactly one signer) with that signer's `cert_sha256`; the file stays as uploaded, so its hash is
+# not replaced. The decision is Zealot's, not CI's: with `REQUIRE_ORG_SIGNED_APKS=true` on this server an APK is
+# accepted only when CI reported a verified signature whose certificate equals `CI_COMPILE_EXPECT_CERT_SHA256`
+# (distr's CI signs with the organisation key, so a file signed by anyone else, or by no one, cannot have been
+# through it). Anything else is rejected like any other stage-2 refusal: the upload fails with a stated reason
+# ("not built by distr") and the release stays held. A report that omits `apk_verified` is rejected too, so an old
+# copy of the workflow cannot slip a file past the rule, and so is a report that says CI re-signed or injected the
+# APK (`org_signed`, `sdk_injected`): under the rule an APK is published exactly as it came. With the variable unset
+# an APK is accepted as before; a verified signature that equals the expected certificate still marks the release
+# signed (40l-b below).
+# `apk_verified` for a bundle is ignored; together with `org_signed` or `sdk_injected` it is refused.
+#
 # Not verified: no Ruby beyond `ruby -c` in the sandbox this was written in; nothing was run.
 class ReleaseUploadFinisher
   Result = Struct.new(:code, :http, :payload, keyword_init: true)
 
   SHA256_FORMAT = /\A[0-9a-f]{64}\z/
+
+  # Task 40n-c. What the uploader is told when `REQUIRE_ORG_SIGNED_APKS` turns an APK away. Plain sentences: they
+  # are stored on the upload and the held release and shown as written, like every other stage-2 reason.
+  NOT_BUILT_BY_DISTR = 'This APK is not signed with the organisation key, so it was not built by distr and ' \
+                       'cannot be published here. Upload the APK distr gave you unchanged, or upload an .aab.'
+  UNVERIFIED_APK = 'The signature of this APK could not be verified (it is unsigned, has more than one signer, ' \
+                   'or is damaged), so it was not built by distr and cannot be published here. Upload the APK ' \
+                   'distr gave you unchanged, or upload an .aab.'
+  NO_ORGANISATION_CERTIFICATE = 'APK uploads are limited to files signed with the organisation key, but this ' \
+                                'server has no organisation certificate configured ' \
+                                '(CI_COMPILE_EXPECT_CERT_SHA256). Ask the administrator.'
+  CHANGED_IN_CI = 'This APK was re-signed or modified while it was being processed, which is not allowed for ' \
+                  'APK uploads: an APK is published exactly as distr built it. Upload it again unchanged, or ' \
+                  'upload an .aab.'
 
   def initialize(upload, body, storage: nil, staging: nil, env: ENV, now: Time.current)
     @upload = upload
@@ -146,7 +174,7 @@ class ReleaseUploadFinisher
     return 'file_sha256 does not match the file that was read' unless same_hash?(body['file_sha256'],
                                                                                   metadata['file_sha256'])
 
-    icon_problem(keys) || injection_problem || signing_problem || bundle_problem(keys)
+    icon_problem(keys) || injection_problem || signing_problem || verification_problem || bundle_problem(keys)
   end
 
   # Task 40j
@@ -181,6 +209,23 @@ class ReleaseUploadFinisher
   def signed_apk?
     !bundle? && ActiveModel::Type::Boolean.new.cast(body['org_signed']) == true
   end
+
+  # Task 40n-c. A malformed claim is 422 and changes nothing (CI can resend); whether the claim is acceptable is
+  # `certificate_problem`'s question.
+  def verification_problem
+    return nil unless verified_apk?
+    return 'apk_verified cannot be reported together with org_signed or sdk_injected' if signed_apk? || injected_apk?
+    return nil if SHA256_FORMAT.match?(normalize_fingerprint(body['cert_sha256']))
+
+    'cert_sha256 must be 64 hex characters when apk_verified is true'
+  end
+
+  # CI read the uploaded APK's own signature: it verifies and has exactly one signer (whose certificate is
+  # `cert_sha256`). Never true for a bundle.
+  def verified_apk?
+    !bundle? && ActiveModel::Type::Boolean.new.cast(body['apk_verified']) == true
+  end
+
 
   def same_hash?(reported, known)
     reported = reported.to_s.downcase
@@ -229,10 +274,27 @@ class ReleaseUploadFinisher
   # --- what must be true before anything is recorded ----------------------
 
   def certificate_problem
+    return apk_rule_problem if !bundle? && require_org_signed_apks?
     return nil unless (bundle? || signed_apk? || injected_apk?) && expected_certificate.present?
     return nil if normalize_fingerprint(body['cert_sha256']) == expected_certificate
 
     'the signing certificate CI reported does not match the expected certificate'
+  end
+
+  # Task 40n-c: the rule for every APK upload. Off unless this server says `REQUIRE_ORG_SIGNED_APKS=true`. It fails
+  # closed: no configured certificate, a file CI changed (re-signed or injected), no verified signature or another
+  # certificate all turn the APK away. A bundle is not subject to it (its universal APK is built and signed in CI).
+  def apk_rule_problem
+    return NO_ORGANISATION_CERTIFICATE if expected_certificate.blank?
+    return CHANGED_IN_CI if signed_apk? || injected_apk?
+    return UNVERIFIED_APK unless verified_apk?
+    return NOT_BUILT_BY_DISTR unless normalize_fingerprint(body['cert_sha256']) == expected_certificate
+
+    nil
+  end
+
+  def require_org_signed_apks?
+    env['REQUIRE_ORG_SIGNED_APKS'].to_s.strip == 'true'
   end
 
   def expected_certificate
@@ -296,7 +358,7 @@ class ReleaseUploadFinisher
   end
 
   def certificate_confirmed?
-    return false unless bundle? || signed_apk? || injected_apk?
+    return false unless bundle? || signed_apk? || injected_apk? || verified_apk?
 
     reported = normalize_fingerprint(body['cert_sha256'])
     reported.present? && expected_certificate.present? && reported == expected_certificate

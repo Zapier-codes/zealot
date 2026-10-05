@@ -37,6 +37,13 @@
 # release and creates none. See the finisher for the rules (state, idempotency, keys derived by Zealot, objects
 # checked in storage before anything is recorded).
 #
+# Task 40n-c: for an uploaded APK the stage-2 report also says whether CI could read a valid signature inside it:
+#
+#     { ..., "apk_verified": true, "cert_sha256": "<64 hex, the one signer's certificate>" }
+#     { ..., "apk_verified": false }
+#
+# CI only reports the fact; `ReleaseUploadFinisher` decides (REQUIRE_ORG_SIGNED_APKS) whether the APK is accepted.
+#
 # Not verified: no Ruby in the sandbox this was written in; nothing was run.
 class Api::ReleaseUploadCallbacksController < Api::BaseController
   PERMITTED = %i[
@@ -48,7 +55,7 @@ class Api::ReleaseUploadCallbacksController < Api::BaseController
   STAGE2_PERMITTED = %i[
     state error file_key file_sha256 icon_key icon_sha256 universal_apk_key universal_apk_sha256
     universal_apk_size compressed_apks_key compressed_size cert_sha256 sdk_injected injected_file_sha256
-    org_signed signed_file_sha256
+    org_signed signed_file_sha256 apk_verified
   ].freeze
 
   before_action :authenticate_workflow!

@@ -50,7 +50,8 @@ Render), `~/close-gaps.sh` (**now `docs/ci/close-gaps.sh` in this repo**, copy i
 | Render `R2_STAGING_BUCKET/ENDPOINT/ACCESS_KEY_ID/SECRET_ACCESS_KEY/REGION`, `CI_OIDC_AUDIENCE`, `CI_COMPILE_REPO`, `CI_COMPILE_DISPATCH_TOKEN`, `CI_COMPILE_CALLBACK_TOKEN`, `CI_COMPILE_EXPECT_CERT_SHA256`, `RELEASE_STORAGE_ADAPTER=github` | **set** (secrets by fingerprint only) | `check-render-env.sh` output, 2026-10-05 |
 | Render `GITHUB_STORAGE_REPO`, `GITHUB_STORAGE_TOKEN` | **set** (`Zapier-codes/zealot-storage`; token fingerprint `0a3471110c`) | `check-render-env.sh`, 2026-10-05 ~10:08 UTC |
 | Render `CI_COMPILE_ENABLED`, `RELEASE_UPLOAD_SESSIONS_ENABLED` | **`true`** (turned on by `enable-pipeline.sh --apply`; read back 2026-10-05 ~10:08 UTC). `ADC_AUTO_REGISTER` is **not set** (off, by design) | `check-render-env.sh` |
-| `SIGN_UPLOADED_APKS` (storage repo) | **off** (not in `gh variable list`); must stay off, 40n-c and 40k delete its step | `gh variable list` |
+| `SIGN_UPLOADED_APKS` (storage repo) | **off** (not in `gh variable list`); must stay unset: since 40n-c the workflow **fails the run** if it is `true` (its step is disabled; 40k deletes it) | `gh variable list` |
+| Render `REQUIRE_ORG_SIGNED_APKS` | **not set** (off). Turn on to accept only APKs signed with the organisation key (40n-c, section 4) | `check-render-env.sh` |
 | 40m (Storeapp tenant signing) | **blocked**, four options in the Task 40 entry, unanswered | |
 
 ## 3a. Where things stand now: 40n-0 part 1 PASSED (read back by the operator, 2026-10-05 ~10:05 to 10:15 UTC)
@@ -102,8 +103,12 @@ until that passes (section 10).
 4. Turn on, one at a time, **last**: `CI_COMPILE_ENABLED=true`, then `RELEASE_UPLOAD_SESSIONS_ENABLED=true`
    (both on Render). `bash docs/ci/enable-pipeline.sh` (dry run) runs every gate of steps 1 to 3 and the by-hand
    comparisons of section 5/6; `--apply` then sets the two flags in this order, waiting after each for a **new** deploy to be
-   `live` (40n-h; a flag already `true` is skipped). It stops before changing anything if a gate is BLOCKED. Then, if wanted, `SIGN_UPLOADED_APKS=true` in the storage repo (re-signs plain APKs
-   with the org key; apps already installed from another key then cannot update, see the 40l result).
+   `live` (40n-h; a flag already `true` is skipped). It stops before changing anything if a gate is BLOCKED. Then, if wanted, `REQUIRE_ORG_SIGNED_APKS=true` on Render (40n-c): an uploaded APK is then
+   accepted only if it is signed with the organisation key (nothing is ever re-signed); every other APK is rejected with
+   "not built by distr" and its release stays held. It applies to **every** APK upload (the operator's wording, see the
+   scope question in the handover), so a developer's own-key APK is turned away and they upload an `.aab` instead.
+   Needs `CI_COMPILE_EXPECT_CERT_SHA256` set. Recopy `docs/ci/read-upload.yml` into the storage repo first, or every APK is
+   rejected as unverifiable. `SIGN_UPLOADED_APKS` must not be set (the workflow fails if it is `true`).
 5. One real end-to-end upload (operator), then 40k. Upload how-to: `docs/direct_upload.md`.
 
 ## 5. The storage repo: checks and fixes
@@ -126,7 +131,7 @@ Required in the storage repo:
 | variable | `ZEALOT_URL` | equal to Render's `CI_OIDC_AUDIENCE` (or `https://$ZEALOT_DOMAIN`), trailing slash ignored |
 | variable | `R2_STAGING_ENDPOINT`, `R2_STAGING_BUCKET` | equal to Render's |
 | variable | `RELEASE_CERT_SHA256` | the org certificate SHA-256 (64 hex, lower case, no colons) |
-| variable | `SIGN_UPLOADED_APKS` | `true` only when re-signing APKs is wanted |
+| variable | `SIGN_UPLOADED_APKS` | **not set** (40n-c: Zealot never re-signs an APK; the run fails if it is `true`) |
 | secret | `RELEASE_KEYSTORE_BASE64` | `base64 -w0 appstore-production.jks` |
 | secret | `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS` | the keystore password; `appstore_production` |
 | secret | `RELEASE_KEY_PASSWORD` | only if the key password differs (it does not today) |
@@ -258,6 +263,12 @@ Same route family: `POST /api/play_credential` (Play service account), `bin/boot
   certificate CI reported, or no `AndroidSigningKey` row (40l-b). Releases made before 40l-b are not backfilled.
 - **Certificate refused (422):** the reported `cert_sha256` differs from `CI_COMPILE_EXPECT_CERT_SHA256`;
   compare against section 2.
+- **An APK upload ends `failed` with "not built by distr" or "could not be verified" (40n-c):**
+  `REQUIRE_ORG_SIGNED_APKS` is `true` and the APK is not signed with the organisation key, is unsigned, has more than
+  one signer, or the workflow copy in the storage repo is older than 40n-c (it reports no signature, so every APK is
+  refused). The run's step `Read the uploaded APK's signature` shows whether `apksigner` ran. "no organisation
+  certificate configured" means `CI_COMPILE_EXPECT_CERT_SHA256` is unset on Render. The held release has no file; delete it.
+- **A run fails at `Check the inputs` with "SIGN_UPLOADED_APKS is no longer supported":** delete that storage-repo variable.
 
 ## 11. 40n-0 part 2 and 40n-a: run together on the operator's own machine (2026-10-05)
 

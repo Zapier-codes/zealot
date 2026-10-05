@@ -7,8 +7,8 @@
 #                                                       # RELEASE_UPLOAD_SESSIONS_ENABLED=true the same way
 #                                                       # (a flag that is already true is skipped)
 # Needs: curl, jq, gh (logged in), git, sha256sum. Uses RENDER_API_KEY or RENDER_TOKEN (already set).
-# Never prints a secret value. ADC_AUTO_REGISTER and SIGN_UPLOADED_APKS are NOT touched (off by design;
-# see docs/ci/operator-runbook.md section 4).
+# Never prints a secret value. ADC_AUTO_REGISTER and REQUIRE_ORG_SIGNED_APKS are NOT touched (off by design;
+# see docs/ci/operator-runbook.md section 4). SIGN_UPLOADED_APKS must not be set at all (Task 40n-c).
 set -u
 for f in "$HOME/.zealot.env" "$HOME/.render.env"; do [ -f "$f" ] && . "$f"; done
 RENDER_API_KEY="${RENDER_API_KEY:-${RENDER_TOKEN:-}}"
