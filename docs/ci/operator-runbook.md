@@ -60,7 +60,9 @@ Render), `~/close-gaps.sh` (**now `docs/ci/close-gaps.sh` in this repo**, copy i
 2. Storage repo secrets and variables complete (section 5, `close-gaps.sh` reports "No blockers").
 3. Render variables complete (section 6, `check-render-env.sh` reports none MISSING) and the deploy is `live`.
 4. Turn on, one at a time, **last**: `CI_COMPILE_ENABLED=true`, then `RELEASE_UPLOAD_SESSIONS_ENABLED=true`
-   (both on Render). Then, if wanted, `SIGN_UPLOADED_APKS=true` in the storage repo (re-signs plain APKs
+   (both on Render). `bash docs/ci/enable-pipeline.sh` (dry run) runs every gate of steps 1 to 3 and the by-hand
+   comparisons of section 5/6; `--apply` then sets the two flags in this order, waiting for the deploy to be
+   `live` after each. It stops before changing anything if a gate is BLOCKED. Then, if wanted, `SIGN_UPLOADED_APKS=true` in the storage repo (re-signs plain APKs
    with the org key; apps already installed from another key then cannot update, see the 40l result).
 5. One real end-to-end upload (operator), then 40k. Upload how-to: `docs/direct_upload.md`.
 

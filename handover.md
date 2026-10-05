@@ -5782,6 +5782,14 @@ them is already modernized.
 
 ## Session log
 
+### 2026-10-05 -- Task 40: `enable-pipeline.sh`, the gated switch-on of the two missing flags (operator: "fix all that is missing and set it, none is missing anymore"; script and docs only; no application code; one patch)
+- **Base:** Zealot `develop` @ `1f38e1a5` (the check-render-env fix, pushed by the operator).
+- **What was missing:** after the first Render check the only `MISSING` rows were `CI_COMPILE_ENABLED` and `RELEASE_UPLOAD_SESSIONS_ENABLED`, the two flags that are meant to be turned on last (`ADC_AUTO_REGISTER` is optional and stays off by design; `SIGN_UPLOADED_APKS` is untouched).
+- **Built:** `docs/ci/enable-pipeline.sh`. Dry run by default: checks the Render variables, then compares the storage repo with Render (`ZEALOT_URL` = `CI_OIDC_AUDIENCE`, `R2_STAGING_ENDPOINT` and `R2_STAGING_BUCKET`, `RELEASE_CERT_SHA256` = `CI_COMPILE_EXPECT_CERT_SHA256`, the six secret names, `read-upload.yml` hash) and requires the latest Render deploy to be `live`. Only with `--apply` and all gates passing does it set `CI_COMPILE_ENABLED=true`, wait for `live`, then set `RELEASE_UPLOAD_SESSIONS_ENABLED=true` and wait again. Runbook section 4 points to it.
+- **Verified:** `bash -n`, and a stub run (fake `curl` and `gh`) of the dry run, a blocked gate (nothing set) and `--apply` (both flags set in order). NOT run against real Render or GitHub; the sandbox has no Render key.
+- **Needs the operator:** apply and push; run `bash ~/zealot/docs/ci/enable-pipeline.sh` and read the gates; if none is BLOCKED, run it with `--apply`; run `check-render-env.sh` (expect "All required variables are set"); then one real end-to-end upload (`docs/direct_upload.md`), then 40k. 40m is still blocked on the operator's answer.
+- **Behaviour change once applied:** with both flags on, uploads go direct to the staging bucket and are compiled, read and finished in CI. Nothing in the app changes until `--apply` is run.
+
 ### 2026-10-05 -- Task 40m questions, storage-repo and Render setup, operator runbook (operator: "read the handover, continue to the next task; unblock the questions; fix the script; document all we did"; docs and scripts only; no application code; no testing; one patch)
 - **Base:** Zealot `develop` @ `07c2c4de` (the 40l-b commit, pushed by the operator). An earlier docs-only patch from this session (`0001-docs-task-40m-restate-...`) is **superseded** by this one; this patch contains its content.
 - **Next task:** 40m, still BLOCKED on the operator's answer; no code written. 40k stays behind one proven end-to-end upload.
