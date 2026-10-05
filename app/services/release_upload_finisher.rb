@@ -192,6 +192,17 @@ class ReleaseUploadFinisher
     !bundle? && ActiveModel::Type::Boolean.new.cast(body['org_signed']) == true
   end
 
+  # Task 40n-c introduced this predicate (CI verified an uploaded APK's existing signature rather
+  # than replacing it) for `certificate_confirmed?` below. Task 40o dropped the rejection rule that
+  # used to require `apk_verified`, but left this call site in place with no definition -- a
+  # NoMethodError the first time an APK report reached it. `apk_verified` is optional, informational
+  # metadata now: when CI reports it, a matching certificate still marks the release signed (40l-b);
+  # when it's absent, this is simply false and signing_attributes stays empty for that report, same
+  # as before this fix.
+  def verified_apk?
+    !bundle? && ActiveModel::Type::Boolean.new.cast(body['apk_verified']) == true
+  end
+
   def same_hash?(reported, known)
     reported = reported.to_s.downcase
     SHA256_FORMAT.match?(reported) && reported == known.to_s

@@ -419,6 +419,9 @@ RSpec.describe ReleaseUploadFinisher do
     end
   end
 
+  # Task 40o: the upload's source decides whether CI's finished report makes the release available
+  # right away or leaves it held for the owner to publish once the listing is paid for.
+  describe 'the upload source decides whether the release is held' do
     context 'when uploaded via manual dashboard (source: web)' do
       let(:options) { { 'source' => 'web' } }
 
