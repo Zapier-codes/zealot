@@ -6,6 +6,8 @@ handover.md") and is not carried forward here — task statuses below for
 Tasks 6, 7 and 9 are as reported by the operator, not re-derived from that
 removed file or independently re-verified against the code.
 
+**Debugging the Task 40 pipeline, Render or the storage repo? Read `docs/ci/operator-runbook.md` first.** It records every command, route, value and gotcha found in the 2026-10-05 operator session, so nothing has to be rediscovered.
+
 ## Handoff process — ONE combined patch, apply with `git am` + `git push`
 
 **Standing rule for every session (operator's instruction, supersedes any
@@ -1929,6 +1931,14 @@ Then, in the Cloudflare dashboard (tokens are created there or through the API, 
 3. **The key change.** Tenant APKs so far carry the tenant keystore's certificate. Signing them with the org key (Decision 6 under Task 37: tenant APK signing stays the org key) breaks the update path for any tenant APK already installed. **Confirm that no tenant APK is in users' hands, or accept the break.**
 Until these three are answered, `build-tenant-apk.yml` keeps its keystore secrets and nothing in Storeapp should be deleted.
 
+**40m questions, restated with the session's lean (2026-10-05; the operator has NOT answered yet, nothing below is decided).** Short-form answers are accepted, e.g. "1a, 2b, 3 none installed" or "keep tenant signing, drop 40m".
+1. *How does the signed tenant APK get back to distr?* (a) Storeapp downloads the signed file from Zealot and republishes it as the GitHub Release asset: distr's contract (`release_id`, `asset_id`) is unchanged, but Zealot needs a new door that serves a held release's signed file to the per-app token. (b) distr's contract changes to a Zealot download URL: nothing is republished, but distr changes too. **Lean: (a)**, it touches only Storeapp and Zealot.
+2. *Does a tenant build go into Zealot's catalog?* (a) It creates an app and channel in Zealot, so every tenant build becomes a catalog release. (b) It stays out of the catalog and is only signed: needs a new sign-only door that returns the signed file without creating a release. **Lean: (b)**, because Track f's rule is that distr apps never enter the catalog automatically; it is a new design, not a slice.
+3. *Is any tenant APK already installed on a device?* Those APKs carry the tenant keystore's certificate; re-signing with the org key stops them updating (Android compares certificates). None installed: the switch is safe. Some installed: accept the break or leave tenant signing alone. **If unsure, treat it as "some installed" and do not switch yet.**
+4. *Fourth option:* tenant APKs are emailed by distr and are not published in Zealot's catalog, so "Zealot signs everything published" may not cover them. `build-tenant-apk.yml` keeps signing with its own keystore, **40m is dropped** and marked "not needed" here; Storeapp has nothing left to change because `release-aab.yml` is already unsigned.
+
+**What the leans add up to.** 1a and 2b together mean building two new Zealot doors (serve a signed file back; sign without a release) plus a Storeapp change, for a build that never reaches the catalog. Answer 3 is the deciding fact: if it is unknown, the safe answer is the fourth option, which costs nothing and breaks nothing. Pick 1a/2b/3 only once "no tenant APK is installed" is confirmed.
+
 **Operator setup this adds.** Storage repo: variable `SIGN_UPLOADED_APKS=true` (when ready); the `RELEASE_KEYSTORE_*` secrets and `RELEASE_KEY_ALIAS` from 40i-c are already required. Recopy `docs/ci/read-upload.yml`. Nothing on Render.
 
 **Revert.** Unset the variable (the step is skipped and the file is stored as uploaded, the previous behavior). To remove the code: the new step, the `ORG_SIGNED` conditions and report lines in `read-upload.yml`; `signing_problem`, `signed_apk?` and their uses in the finisher; the two permitted keys; the spec block.
@@ -1936,6 +1946,16 @@ Until these three are answered, `build-tenant-apk.yml` keeps its keystore secret
 **Where Task 40 stands (all written, NOT run, nothing exercised against a real Zealot, Render or bucket).** Built: 40a/40b dispatch and state, 40c compile workflow, 40d upload hook behind `CI_COMPILE_ENABLED`, 40e universal APK served, 40f local AAB eviction, 40g/40g-2 sweepers, 40h-a/40h-b/40h-c-1 direct-to-R2 upload (flag `RELEASE_UPLOAD_SESSIONS_ENABLED`), 40i-a/b/c two-stage CI intake and finish with OIDC callbacks, 40j SDK injection in CI, 40h-c-2 Storeapp's second upload path (variable `ZEALOT_DIRECT_UPLOAD`), 40l APK signing, 40l-b signed flag. Not built: 40m, 40k. Order from here: 40m once answered, then one real end-to-end upload proven, then **40k** (delete the local paths and the dead delta code).
 
 **Next.** **40m** is the next task and is BLOCKED on the three answers above; until they come, the next unblocked work is a real end-to-end upload (operator), then **40k** (delete the local paths and the dead delta code), not before that upload is proven.
+
+#### Render and storage-repo checks for the Task 40 upload and signing path (added 2026-10-05; read-only, run by the operator)
+
+**Why.** `~/close-gaps.sh` reported BLOCKER lines for the storage repo, and `~/sync-adc.sh --apply` showed Render missing `CLIENT_ID` and `CLIENT_SECRET`. These checks make "is everything set" a repeatable command instead of a memory.
+
+**Render (service `zealot-web`, `srv-dalsvf942hec73dk2vg0`).** `docs/ci/check-render-env.sh` lists each variable as set or MISSING, with plain values for non-secrets and a 10-character SHA-256 fingerprint for secrets. It changes nothing. Needs `curl`, `jq`, `sha256sum` and `RENDER_API_KEY`. Command: `RENDER_API_KEY=rnd_... bash ~/zealot/docs/ci/check-render-env.sh`. Required: `R2_STAGING_BUCKET`, `R2_STAGING_ENDPOINT`, `R2_STAGING_ACCESS_KEY_ID`, `R2_STAGING_SECRET_ACCESS_KEY`, `CI_OIDC_AUDIENCE`, `CI_COMPILE_DISPATCH_TOKEN`, `CI_COMPILE_CALLBACK_TOKEN`, `CI_COMPILE_EXPECT_CERT_SHA256` (without it 40l-b marks nothing signed), the two flags `CI_COMPILE_ENABLED` and `RELEASE_UPLOAD_SESSIONS_ENABLED` (turn them on last), and the existing storage adapter set (`RELEASE_STORAGE_ADAPTER`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`). Optional: `R2_STAGING_REGION`, `CI_COMPILE_REPO`, `ADC_AUTO_REGISTER`.
+
+**Storage repo (`Zapier-codes/zealot-storage`).** Secrets expected: `RELEASE_KEYSTORE_BASE64`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `R2_STAGING_CI_ACCESS_KEY_ID`, `R2_STAGING_CI_SECRET_ACCESS_KEY`, `CI_COMPILE_CALLBACK_TOKEN` (same value as Render). Variables expected: `ZEALOT_URL` (equal to Render's `CI_OIDC_AUDIENCE`, here `https://zealot-deploy-latest.onrender.com`), `R2_STAGING_ENDPOINT` and `R2_STAGING_BUCKET` (equal to Render's), `RELEASE_CERT_SHA256` (org certificate, 64 hex). Check with `gh secret list -R Zapier-codes/zealot-storage` and `gh variable list -R Zapier-codes/zealot-storage`. Later: `SIGN_UPLOADED_APKS=true`.
+
+**State as last reported (2026-10-05).** See `docs/ci/operator-runbook.md`, sections 2 and 3, for the full table. In short: the three variables `ZEALOT_URL`, `R2_STAGING_ENDPOINT`, `R2_STAGING_BUCKET` match Render; `RELEASE_CERT_SHA256`, Render's `CI_COMPILE_EXPECT_CERT_SHA256` and the three keystore secrets were set by `docs/ci/close-gaps.sh --apply`; `close-gaps.sh` ended with no blockers. Not yet checked: the Render deploy after the certificate change, `read-upload.yml` in the storage repo, the other Render variables. The flags and `SIGN_UPLOADED_APKS` are off.
 
 #### 40l-b result (built; written, NOT run; no testing by instruction; YAML parse and `bash -n` only, `ruby -c` NOT run: no Ruby in this sandbox)
 
@@ -5761,6 +5781,14 @@ them is already modernized.
   at it.
 
 ## Session log
+
+### 2026-10-05 -- Task 40m questions, storage-repo and Render setup, operator runbook (operator: "read the handover, continue to the next task; unblock the questions; fix the script; document all we did"; docs and scripts only; no application code; no testing; one patch)
+- **Base:** Zealot `develop` @ `07c2c4de` (the 40l-b commit, pushed by the operator). An earlier docs-only patch from this session (`0001-docs-task-40m-restate-...`) is **superseded** by this one; this patch contains its content.
+- **Next task:** 40m, still BLOCKED on the operator's answer; no code written. 40k stays behind one proven end-to-end upload.
+- **Done:** the 40m questions restated with leans (Task 40 entry); `docs/ci/check-render-env.sh` (read-only Render check, `bash -n` only, not run against Render); `docs/ci/close-gaps.sh` (rewritten after the operator's original, which was not available, had an undefined `gv` helper; stub-tested in the sandbox, then run by the operator with two bugs found and fixed: `gh api` 404 body read as a value, and the key-password prompt); `docs/ci/operator-runbook.md` (every command, route, value and gotcha).
+- **Operator actions this session (reported, not re-run):** `sync-adc.sh --apply` (Render `CLIENT_ID`, `CLIENT_SECRET`); applied and pushed the 40l-b patch; confirmed `appstore-production.jks` is Zealot's key (SHA-1 equals the API checksum); `close-gaps.sh --apply` with the keystore (cert variable, Render `CI_COMPILE_EXPECT_CERT_SHA256`, three keystore secrets); re-set `RELEASE_KEYSTORE_PASSWORD` by hand; key password found equal to the keystore password.
+- **Deploy note:** this patch adds `.sh` files, so the push starts `Anthropic - Build & Deploy develop` (docs-only `**.md` pushes do not). No behavior change.
+- **Needs the operator:** apply and push; answer 40m; check the Render deploy and `read-upload.yml` in the storage repo; run `check-render-env.sh` and paste the output; back up the keystore off the phone.
 
 ### 2026-10-05 -- Task 40l-b: staged releases are marked signed (operator: "continue to the next"; no testing; one patch; written, NOT run)
 - **Base:** Zealot `develop` @ `eaa86687` (the 40l commit, confirmed on origin before starting). Storeapp `main` @ `517394f`, unchanged, no Storeapp patch.
