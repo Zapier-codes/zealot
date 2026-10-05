@@ -36,16 +36,21 @@ CI_COMPILE_ENABLED F R
 RELEASE_UPLOAD_SESSIONS_ENABLED F R
 ADC_AUTO_REGISTER F O
 RELEASE_STORAGE_ADAPTER P R
-R2_ENDPOINT P R
-R2_ACCESS_KEY_ID S R
-R2_SECRET_ACCESS_KEY S R'
+GITHUB_STORAGE_REPO P A:github
+GITHUB_STORAGE_TOKEN S A:github
+R2_ENDPOINT P A:r2
+R2_ACCESS_KEY_ID S A:r2
+R2_SECRET_ACCESS_KEY S A:r2'
 
+adapter=$(echo "$vars" | jq -r '.RELEASE_STORAGE_ADAPTER // empty')
 printf '%-34s %-9s %s\n' NAME RESULT VALUE/FINGERPRINT
 miss=0
 while read -r name kind need; do
   val=$(echo "$vars" | jq -r --arg k "$name" '.[$k] // empty')
+  # A:<adapter> = required only for that RELEASE_STORAGE_ADAPTER (R2_* only with r2, GITHUB_STORAGE_* only with github)
+  case "$need" in A:*) if [ "${need#A:}" = "$adapter" ]; then need=R; else need=N; fi ;; esac
   if [ -z "$val" ]; then
-    if [ "$need" = R ]; then r="MISSING"; miss=$((miss+1)); else r="not set"; fi
+    if [ "$need" = R ]; then r="MISSING"; miss=$((miss+1)); elif [ "$need" = N ]; then r="n/a"; else r="not set"; fi
     printf '%-34s %-9s\n' "$name" "$r"
   elif [ "$kind" = S ]; then
     printf '%-34s %-9s %s\n' "$name" set "$(printf %s "$val" | sha256sum | cut -c1-10)"

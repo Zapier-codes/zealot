@@ -45,9 +45,11 @@ Render), `~/close-gaps.sh` (**now `docs/ci/close-gaps.sh` in this repo**, copy i
 | Render `CI_COMPILE_EXPECT_CERT_SHA256` | set by `close-gaps.sh --apply` (Render may have redeployed) | output |
 | Storage-repo secrets `RELEASE_KEYSTORE_BASE64`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS` | set by `close-gaps.sh --apply`; the operator then re-set `RELEASE_KEYSTORE_PASSWORD` by hand with `gh secret set` | output |
 | Storage-repo secrets `CI_COMPILE_CALLBACK_TOKEN`, `R2_STAGING_CI_ACCESS_KEY_ID`, `R2_STAGING_CI_SECRET_ACCESS_KEY` | exist (values cannot be compared) | output |
-| Render deploy after the certificate change | **not checked** | |
-| `read-upload.yml` current in the storage repo | **not checked** | |
-| Other Render variables (`CI_COMPILE_DISPATCH_TOKEN`, `CI_COMPILE_CALLBACK_TOKEN`, `CI_OIDC_AUDIENCE`, flags) | **not checked**; run `docs/ci/check-render-env.sh` | |
+| Render latest deploy | `live` (2026-10-05 05:57 UTC); whether it came after the certificate variable change was **not** established (look for an "Environment updated" event) | deploy list |
+| `read-upload.yml` in the storage repo | was the 40j version (`d01cb1e7`); replaced with `0f115f4c` (40l-b) through the contents API, hashes then equal (commit `d4ccdab3` in the storage repo) | `gh api ... --jq .sha` vs `git hash-object` |
+| Render `R2_STAGING_BUCKET/ENDPOINT/ACCESS_KEY_ID/SECRET_ACCESS_KEY/REGION`, `CI_OIDC_AUDIENCE`, `CI_COMPILE_REPO`, `CI_COMPILE_DISPATCH_TOKEN`, `CI_COMPILE_CALLBACK_TOKEN`, `CI_COMPILE_EXPECT_CERT_SHA256`, `RELEASE_STORAGE_ADAPTER=github` | **set** (secrets by fingerprint only) | `check-render-env.sh` output, 2026-10-05 |
+| Render `GITHUB_STORAGE_REPO`, `GITHUB_STORAGE_TOKEN` | **not yet checked** (the first check version did not list them) | |
+| Render `CI_COMPILE_ENABLED`, `RELEASE_UPLOAD_SESSIONS_ENABLED`, `ADC_AUTO_REGISTER` | **unset** (off), as intended | same output |
 | `SIGN_UPLOADED_APKS`, `CI_COMPILE_ENABLED`, `RELEASE_UPLOAD_SESSIONS_ENABLED` | **off** (nothing said they were turned on) | |
 | 40m (Storeapp tenant signing) | **blocked**, four options in the Task 40 entry, unanswered | |
 
@@ -142,8 +144,10 @@ Required on `zealot-web` for the direct-upload + CI release path: `R2_STAGING_BU
 `R2_STAGING_ENDPOINT`, `R2_STAGING_ACCESS_KEY_ID`, `R2_STAGING_SECRET_ACCESS_KEY`, `CI_OIDC_AUDIENCE` (equal
 to the storage repo's `ZEALOT_URL`), `CI_COMPILE_DISPATCH_TOKEN` (fine-grained, Actions read and write on
 the storage repo), `CI_COMPILE_CALLBACK_TOKEN`, `CI_COMPILE_EXPECT_CERT_SHA256` (without it 40l-b marks
-nothing signed), the two flags, and the storage adapter set (`RELEASE_STORAGE_ADAPTER`, `R2_ENDPOINT`,
-`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`). Optional: `R2_STAGING_REGION`, `CI_COMPILE_REPO`,
+nothing signed), the two flags, and the storage adapter set, which depends on `RELEASE_STORAGE_ADAPTER`: with `github` (today's
+value) `GITHUB_STORAGE_REPO` and `GITHUB_STORAGE_TOKEN`; the adapter's own `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`,
+`R2_SECRET_ACCESS_KEY` (not the `R2_STAGING_*` ones) are needed only with `r2`. An earlier draft of the check
+wrongly listed the `R2_*` trio as required; it is fixed. Optional: `R2_STAGING_REGION`, `CI_COMPILE_REPO`,
 `ADC_AUTO_REGISTER` (off today by design), `CI_READ_UPLOAD_WORKFLOW`.
 
 Google ADC variables (separate from Task 40): `~/sync-adc.sh --apply` compares `ADC_REFRESH_TOKEN`,
@@ -188,7 +192,7 @@ Same route family: `POST /api/play_credential` (Play service account), `bin/boot
 
 1. 40m: the operator's answer (see the Task 40 entry): `1a, 2b, 3 none installed` or `keep tenant
    signing, drop 40m`. Treat "unsure whether any tenant APK is installed" as "some installed".
-2. Check the Render deploy is `live`, that `read-upload.yml` in the storage repo is current, and run
-   `check-render-env.sh`; record the output in the handover.
+2. Check `GITHUB_STORAGE_REPO` / `GITHUB_STORAGE_TOKEN` on Render (`check-render-env.sh`, fixed version) and
+   that the live deploy is not older than the certificate variable change.
 3. Back up the keystore off the phone (not confirmed done).
 4. Turn the flags on in the order of section 4, then one real upload, then 40k.
