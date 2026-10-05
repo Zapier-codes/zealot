@@ -259,6 +259,38 @@ Same route family: `POST /api/play_credential` (Play service account), `bin/boot
 - **Certificate refused (422):** the reported `cert_sha256` differs from `CI_COMPILE_EXPECT_CERT_SHA256`;
   compare against section 2.
 
+## 11. 40n-0 part 2 and 40n-a: run together on the operator's own machine (2026-10-05)
+
+**Why combined.** The sandbox that writes these patches has no Maven/Google network access and no Android build tools,
+so it cannot run the real upload test (section 10) or prove an AAB manifest patch (40n-a needs `bundletool`/`aapt2`, whose
+`Resources.proto` schema the sandbox cannot fetch). Both need the operator's own machine. The operator chose to skip the
+throwaway-app test and go straight to this, so **this is now the first real exercise of the whole pipeline**: treat any
+failure as pipeline-wide, not as one small thing, and read section 8 (debugging recipes) if anything breaks.
+
+**Prerequisites (operator's machine, not Termux-only):** `bundletool` (the `.jar`, or `brew install bundletool`), a JDK
+(`keytool` already confirmed present, section 7), `aapt2` (from Android SDK build-tools, or `pip install aapt2` wheel),
+and one real signed `.aab` of an app already in Zealot (its channel's `bundle_id` must match).
+
+```bash
+# 1. the real upload (section 10's block), against a REAL app/channel this time, not a throwaway one.
+. ~/.zealot.env
+Z=https://zealot-deploy-latest.onrender.com
+FILE=<path to a real .aab>
+CHANNEL_KEY=<its channel key, from: curl -sG "$Z/api/apps" -d token="$(zealot-token)" | jq -r '.. | objects | select(has("key") and has("bundle_id")) | "\(.name) \(.bundle_id) \(.key)"'>
+bash ~/upload-test.sh "$FILE" "$CHANNEL_KEY"   # the script from the session that asked for this; recreate it from section 10 if deleted
+
+# 2. in parallel (or after), the AAB manifest proof 40n-a needs, on the SAME file, independent of Zealot:
+bundletool build-apks --bundle="$FILE" --output=/tmp/check.apks --mode=universal
+unzip -p /tmp/check.apks universal.apk > /tmp/universal.apk
+aapt2 dump xmltree /tmp/universal.apk --file AndroidManifest.xml | head -40
+# confirms bundletool can round-trip this bundle at all, before any patcher touches its manifest
+```
+
+**Report back:** the full output of step 1 (session JSON, PUT status, finalize JSON, every polled state, and the
+`gh run list` line), and whether step 2's `aapt2 dump` ran without error. If step 1 fails, save the storage-repo run log
+(section 8). If `bundletool`/`aapt2` are not installable on the operator's machine either, say so — 40n-a then has nowhere
+to be proven, and 40j's existing universal-APK patch (already written) is the fallback per the Task 40 board.
+
 ## 9. Still open after this session (updated 2026-10-05, after 40n-0 part 1)
 
 1. **40n-0 part 2: the one real upload** (section 10). Nothing in 40n-a to 40n-g starts before it passes.
