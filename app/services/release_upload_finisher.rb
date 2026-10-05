@@ -282,7 +282,7 @@ class ReleaseUploadFinisher
     attributes.merge!(icon_storage_key: keys[:icon], icon_sha256: metadata['icon_sha256']) if keys[:icon]
     attributes.merge!(bundle_attributes(keys)) if bundle?
     attributes.merge!(signing_attributes)
-    attributes[:status] = 'available' unless hold_requested?(row) || requires_payment?(row)
+    attributes[:status] = 'available' unless hold_requested?(row)
     attributes
   end
 
@@ -316,11 +316,6 @@ class ReleaseUploadFinisher
   # The same cast the API upload door uses for `hold`.
   def hold_requested?(row)
     ActiveModel::Type::Boolean.new.cast(row.form_options['hold']) == true
-  end
-
-  # Task 40o: Manual dashboard uploads require payment before becoming available.
-  def requires_payment?(row)
-    row.form_options['source'] == 'web'
   end
 
   # Housekeeping that must not turn an accepted result into an error: the release is already saved.

@@ -419,13 +419,6 @@ RSpec.describe ReleaseUploadFinisher do
     end
   end
 
-  # Task 40o: The rejection rule is removed. CI unconditionally injects and signs all uploads.
-  # Task 40o: Manual dashboard uploads require payment before becoming available.
-  describe 'payment gating for manual uploads' do
-    let(:signed_report) do
-      apk_report.merge('org_signed' => true, 'signed_file_sha256' => 'D' * 64, 'cert_sha256' => 'ab')
-    end
-
     context 'when uploaded via manual dashboard (source: web)' do
       let(:options) { { 'source' => 'web' } }
 

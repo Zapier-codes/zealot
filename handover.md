@@ -7835,3 +7835,10 @@ them is already modernized.
 - Removed `REQUIRE_ORG_SIGNED_APKS` rejection logic. CI unconditionally injects SDK and signs both AABs and APKs.
 - Manual dashboard uploads (`source: 'web'`) are kept `held` until payment is confirmed.
 - API uploads (`source: 'api'`) bypass payment and become `available` immediately.
+
+
+## Task 40o (cont): Removed per-upload payment gate
+
+- Removed `requires_payment?` from `ReleaseUploadFinisher`.
+- Manual dashboard uploads and API uploads are both accepted and made `available` immediately after CI processes them.
+- The catalog index serializer's `listing_live` scope ensures uploads for unpaid apps still do not appear in the public store until the account/app listing fee is paid.
