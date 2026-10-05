@@ -53,8 +53,22 @@
 # this folder layout: the patcher finds its Java helper in the folder beside itself):
 #   zealot-ci/aab_sdk_patcher.py                     <- lib/aab_sdk_patcher.py
 #   zealot-ci/aab_manifest_patch/ManifestPatch.java  <- lib/aab_manifest_patch/ManifestPatch.java
-#   zealot-ci/proxies_sdk.dex                        <- proxies_sdk.dex (must contain com.zealot.proxy.ZealotProxyProvider)
+#   zealot-ci/proxies_sdk.dex                        <- proxies_sdk.dex (the SDK's own classes only -- see below)
+#   zealot-ci/ZealotProxyProvider.java                <- lib/zealot_provider/ZealotProxyProvider.java
 # (zealot-ci/proxy_sdk_patcher.py, the APK patcher of Task 40j, is no longer used; it can be deleted there.)
+#
+# Task 40n fix (2026-10-05): proxies_sdk.dex does NOT need, and never had, a com.zealot.proxy.*
+# class in it -- that earlier note was wrong. The real SDK is sx.proxies.peer.ProxiesPeerSDK
+# (Kotlin, read from the dex with androguard, not guessed). The "Compile ZealotProxyProvider" step
+# below compiles zealot-ci/ZealotProxyProvider.java fresh every run (javac against the runner's own
+# android.jar, then d8) into its OWN dex file, which the patcher adds alongside proxies_sdk.dex as a
+# second classesN.dex slot (Android's normal multidex loading finds classes across dex files, so the
+# two never need to be merged). ZealotProxyProvider.java itself talks to the SDK only by reflection
+# (Class.forName on sx.proxies.peer.ProxiesPeerSDK and its nested Config class), so it has no
+# compile-time dependency on the SDK or the Kotlin stdlib and needs nothing from proxies_sdk.dex to
+# compile. The "Check the SDK is in the universal APK" step below greps the built APK's dex for the
+# class name as a run-time sanity check, not because the provider is expected to live in the SDK's
+# own dex.
 # Storage-repo VARIABLES (same page, Variables tab):
 #   ZEALOT_URL            https://<your zealot host>, no trailing path. Must equal CI_OIDC_AUDIENCE on Render
 #                         (or https://<ZEALOT_DOMAIN> when that is what Render has).
@@ -549,6 +563,12 @@ jobs:
           javac -source 1.8 -target 1.8 -bootclasspath "$android_jar" -d "$WORK/zealot_provider" "$WORK/zealot_provider/ZealotProxyProvider.java"
           d8_path="$(ls -d ${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools/*/d8 | sort -V | tail -n 1)"
           "$d8_path" --output "$WORK/zealot_provider" "$WORK/zealot_provider/com/zealot/proxy/ZealotProxyProvider.class"
+          # d8's --output takes a directory (or a .zip/.jar); it always names the file it
+          # writes inside that directory "classes.dex" -- there is no flag to name it
+          # directly. The line below used to point ZEALOT_PROVIDER_DEX at a
+          # "zealot_provider.dex" that d8 never produces, so this step always "succeeded"
+          # while leaving the next step nothing to find (Task 40n, fixed 2026-10-05).
+          mv "$WORK/zealot_provider/classes.dex" "$WORK/zealot_provider/zealot_provider.dex"
           echo "ZEALOT_PROVIDER_DEX=$WORK/zealot_provider/zealot_provider.dex" >> "$GITHUB_ENV"
 
       - name: Inject the SDK
