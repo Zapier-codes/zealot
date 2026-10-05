@@ -599,7 +599,7 @@ jobs:
           echo "ORG_SIGNED=1" >> "$GITHUB_ENV"
 
       - name: Read the signing certificate
-        if: endsWith(inputs.filename, '.aab') || env.ORG_SIGNED == '1'
+        if: endsWith(inputs.filename, '.aab') || env.ORG_SIGNED == '1' || env.SDK_INJECTED == '1'
         env:
           KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           EXPECTED: ${{ vars.RELEASE_CERT_SHA256 }}
@@ -686,8 +686,8 @@ jobs:
           if [[ ${SDK_INJECTED:-} == 1 ]]; then
             body="$(jq '. + {sdk_injected: true}' <<<"$body")"
             if [[ $KIND == apk ]]; then
-              body="$(jq --arg isha "$(sha256sum "$WORK/$FILENAME" | cut -d' ' -f1)" \
-                '. + {injected_file_sha256: $isha}' <<<"$body")"
+              body="$(jq --arg isha "$(sha256sum "$WORK/$FILENAME" | cut -d' ' -f1)" --arg cert "$CERT_SHA256" \
+                '. + {injected_file_sha256: $isha, cert_sha256: $cert}' <<<"$body")"
             fi
           fi
           if [[ ${ORG_SIGNED:-} == 1 ]]; then

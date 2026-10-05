@@ -318,6 +318,107 @@ RSpec.describe ReleaseUploadFinisher do
     end
   end
 
+  # Task 40l-b: a release the flow signed with the organisation key is marked signed, as the old path marks one.
+  describe 'recording that the organisation key signed the release' do
+    let(:env) { { 'CI_COMPILE_EXPECT_CERT_SHA256' => 'ab:cd' } }
+    let(:key) { instance_double(AndroidSigningKey, checksum: 'sum-1') }
+    let(:injected_report) do
+      apk_report.merge('sdk_injected' => true, 'injected_file_sha256' => 'e' * 64, 'cert_sha256' => 'ABCD')
+    end
+    let(:signed_report) do
+      apk_report.merge('org_signed' => true, 'signed_file_sha256' => 'd' * 64, 'cert_sha256' => 'ABCD')
+    end
+
+    before do
+      allow(AndroidSigningKey).to receive(:current).and_return(key)
+      allow(GoogleAdc).to receive(:auto_register?).and_return(false)
+      allow(GoogleAdcRegisterJob).to receive(:perform_later)
+    end
+
+    it 'marks an org-signed APK signed, with the key\'s checksum' do
+      finish(signed_report)
+
+      expect(release.reload).to have_attributes(signed: true, signing_key_checksum: 'sum-1')
+    end
+
+    it 'marks an SDK-injected APK signed, and requires its certificate to be reported' do
+      finish(injected_report)
+      expect(release.reload).to have_attributes(signed: true, signing_key_checksum: 'sum-1')
+    end
+
+    it 'refuses an injected APK that reports no certificate where one is expected' do
+      result = finish(injected_report.except('cert_sha256'))
+
+      expect(result).to have_attributes(code: :malformed, http: 422)
+      expect(upload.reload.state).to eq('processing')
+    end
+
+    context 'for a bundle' do
+      let(:filename) { 'app.aab' }
+      let(:kind) { 'aab' }
+
+      it 'marks it signed when the reported certificate matches' do
+        finish(aab_report)
+
+        expect(release.reload).to have_attributes(signed: true, signing_key_checksum: 'sum-1')
+      end
+    end
+
+    it 'does not mark a plain APK that nobody signed in CI' do
+      finish(apk_report)
+
+      expect(release.reload).to have_attributes(signed: false, signing_key_checksum: nil)
+    end
+
+    context 'when no certificate is expected on this server' do
+      let(:env) { {} }
+
+      it 'records the file but marks nothing, since the certificate cannot be confirmed' do
+        expect(finish(signed_report).code).to eq(:finished)
+        expect(release.reload).to have_attributes(signed: false, signing_key_checksum: nil)
+      end
+    end
+
+    context 'when there is no organisation key row' do
+      before { allow(AndroidSigningKey).to receive(:current).and_return(nil) }
+
+      it 'finishes the upload and marks nothing' do
+        expect(finish(signed_report).code).to eq(:finished)
+        expect(release.reload.signed).to be(false)
+      end
+    end
+
+    context 'when Google registration is switched on' do
+      before { allow(GoogleAdc).to receive(:auto_register?).and_return(true) }
+
+      it 'queues it for a signed release that became available' do
+        finish(signed_report)
+
+        expect(GoogleAdcRegisterJob).to have_received(:perform_later).with(release.id)
+      end
+
+      it 'does not queue it for a release that is not marked signed' do
+        finish(apk_report)
+
+        expect(GoogleAdcRegisterJob).not_to have_received(:perform_later)
+      end
+
+      it 'does not queue it for a release held at session time' do
+        upload.update_columns(form_options: { 'hold' => true })
+        finish(signed_report)
+
+        expect(GoogleAdcRegisterJob).not_to have_received(:perform_later)
+      end
+
+      it 'does not let a queueing failure undo the finished upload' do
+        allow(GoogleAdcRegisterJob).to receive(:perform_later).and_raise(StandardError, 'queue down')
+
+        expect(finish(signed_report).code).to eq(:finished)
+        expect(release.reload.status).to eq('available')
+      end
+    end
+  end
+
   describe 'a report that does not check out' do
     it 'refuses a file key that is not where Zealot expects it, and changes nothing' do
       result = finish(report.merge('file_key' => 'uploads/apps/a9/r9/binary/app.apk'))

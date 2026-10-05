@@ -55,6 +55,16 @@
 # `signed_file_sha256` without `org_signed` is refused; a bundle ignores both (its universal APK is already signed
 # by the same key); `org_signed` together with `sdk_injected` is refused (the injector already signs, CI sends one).
 #
+# Task 40l-b: a release made through this flow is marked `signed: true` with `signing_key_checksum` set to the
+# current organisation key's checksum (the pair `GoogleAdcRegisterJob` and the catalog fingerprint read, and the
+# only other writer of which is the old local `AnthropicAssetDeliveryJob`) when CI reports a certificate for the
+# served file (a bundle's universal APK, an org-signed APK, an SDK-injected APK) and that certificate equals
+# `CI_COMPILE_EXPECT_CERT_SHA256`. Without that variable nothing is marked: confirming the certificate against
+# the key itself would need `keytool` and a keystore tempfile on Render, which Task 40 removes. A matching
+# certificate with no organisation key row, or no reported certificate, leaves the release unmarked and is not
+# an error. After the commit, for a release marked signed that became available, the Google registration job is
+# queued (it re-checks everything, and only runs when ADC_AUTO_REGISTER is on).
+#
 # Not verified: no Ruby beyond `ruby -c` in the sandbox this was written in; nothing was run.
 class ReleaseUploadFinisher
   Result = Struct.new(:code, :http, :payload, keyword_init: true)
@@ -145,8 +155,10 @@ class ReleaseUploadFinisher
     sha = body['injected_file_sha256']
     return 'injected_file_sha256 was sent without sdk_injected' if sha.present? && !injected
     return nil unless injected && !bundle?
+    return 'injected_file_sha256 must be 64 hex characters' unless SHA256_FORMAT.match?(sha.to_s.downcase)
+    return 'cert_sha256 is required' if expected_certificate.present? && body['cert_sha256'].blank?
 
-    SHA256_FORMAT.match?(sha.to_s.downcase) ? nil : 'injected_file_sha256 must be 64 hex characters'
+    nil
   end
 
   def injected_apk?
@@ -217,7 +229,7 @@ class ReleaseUploadFinisher
   # --- what must be true before anything is recorded ----------------------
 
   def certificate_problem
-    return nil unless (bundle? || signed_apk?) && expected_certificate.present?
+    return nil unless (bundle? || signed_apk? || injected_apk?) && expected_certificate.present?
     return nil if normalize_fingerprint(body['cert_sha256']) == expected_certificate
 
     'the signing certificate CI reported does not match the expected certificate'
@@ -269,8 +281,25 @@ class ReleaseUploadFinisher
     attributes[:file_sha256] = body['signed_file_sha256'].to_s.downcase if signed_apk?
     attributes.merge!(icon_storage_key: keys[:icon], icon_sha256: metadata['icon_sha256']) if keys[:icon]
     attributes.merge!(bundle_attributes(keys)) if bundle?
+    attributes.merge!(signing_attributes)
     attributes[:status] = 'available' unless hold_requested?(row)
     attributes
+  end
+
+  # Task 40l-b. The certificate must be reported and equal the expected one (checked without any local work);
+  # the key row only supplies the checksum the registration job compares against.
+  def signing_attributes
+    return {} unless certificate_confirmed?
+
+    key = AndroidSigningKey.current
+    key ? { signed: true, signing_key_checksum: key.checksum } : {}
+  end
+
+  def certificate_confirmed?
+    return false unless bundle? || signed_apk? || injected_apk?
+
+    reported = normalize_fingerprint(body['cert_sha256'])
+    reported.present? && expected_certificate.present? && reported == expected_certificate
   end
 
   def bundle_attributes(keys)
@@ -293,7 +322,17 @@ class ReleaseUploadFinisher
   def housekeeping(release)
     release.reload
     send_deploy_email(release) if release.status_available?
+    enqueue_google_registration(release)
     delete_staged_objects
+  end
+
+  # Task 40l-b: what `AnthropicAssetDeliveryJob` does for the old path. Never lets a queueing failure undo the release.
+  def enqueue_google_registration(release)
+    return unless release.signed? && release.status_available? && GoogleAdc.auto_register?
+
+    GoogleAdcRegisterJob.perform_later(release.id)
+  rescue StandardError => e
+    Rails.logger.error("[ReleaseUploadFinisher] upload #{upload.id}: could not queue Google registration: #{e.message}")
   end
 
   # The email stage 1 deferred (a held release with no file must not tell members about a build). Reuses the
