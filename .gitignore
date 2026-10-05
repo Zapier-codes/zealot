@@ -100,3 +100,6 @@ yarn-debug.log*
 
 # Ignore local vendored gem
 /vendor/lib/*
+
+# Task 40n-a/40n-b: the AAB patcher compiles its Java helper here on first use; never commit the .class
+/lib/aab_manifest_patch/build/

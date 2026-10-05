@@ -28,9 +28,14 @@
 #          key itself, checks each object is in the storage release (and the signing certificate, when
 #          CI_COMPILE_EXPECT_CERT_SHA256 is set on Render) and only then makes the release available (unless the
 #          owner asked to hold it) and deletes the staged objects. An APK is stored as uploaded: nothing is built.
-#          With SDK_INJECTION=true (Task 40j) the Proxies SDK is injected first, as the Render job used to do: into
-#          the bundle's universal APK, or into the uploaded APK, which then replaces the stored file; the patched
-#          APK is signed with the organisation key, so the stage-2 certificate check still holds.
+#          With SDK_INJECTION=true (Task 40n-b) the Proxies SDK goes into BUNDLES only: a COPY of the bundle is
+#          patched (manifest provider and permission, SDK dex at the next free classesN.dex; lib/aab_sdk_patcher.py)
+#          and the universal APK is built from that copy and signed with the organisation key. The bundle stored
+#          and uploaded for Play is the clean one, byte for byte; the patched copy never leaves the runner. The
+#          device-split set is still built from the clean bundle. An uploaded APK is never injected (the rule is that
+#          an APK is assumed to carry the SDK already): it is stored as uploaded, or re-signed when SIGN_UPLOADED_APKS
+#          is on. If the built universal APK does not carry the SDK (manifest entry AND provider class in its dex),
+#          the run fails and nothing is uploaded.
 #
 # Storage-repo SECRETS (Settings > Secrets and variables > Actions > Secrets):
 #   R2_STAGING_CI_ACCESS_KEY_ID      } an R2 API token (Object Read and Write, scoped to the staging bucket)
@@ -39,11 +44,14 @@
 #   RELEASE_KEYSTORE_PASSWORD        } its password, the key alias and the key password (leave RELEASE_KEY_PASSWORD
 #   RELEASE_KEY_ALIAS                } unset if it equals the keystore password). The same four secrets and the
 #   RELEASE_KEY_PASSWORD             } same certificate as compile-aab.yml and the Storeapp patch.
-#   PROXIES_API_KEY                  } stage 2 with SDK_INJECTION=true only: the API key the injected SDK is given
-#                                    } (what Render's PROXIES_API_KEY was).
-# Storage-repo FILES for SDK injection (Task 40j; copy from the Zealot repo, commit to the storage repo):
-#   zealot-ci/proxy_sdk_patcher.py   <- lib/proxy_sdk_patcher.py
-#   zealot-ci/proxies_sdk.dex        <- proxies_sdk.dex
+#   PROXIES_API_KEY                  } stage 2 with SDK_INJECTION=true, bundles only: the API key the injected SDK is
+#                                    } given (what Render's PROXIES_API_KEY was).
+# Storage-repo FILES for SDK injection (Task 40n-b; copy from the Zealot repo, commit to the storage repo, and keep
+# this folder layout: the patcher finds its Java helper in the folder beside itself):
+#   zealot-ci/aab_sdk_patcher.py                     <- lib/aab_sdk_patcher.py
+#   zealot-ci/aab_manifest_patch/ManifestPatch.java  <- lib/aab_manifest_patch/ManifestPatch.java
+#   zealot-ci/proxies_sdk.dex                        <- proxies_sdk.dex (must contain com.zealot.proxy.ZealotProxyProvider)
+# (zealot-ci/proxy_sdk_patcher.py, the APK patcher of Task 40j, is no longer used; it can be deleted there.)
 # Storage-repo VARIABLES (same page, Variables tab):
 #   ZEALOT_URL            https://<your zealot host>, no trailing path. Must equal CI_OIDC_AUDIENCE on Render
 #                         (or https://<ZEALOT_DOMAIN> when that is what Render has).
@@ -51,10 +59,11 @@
 #   R2_STAGING_BUCKET     the staging bucket name
 #   RELEASE_CERT_SHA256   optional; the signing certificate's SHA-256 (hex, with or without colons). When set,
 #                         stage 2 refuses to upload anything signed by another certificate.
-#   SDK_INJECTION         optional; `true` turns on Proxies SDK injection in stage 2 (Task 40j). Off unless set.
-#   BUNDLETOOL_VERSION    optional; default below (only used for .aab files)
+#   SDK_INJECTION         optional; `true` turns on Proxies SDK injection into bundles in stage 2 (Task 40n-b). Off
+#                         unless set; an APK upload is not affected by it.
+#   BUNDLETOOL_VERSION    optional; default below, 1.18.3, the version the AAB patcher was proven against (only used for
+#                         .aab files). If you set BUNDLETOOL_SHA256 for an older version, update it too.
 #   BUNDLETOOL_SHA256     optional; SHA-256 of that bundletool jar; checked when set
-#   APKSIGNER_SHA256      optional; SHA-256 of the uber-apk-signer jar (SDK injection); checked when set
 #
 # Job `read` needs `id-token: write` and nothing else (no write access to the repo). Job `build` also needs
 # `contents: write`, to create the storage release and upload to it with the run's own GITHUB_TOKEN; no other
@@ -92,7 +101,7 @@ permissions:
   id-token: write
 
 env:
-  BUNDLETOOL_VERSION: ${{ vars.BUNDLETOOL_VERSION || '1.18.1' }}
+  BUNDLETOOL_VERSION: ${{ vars.BUNDLETOOL_VERSION || '1.18.3' }}
   # Cloudflare R2 rejects the newer AWS CLI's default checksum headers.
   AWS_REQUEST_CHECKSUM_CALCULATION: when_required
   AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
@@ -143,7 +152,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Set up Java
-        if: endsWith(inputs.filename, '.aab') || vars.SDK_INJECTION == 'true'
+        if: endsWith(inputs.filename, '.aab')
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -404,10 +413,13 @@ jobs:
           [[ -n ${R2_ENDPOINT:-} && $R2_ENDPOINT =~ ^https:// ]] || fail "R2_STAGING_ENDPOINT must be set and start with https://"
           [[ -n ${R2_BUCKET:-} ]] || fail "the repository variable R2_STAGING_BUCKET is not set"
           [[ -n ${R2_KEY_ID:-} && -n ${R2_SECRET:-} ]] || fail "the R2_STAGING_CI_* secrets are not set"
-          if [[ ${SDK_INJECTION:-} == true ]]; then
+          if [[ ${SDK_INJECTION:-} == true && $FILENAME == *.aab ]]; then
             [[ -n ${PROXIES_API_KEY:-} ]] || fail "SDK_INJECTION is true but the secret PROXIES_API_KEY is not set"
           fi
-          if [[ $FILENAME == *.aab || ${SDK_INJECTION:-} == true || ${SIGN_UPLOADED_APKS:-} == true ]]; then
+          if [[ ${SDK_INJECTION:-} == true && $FILENAME == *.apk ]]; then
+            echo "::notice::SDK_INJECTION applies to bundles only; this APK is stored as uploaded (Task 40n-b)"
+          fi
+          if [[ $FILENAME == *.aab || ${SIGN_UPLOADED_APKS:-} == true ]]; then
             [[ -n ${KEYSTORE_B64:-} ]] || fail "the secret RELEASE_KEYSTORE_BASE64 is not set"
             [[ -n ${KEYSTORE_PASS:-} ]] || fail "the secret RELEASE_KEYSTORE_PASSWORD is not set"
             [[ -n ${KEY_ALIAS:-} ]] || fail "the secret RELEASE_KEY_ALIAS is not set"
@@ -487,7 +499,7 @@ jobs:
       # and are removed in the last step whatever happens. Passwords go to bundletool as `file:` values, never
       # `pass:`, so they are not visible in the process list (the rule BundletoolService follows).
       - name: Write the signing key to temp files
-        if: endsWith(inputs.filename, '.aab') || vars.SDK_INJECTION == 'true' || vars.SIGN_UPLOADED_APKS == 'true'
+        if: endsWith(inputs.filename, '.aab') || vars.SIGN_UPLOADED_APKS == 'true'
         env:
           KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
           KEYSTORE_PASS: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
@@ -501,6 +513,41 @@ jobs:
           printf '%s' "${KEY_PASS:-$KEYSTORE_PASS}" > "$WORK/keys/key.pass"
           [[ -s "$WORK/keys/release.jks" ]] || { echo "::error::RELEASE_KEYSTORE_BASE64 did not decode to a keystore"; exit 1; }
 
+      # Task 40n-b: the Proxies SDK goes into a COPY of the bundle (lib/aab_sdk_patcher.py, proven against a real bundle
+      # with bundletool in 40n-a). The clean bundle is only read: its hash is taken before and after and the run stops
+      # if it changed. The patcher and the SDK dex are files committed to the storage repo under zealot-ci/. Off
+      # unless the variable SDK_INJECTION is `true`; bundles only.
+      - name: Check out the SDK injection files
+        if: endsWith(inputs.filename, '.aab') && vars.SDK_INJECTION == 'true'
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: zealot-ci
+          path: storage-repo
+
+      - name: Patch a copy of the bundle with the SDK
+        if: endsWith(inputs.filename, '.aab') && vars.SDK_INJECTION == 'true'
+        env:
+          PROXIES_API_KEY: ${{ secrets.PROXIES_API_KEY }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          ci=storage-repo/zealot-ci
+          for f in aab_sdk_patcher.py aab_manifest_patch/ManifestPatch.java proxies_sdk.dex; do
+            [[ -s $ci/$f ]] || fail "zealot-ci/$f must be committed to the storage repo"
+          done
+          before="$(sha256sum "$AAB_PATH" | cut -d' ' -f1)"
+          out="$WORK/patched.aab"
+          BUNDLETOOL_JAR="$HOME/bundletool/bundletool.jar" \
+            python3 "$ci/aab_sdk_patcher.py" "$AAB_PATH" "$out" "$ci/proxies_sdk.dex" "$PROXIES_API_KEY"
+          [[ -s $out ]] || fail "the patcher produced no bundle"
+          after="$(sha256sum "$AAB_PATH" | cut -d' ' -f1)"
+          [[ $after == "$before" ]] || fail "the clean bundle changed while a copy was patched; nothing was uploaded"
+          [[ "$(sha256sum "$out" | cut -d' ' -f1)" != "$before" ]] || fail "the patched bundle is identical to the clean one"
+          {
+            echo "PATCHED_AAB=$out"
+            echo "SDK_INJECTED=1"
+          } >> "$GITHUB_ENV"
+
       - name: Build the split set and the universal APK
         if: endsWith(inputs.filename, '.aab')
         env:
@@ -511,71 +558,39 @@ jobs:
           sign=(--ks "$WORK/keys/release.jks" --ks-key-alias "$KEY_ALIAS"
                 --ks-pass "file:$WORK/keys/ks.pass" --key-pass "file:$WORK/keys/key.pass")
 
-          # Device-split set, exactly the mode Zealot used (no asset-pack config).
+          # Device-split set, exactly the mode Zealot used (no asset-pack config). Always from the clean bundle.
           bt build-apks --bundle "$AAB_PATH" --output "$WORK/release.apks" --mode=default "${sign[@]}"
 
-          # Universal APK: one installable file for a store with no Play-style split installer.
-          bt build-apks --bundle "$AAB_PATH" --output "$WORK/universal.apks" --mode=universal "${sign[@]}"
+          # Universal APK: one installable file for a store with no Play-style split installer. Built from the
+          # patched copy when SDK injection ran (PATCHED_AAB), otherwise from the bundle as uploaded.
+          bt build-apks --bundle "${PATCHED_AAB:-$AAB_PATH}" --output "$WORK/universal.apks" --mode=universal "${sign[@]}"
           unzip -p "$WORK/universal.apks" universal.apk > "$WORK/universal.apk"
           [[ -s "$WORK/universal.apk" ]] || { echo "::error::bundletool produced no universal.apk"; exit 1; }
 
-      # Task 40j: the Proxies SDK, injected the way ProxySdkInjectionJob did on Render (lib/proxy_sdk_patcher.py:
-      # apktool decompile, hook and DEX added, rebuild, sign). The patcher and the SDK DEX are files committed to
-      # the storage repo under zealot-ci/. The patched APK is signed with the organisation key and replaces the
-      # file it came from: the universal APK for a bundle (the bundle itself stays as uploaded, for Play), the
-      # uploaded file for an APK. Off unless the variable SDK_INJECTION is `true`.
-      - name: Check out the SDK injection files
-        if: vars.SDK_INJECTION == 'true'
-        uses: actions/checkout@v4
-        with:
-          sparse-checkout: zealot-ci
-          path: storage-repo
-
-      - name: Install the SDK injection tools
-        if: vars.SDK_INJECTION == 'true'
-        env:
-          APKSIGNER_SHA256: ${{ vars.APKSIGNER_SHA256 }}
+      # Fail closed: a universal APK whose manifest names a provider that is not in its dex would crash the app at
+      # launch. Both halves are checked on the file that will be uploaded: the manifest entry (read by aapt2) and the
+      # provider class name in the APK's dex files. No pipe into `grep -q` (it would trip `pipefail` on SIGPIPE).
+      - name: Check the SDK is in the universal APK
+        if: endsWith(inputs.filename, '.aab') && env.SDK_INJECTED == '1'
         run: |
           set -euo pipefail
-          [[ -s storage-repo/zealot-ci/proxy_sdk_patcher.py && -s storage-repo/zealot-ci/proxies_sdk.dex ]] \
-            || { echo "::error::zealot-ci/proxy_sdk_patcher.py and zealot-ci/proxies_sdk.dex must be committed to the storage repo"; exit 1; }
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq apktool
-          python3 -m pip install --quiet --break-system-packages 'androguard>=4,<5'
-          mkdir -p "$HOME/tools"
-          curl -fsSL --retry 3 -o "$HOME/tools/apksigner.jar" \
-            "https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar"
-          if [[ -n ${APKSIGNER_SHA256:-} ]]; then
-            echo "${APKSIGNER_SHA256}  $HOME/tools/apksigner.jar" | sha256sum -c -
-          else
-            echo "::warning::APKSIGNER_SHA256 is not set; the uber-apk-signer jar was not checked against a known hash"
-          fi
-
-      - name: Inject the SDK
-        if: vars.SDK_INJECTION == 'true'
-        env:
-          PROXIES_API_KEY: ${{ secrets.PROXIES_API_KEY }}
-          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-          FILENAME: ${{ inputs.filename }}
-        run: |
-          set -euo pipefail
-          if [[ $KIND == aab ]]; then target="$WORK/universal.apk"; else target="$WORK/$FILENAME"; fi
-          [[ -s $target ]] || { echo "::error::nothing to inject into at $target"; exit 1; }
-          out="$WORK/patched.apk"
-          ZEALOT_KEYSTORE="$WORK/keys/release.jks" ZEALOT_KS_ALIAS="$KEY_ALIAS" \
-          ZEALOT_KS_PASS="$(cat "$WORK/keys/ks.pass")" ZEALOT_KEY_PASS="$(cat "$WORK/keys/key.pass")" \
-          ZEALOT_APKSIGNER_JAR="$HOME/tools/apksigner.jar" \
-            python3 storage-repo/zealot-ci/proxy_sdk_patcher.py "$target" "$out" \
-              storage-repo/zealot-ci/proxies_sdk.dex "$PROXIES_API_KEY"
-          [[ -s $out ]] || { echo "::error::the patcher produced no APK"; exit 1; }
-          mv -f "$out" "$target"
-          echo "SDK_INJECTED=1" >> "$GITHUB_ENV"
+          fail() { echo "::error::$1"; exit 1; }
+          aapt2="$(ls -d "${ANDROID_HOME:-/usr/local/lib/android/sdk}"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -n 1 || true)"
+          [[ -x $aapt2 ]] || fail "aapt2 was not found on this runner; cannot check the SDK is in the universal APK"
+          "$aapt2" dump xmltree --file AndroidManifest.xml "$WORK/universal.apk" > "$WORK/universal-manifest.txt"
+          grep -q 'com.zealot.proxy.ZealotProxyProvider' "$WORK/universal-manifest.txt" \
+            || fail "the universal APK's manifest has no ZealotProxyProvider entry; nothing was uploaded"
+          unzip -p "$WORK/universal.apk" 'classes*.dex' > "$WORK/universal-dex.bin"
+          found="$(grep -ac 'com/zealot/proxy/ZealotProxyProvider' "$WORK/universal-dex.bin" || true)"
+          rm -f "$WORK/universal-dex.bin"
+          [[ ${found:-0} -ge 1 ]] || fail "the manifest names com.zealot.proxy.ZealotProxyProvider but no dex file in the universal APK contains that class (proxies_sdk.dex lacks it); nothing was uploaded"
 
       # Task 40l: Zealot signs every app it publishes, so an uploaded APK is re-signed with the organisation key
       # here, whoever signed it before (a developer's key, or none). zipalign first, then apksigner, which replaces
       # any signature already on the file; the result is verified and replaces the file that is stored and served.
-      # Skipped when the SDK was injected (the patcher already signed with this key) and for bundles (bundletool
-      # signed their universal APK above). Off unless the variable SIGN_UPLOADED_APKS is `true`.
+      # Skipped for bundles (bundletool signed their universal APK above) and whenever SDK_INJECTION is on (Task 40n-b:
+      # an APK is never injected, so it is stored as uploaded rather than signed without the SDK; this step goes in
+      # 40k). Off unless the variable SIGN_UPLOADED_APKS is `true`.
       - name: Sign the uploaded APK with the organisation key
         if: endsWith(inputs.filename, '.apk') && vars.SIGN_UPLOADED_APKS == 'true' && vars.SDK_INJECTION != 'true'
         env:
@@ -599,7 +614,7 @@ jobs:
           echo "ORG_SIGNED=1" >> "$GITHUB_ENV"
 
       - name: Read the signing certificate
-        if: endsWith(inputs.filename, '.aab') || env.ORG_SIGNED == '1' || env.SDK_INJECTED == '1'
+        if: endsWith(inputs.filename, '.aab') || env.ORG_SIGNED == '1'
         env:
           KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           EXPECTED: ${{ vars.RELEASE_CERT_SHA256 }}
@@ -684,11 +699,8 @@ jobs:
               '. + {icon_key: $ikey, icon_sha256: $isha}' <<<"$body")"
           fi
           if [[ ${SDK_INJECTED:-} == 1 ]]; then
+            # Bundles only (Task 40n-b): the universal APK below is the patched, organisation-signed one.
             body="$(jq '. + {sdk_injected: true}' <<<"$body")"
-            if [[ $KIND == apk ]]; then
-              body="$(jq --arg isha "$(sha256sum "$WORK/$FILENAME" | cut -d' ' -f1)" --arg cert "$CERT_SHA256" \
-                '. + {injected_file_sha256: $isha, cert_sha256: $cert}' <<<"$body")"
-            fi
           fi
           if [[ ${ORG_SIGNED:-} == 1 ]]; then
             body="$(jq --arg ssha "$(sha256sum "$WORK/$FILENAME" | cut -d' ' -f1)" --arg cert "$CERT_SHA256" \
