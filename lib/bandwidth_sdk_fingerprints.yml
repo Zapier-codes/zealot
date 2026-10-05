@@ -1,0 +1,81 @@
+# Task 40p: fingerprints used by lib/scan_bandwidth_sdks.py to detect a bandwidth-sharing / residential-proxy
+# SDK already present in an uploaded app (before CI touches the file). Rejection decision is made by
+# ReleaseUploadFinisher, not here; this file only supplies names to look for.
+#
+# Each entry is a smali/dex class-prefix pattern: dex string pools store class names as
+# "Lpackage/path/ClassName;" (UTF-8), so a plain substring search for "Lcom/example/" against the raw dex
+# bytes finds the class without parsing the file format. This is the same kind of read the 40n-a/40n session
+# used (androguard, informal byte inspection) -- here done without androguard so the CI step has no new
+# Python dependency, since the dex string pool is already plain UTF-8 and a substring match is enough for a
+# flag-for-review signal (not a legal or forensic claim).
+#
+# "confidence: confirmed" -- read directly from a real dex file this repo ships (proxies_sdk.dex) with
+# androguard, Task 40n-a/40n session. "confidence: unverified" -- the package prefix is the vendor's publicly
+# documented or conventionally-expected Android namespace; NO real APK/AAB containing that SDK was decompiled
+# in this sandbox to confirm it (no network access to fetch a sample, none was supplied). Treat every
+# "unverified" entry as a starting point: false negatives (a vendor that renamed/obfuscated its package) and
+# false positives (coincidental prefix collision) are both possible until a real sample confirms each one.
+# Before relying on this list for an actual rejection in production, recommend decompiling one real sample of
+# each vendor's SDK (or asking the operator for one) and moving its entries to "confirmed".
+
+- name: "Proxies.sx (the organisation's own SDK)"
+  confidence: confirmed
+  prefixes:
+    - "Lsx/proxies/peer/"
+    - "Lcom/zealot/proxy/"
+  note: >
+    The exact SDK Zealot itself injects (Task 40n). An app that already carries this is not "pre-approved" --
+    it means the organisation did not put it there, so it is rejected the same as any other match. A copy
+    Zealot's own CI is about to inject is never scanned (the scan runs on the file as uploaded, before any
+    injection step).
+
+- name: "Honeygain"
+  confidence: unverified
+  prefixes:
+    - "Lcom/honeygain/"
+
+- name: "Pawns.app / IPRoyal Pawns"
+  confidence: unverified
+  prefixes:
+    - "Lapp/pawns/"
+    - "Lcom/iproyal/"
+
+- name: "PacketStream"
+  confidence: unverified
+  prefixes:
+    - "Lcom/packetstream/"
+
+- name: "EarnApp (Bright Data)"
+  confidence: unverified
+  prefixes:
+    - "Lcom/earnapp/"
+    - "Lcom/brightdata/"
+    - "Lcom/luminati/"
+
+- name: "Grass (Wynd Network)"
+  confidence: unverified
+  prefixes:
+    - "Lnetwork/grass/"
+    - "Lcom/getgrass/"
+    - "Lcom/wynd/"
+
+- name: "Nodepay"
+  confidence: unverified
+  prefixes:
+    - "Lnetwork/nodepay/"
+    - "Lcom/nodepay/"
+
+- name: "Repocket"
+  confidence: unverified
+  prefixes:
+    - "Lcom/repocket/"
+
+- name: "Traffmonetizer"
+  confidence: unverified
+  prefixes:
+    - "Lcom/traffmonetizer/"
+
+- name: "Peer2Profit"
+  confidence: unverified
+  prefixes:
+    - "Lcom/peer2profit/"

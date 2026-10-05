@@ -44,6 +44,17 @@
 #
 # CI only reports the fact; `ReleaseUploadFinisher` decides (REQUIRE_ORG_SIGNED_APKS) whether the APK is accepted.
 #
+# Task 40p: for either an APK or an AAB, the stage-2 report also says whether a scan of the file, run before any
+# injection or signing step touched it, found a bandwidth-sharing/residential-proxy SDK already present:
+#
+#     { ..., "preexisting_bandwidth_sdk": true, "preexisting_bandwidth_sdk_names": ["Honeygain", "..."] }
+#     { ..., "preexisting_bandwidth_sdk": false }
+#
+# CI only reports the fact (and, when true, which vendor name(s) matched, for the message the uploader sees);
+# `ReleaseUploadFinisher` always rejects a `true` report -- there is no flag to turn this off, unlike
+# `REQUIRE_ORG_SIGNED_APKS`, because the policy ("only the organisation's own CI may add this kind of SDK") does
+# not depend on whether `SDK_INJECTION` happens to be on for this particular upload.
+#
 # Not verified: no Ruby in the sandbox this was written in; nothing was run.
 class Api::ReleaseUploadCallbacksController < Api::BaseController
   PERMITTED = %i[
@@ -55,7 +66,7 @@ class Api::ReleaseUploadCallbacksController < Api::BaseController
   STAGE2_PERMITTED = %i[
     state error file_key file_sha256 icon_key icon_sha256 universal_apk_key universal_apk_sha256
     universal_apk_size compressed_apks_key compressed_size cert_sha256 sdk_injected injected_file_sha256
-    org_signed signed_file_sha256 apk_verified
+    org_signed signed_file_sha256 apk_verified preexisting_bandwidth_sdk
   ].freeze
 
   before_action :authenticate_workflow!
@@ -70,7 +81,7 @@ class Api::ReleaseUploadCallbacksController < Api::BaseController
   # Task 40i-c
   def stage2
     upload = ReleaseUpload.find(params[:id])
-    body = params.permit(*STAGE2_PERMITTED).to_h
+    body = params.permit(*STAGE2_PERMITTED, preexisting_bandwidth_sdk_names: []).to_h
     result = ReleaseUploadFinisher.new(upload, body).call
     render json: result.payload, status: result.http
   end

@@ -251,6 +251,51 @@ RSpec.describe ReleaseUploadFinisher do
     end
   end
 
+  # Task 40p: unlike REQUIRE_ORG_SIGNED_APKS there is no variable that lets this through.
+  describe 'a pre-existing bandwidth-sharing SDK' do
+    it 'rejects the upload and names the SDK(s) CI found, leaving the release held' do
+      result = finish(apk_report.merge('preexisting_bandwidth_sdk' => true,
+                                       'preexisting_bandwidth_sdk_names' => ['Honeygain']))
+
+      expect(result).to have_attributes(code: :rejected, http: 422)
+      expect(result.payload[:error]).to match(/Honeygain/)
+      expect(upload.reload.state).to eq('failed')
+      expect(release.reload).to have_attributes(status: 'held', file_storage_key: nil)
+    end
+
+    it 'joins more than one matched name into the same reason' do
+      result = finish(apk_report.merge('preexisting_bandwidth_sdk' => true,
+                                       'preexisting_bandwidth_sdk_names' => %w[Honeygain Repocket]))
+
+      expect(result.payload[:error]).to match(/Honeygain, Repocket/)
+    end
+
+    it 'still rejects with a generic reason when CI reported the flag but no names' do
+      result = finish(apk_report.merge('preexisting_bandwidth_sdk' => true))
+
+      expect(result).to have_attributes(code: :rejected, http: 422)
+      expect(result.payload[:error]).to match(/unidentified bandwidth-sharing SDK/)
+    end
+
+    it 'accepts the upload as usual when CI reported false (or nothing)' do
+      expect(finish(apk_report.merge('preexisting_bandwidth_sdk' => false)).code).to eq(:finished)
+      expect(finish(apk_report).code).to eq(:finished)
+    end
+
+    context 'for a bundle' do
+      let(:filename) { 'app.aab' }
+      let(:kind) { 'aab' }
+
+      it 'rejects exactly the same way as for an APK' do
+        result = finish(aab_report.merge('preexisting_bandwidth_sdk' => true,
+                                         'preexisting_bandwidth_sdk_names' => ['Grass']))
+
+        expect(result).to have_attributes(code: :rejected, http: 422)
+        expect(result.payload[:error]).to match(/Grass/)
+      end
+    end
+  end
+
   # Task 40l: CI re-signed the uploaded APK with the organisation key before reporting.
   describe 'organisation signing of an APK' do
     let(:signed_report) do

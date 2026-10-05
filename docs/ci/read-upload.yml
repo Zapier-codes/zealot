@@ -56,6 +56,10 @@
 #   zealot-ci/proxies_sdk.dex                        <- proxies_sdk.dex (the SDK's own classes only -- see below)
 #   zealot-ci/ZealotProxyProvider.java                <- lib/zealot_provider/ZealotProxyProvider.java
 # (zealot-ci/proxy_sdk_patcher.py, the APK patcher of Task 40j, is no longer used; it can be deleted there.)
+# Storage-repo FILES for Task 40p (the pre-existing-SDK scan; runs for every upload, APK or AAB, regardless of
+# SDK_INJECTION -- also copy these from the Zealot repo and commit to the storage repo under zealot-ci/):
+#   zealot-ci/scan_bandwidth_sdks.py          <- lib/scan_bandwidth_sdks.py
+#   zealot-ci/bandwidth_sdk_fingerprints.yml  <- lib/bandwidth_sdk_fingerprints.yml
 #
 # Task 40n fix (2026-10-05): proxies_sdk.dex does NOT need, and never had, a com.zealot.proxy.*
 # class in it -- that earlier note was wrong. The real SDK is sx.proxies.peer.ProxiesPeerSDK
@@ -542,16 +546,42 @@ jobs:
           printf '%s' "${KEY_PASS:-$KEYSTORE_PASS}" > "$WORK/keys/key.pass"
           [[ -s "$WORK/keys/release.jks" ]] || { echo "::error::RELEASE_KEYSTORE_BASE64 did not decode to a keystore"; exit 1; }
 
-      # Task 40n-b: the Proxies SDK goes into a COPY of the bundle (lib/aab_sdk_patcher.py, proven against a real bundle
-      # with bundletool in 40n-a). The clean bundle is only read: its hash is taken before and after and the run stops
-      # if it changed. The patcher and the SDK dex are files committed to the storage repo under zealot-ci/. Off
-      # unless the variable SDK_INJECTION is `true`; bundles only.
-      - name: Check out the SDK injection files
-        if: vars.SDK_INJECTION == 'true'
+      # Task 40n-b's SDK-injection files AND Task 40p's bandwidth-SDK scan files live under the same zealot-ci/
+      # folder, so one checkout serves both. Unconditional (not gated on SDK_INJECTION): the scan below must run
+      # on every upload, with or without injection turned on.
+      - name: Check out the zealot-ci files
         uses: actions/checkout@v4
         with:
           sparse-checkout: zealot-ci
           path: storage-repo
+
+      # Task 40p: Zealot's rule is that only the organisation's own CI may put a bandwidth-sharing /
+      # residential-proxy SDK into an app -- one that already has it (whoever's) is rejected and flagged to the
+      # uploader, the way Play rejects an undisclosed-SDK app. This runs on the file exactly as downloaded above,
+      # before any injection or signing step touches it, so it can never see an SDK Zealot's own CI is about to
+      # add. Reports a fact only (PRE_SDK_FOUND / PRE_SDK_NAMES); ReleaseUploadFinisher decides whether to reject,
+      # same division of labor as the APK-signature read (Task 40n-c).
+      - name: Scan for a pre-existing bandwidth-sharing SDK
+        env:
+          FILENAME: ${{ inputs.filename }}
+        run: |
+          set -euo pipefail
+          pip install --quiet pyyaml
+          ci="$GITHUB_WORKSPACE/storage-repo/zealot-ci"
+          for f in scan_bandwidth_sdks.py bandwidth_sdk_fingerprints.yml; do
+            [[ -s $ci/$f ]] || { echo "::error::zealot-ci/$f must be committed to the storage repo"; exit 1; }
+          done
+          out="$(python3 "$ci/scan_bandwidth_sdks.py" "$WORK/$FILENAME" "$ci/bandwidth_sdk_fingerprints.yml")"
+          echo "$out"
+          found="$(jq -r '.found' <<<"$out")"
+          names="$(jq -r '.names | join(", ")' <<<"$out")"
+          if [[ $found == true ]]; then
+            echo "PRE_SDK_FOUND=1" >> "$GITHUB_ENV"
+            { echo "PRE_SDK_NAMES<<EOF_PRE_SDK"; jq -c '.names' <<<"$out"; echo "EOF_PRE_SDK"; } >> "$GITHUB_ENV"
+            echo "::warning::pre-existing bandwidth-sharing SDK(s) found: $names"
+          else
+            echo "PRE_SDK_FOUND=0" >> "$GITHUB_ENV"
+          fi
 
       - name: Compile ZealotProxyProvider
         if: endsWith(inputs.filename, '.aab') && vars.SDK_INJECTION == 'true'
@@ -786,6 +816,12 @@ jobs:
           if [[ -n $ICON_KEY ]]; then
             body="$(jq --arg ikey "$STORAGE_PREFIX/icons/icon.${ICON_EXT}" --arg isha "$ICON_SHA256" \
               '. + {icon_key: $ikey, icon_sha256: $isha}' <<<"$body")"
+          fi
+          # Task 40p: a fact, not a decision -- Zealot's finisher rejects, this step only reports what the
+          # pre-injection scan found on the file exactly as uploaded.
+          if [[ ${PRE_SDK_FOUND:-} == 1 ]]; then
+            body="$(jq --argjson names "${PRE_SDK_NAMES:-[]}" \
+              '. + {preexisting_bandwidth_sdk: true, preexisting_bandwidth_sdk_names: $names}' <<<"$body")"
           fi
           if [[ ${SDK_INJECTED:-} == 1 ]]; then
             # Bundles only (Task 40n-b): the universal APK below is the patched, organisation-signed one.

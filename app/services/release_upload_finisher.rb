@@ -79,6 +79,15 @@
 # signed (40l-b below).
 # `apk_verified` for a bundle is ignored; together with `org_signed` or `sdk_injected` it is refused.
 #
+# Task 40p: for either an APK or an AAB, CI scans the file as uploaded (before any injection or signing step) for
+# a bandwidth-sharing/residential-proxy SDK that is already there. Only the organisation's own CI may add this
+# kind of SDK (Task 40n); one that arrives already present -- whoever put it there, including a developer who
+# bundled the organisation's own SDK directly rather than going through Zealot -- is rejected outright, the way
+# Play flags an app for an undisclosed SDK policy violation. Unlike `REQUIRE_ORG_SIGNED_APKS` there is no
+# variable to turn this rule off: `preexisting_bandwidth_sdk: true` is always rejected, with a reason naming the
+# SDK(s) CI found (`preexisting_bandwidth_sdk_names`) so the console/API message tells the uploader what to
+# remove. A report with the field absent or false is accepted exactly like one from before this task existed.
+#
 # Not verified: no Ruby beyond `ruby -c` in the sandbox this was written in; nothing was run.
 class ReleaseUploadFinisher
   Result = Struct.new(:code, :http, :payload, keyword_init: true)
@@ -112,6 +121,9 @@ class ReleaseUploadFinisher
     keys = expected_keys(release)
     problem = malformed(keys)
     return refuse(:malformed, 422, problem) if problem
+
+    reason = preexisting_bandwidth_sdk_reason
+    return reject(reason) if reason
 
     reason = missing_object(release, keys)
     return reject(reason) if reason
@@ -201,6 +213,20 @@ class ReleaseUploadFinisher
   # as before this fix.
   def verified_apk?
     !bundle? && ActiveModel::Type::Boolean.new.cast(body['apk_verified']) == true
+  end
+
+  # Task 40p. Unconditional, unlike REQUIRE_ORG_SIGNED_APKS: there is no variable that lets a
+  # pre-existing bandwidth-sharing SDK through. Returns the rejection reason to show the uploader, or
+  # nil when CI reported nothing (`preexisting_bandwidth_sdk` absent or false).
+  #
+  # @return [String, nil]
+  def preexisting_bandwidth_sdk_reason
+    return nil unless ActiveModel::Type::Boolean.new.cast(body['preexisting_bandwidth_sdk']) == true
+
+    names = Array(body['preexisting_bandwidth_sdk_names']).map { |n| n.to_s.strip }.reject(&:blank?)
+    list = names.presence || ['an unidentified bandwidth-sharing SDK']
+    "This app already contains #{list.join(', ')}. Only the organisation's own CI may add a bandwidth-sharing " \
+      'SDK to an app published here; remove the existing SDK from the app and upload again.'
   end
 
   def same_hash?(reported, known)
