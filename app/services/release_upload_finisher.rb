@@ -47,6 +47,14 @@
 #   hash of the UPLOADED file in the report and is still checked against what stage 1 read.
 # `injected_file_sha256` without `sdk_injected` is refused; for a bundle it is ignored (the bundle is not replaced).
 #
+# Task 40l: Zealot signs every app it publishes, so CI re-signs an uploaded APK with the organisation key (the
+# stage-2 step `Sign the uploaded APK`, behind the repository variable SIGN_UPLOADED_APKS) and replaces the stored
+# file with it. The report then carries `org_signed: true`, `signed_file_sha256` (the hash of the signed file, which
+# becomes the release's `file_sha256`, exactly like an injected APK's) and `cert_sha256`; where the certificate is
+# expected (`CI_COMPILE_EXPECT_CERT_SHA256`) the certificate is required and must match, as for a bundle.
+# `signed_file_sha256` without `org_signed` is refused; a bundle ignores both (its universal APK is already signed
+# by the same key); `org_signed` together with `sdk_injected` is refused (the injector already signs, CI sends one).
+#
 # Not verified: no Ruby beyond `ruby -c` in the sandbox this was written in; nothing was run.
 class ReleaseUploadFinisher
   Result = Struct.new(:code, :http, :payload, keyword_init: true)
@@ -128,7 +136,7 @@ class ReleaseUploadFinisher
     return 'file_sha256 does not match the file that was read' unless same_hash?(body['file_sha256'],
                                                                                   metadata['file_sha256'])
 
-    icon_problem(keys) || injection_problem || bundle_problem(keys)
+    icon_problem(keys) || injection_problem || signing_problem || bundle_problem(keys)
   end
 
   # Task 40j
@@ -143,6 +151,23 @@ class ReleaseUploadFinisher
 
   def injected_apk?
     !bundle? && ActiveModel::Type::Boolean.new.cast(body['sdk_injected']) == true
+  end
+
+  # Task 40l
+  def signing_problem
+    signed = ActiveModel::Type::Boolean.new.cast(body['org_signed']) == true
+    sha = body['signed_file_sha256']
+    return 'signed_file_sha256 was sent without org_signed' if sha.present? && !signed
+    return nil unless signed && !bundle?
+    return 'org_signed and sdk_injected cannot both be reported for an APK' if injected_apk?
+    return 'signed_file_sha256 must be 64 hex characters' unless SHA256_FORMAT.match?(sha.to_s.downcase)
+    return 'cert_sha256 is required' if expected_certificate.present? && body['cert_sha256'].blank?
+
+    nil
+  end
+
+  def signed_apk?
+    !bundle? && ActiveModel::Type::Boolean.new.cast(body['org_signed']) == true
   end
 
   def same_hash?(reported, known)
@@ -192,7 +217,7 @@ class ReleaseUploadFinisher
   # --- what must be true before anything is recorded ----------------------
 
   def certificate_problem
-    return nil unless bundle? && expected_certificate.present?
+    return nil unless (bundle? || signed_apk?) && expected_certificate.present?
     return nil if normalize_fingerprint(body['cert_sha256']) == expected_certificate
 
     'the signing certificate CI reported does not match the expected certificate'
@@ -241,6 +266,7 @@ class ReleaseUploadFinisher
   def release_attributes(row, keys)
     attributes = { file_storage_key: keys[:file] }
     attributes[:file_sha256] = body['injected_file_sha256'].to_s.downcase if injected_apk?
+    attributes[:file_sha256] = body['signed_file_sha256'].to_s.downcase if signed_apk?
     attributes.merge!(icon_storage_key: keys[:icon], icon_sha256: metadata['icon_sha256']) if keys[:icon]
     attributes.merge!(bundle_attributes(keys)) if bundle?
     attributes[:status] = 'available' unless hold_requested?(row)

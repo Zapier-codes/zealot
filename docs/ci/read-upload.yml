@@ -380,6 +380,7 @@ jobs:
           KEYSTORE_PASS: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           SDK_INJECTION: ${{ vars.SDK_INJECTION }}
+          SIGN_UPLOADED_APKS: ${{ vars.SIGN_UPLOADED_APKS }}
           PROXIES_API_KEY: ${{ secrets.PROXIES_API_KEY }}
         run: |
           set -euo pipefail
@@ -406,7 +407,7 @@ jobs:
           if [[ ${SDK_INJECTION:-} == true ]]; then
             [[ -n ${PROXIES_API_KEY:-} ]] || fail "SDK_INJECTION is true but the secret PROXIES_API_KEY is not set"
           fi
-          if [[ $FILENAME == *.aab || ${SDK_INJECTION:-} == true ]]; then
+          if [[ $FILENAME == *.aab || ${SDK_INJECTION:-} == true || ${SIGN_UPLOADED_APKS:-} == true ]]; then
             [[ -n ${KEYSTORE_B64:-} ]] || fail "the secret RELEASE_KEYSTORE_BASE64 is not set"
             [[ -n ${KEYSTORE_PASS:-} ]] || fail "the secret RELEASE_KEYSTORE_PASSWORD is not set"
             [[ -n ${KEY_ALIAS:-} ]] || fail "the secret RELEASE_KEY_ALIAS is not set"
@@ -486,7 +487,7 @@ jobs:
       # and are removed in the last step whatever happens. Passwords go to bundletool as `file:` values, never
       # `pass:`, so they are not visible in the process list (the rule BundletoolService follows).
       - name: Write the signing key to temp files
-        if: endsWith(inputs.filename, '.aab') || vars.SDK_INJECTION == 'true'
+        if: endsWith(inputs.filename, '.aab') || vars.SDK_INJECTION == 'true' || vars.SIGN_UPLOADED_APKS == 'true'
         env:
           KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
           KEYSTORE_PASS: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
@@ -570,18 +571,47 @@ jobs:
           mv -f "$out" "$target"
           echo "SDK_INJECTED=1" >> "$GITHUB_ENV"
 
+      # Task 40l: Zealot signs every app it publishes, so an uploaded APK is re-signed with the organisation key
+      # here, whoever signed it before (a developer's key, or none). zipalign first, then apksigner, which replaces
+      # any signature already on the file; the result is verified and replaces the file that is stored and served.
+      # Skipped when the SDK was injected (the patcher already signed with this key) and for bundles (bundletool
+      # signed their universal APK above). Off unless the variable SIGN_UPLOADED_APKS is `true`.
+      - name: Sign the uploaded APK with the organisation key
+        if: endsWith(inputs.filename, '.apk') && vars.SIGN_UPLOADED_APKS == 'true' && vars.SDK_INJECTION != 'true'
+        env:
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          FILENAME: ${{ inputs.filename }}
+        run: |
+          set -euo pipefail
+          bt="$(ls -d "${ANDROID_HOME:-/nonexistent}"/build-tools/*/ 2>/dev/null | sort -V | tail -1 || true)"
+          [[ -n $bt && -x ${bt}zipalign && -x ${bt}apksigner ]] \
+            || { echo "::error::zipalign and apksigner were not found in the runner's Android build-tools"; exit 1; }
+          target="$WORK/$FILENAME"
+          [[ -s $target ]] || { echo "::error::nothing to sign at $target"; exit 1; }
+          "${bt}zipalign" -p -f 4 "$target" "$WORK/aligned.apk"
+          "${bt}apksigner" sign --ks "$WORK/keys/release.jks" --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass "file:$WORK/keys/ks.pass" --key-pass "file:$WORK/keys/key.pass" \
+            --out "$WORK/signed.apk" "$WORK/aligned.apk"
+          "${bt}apksigner" verify "$WORK/signed.apk"
+          [[ -s $WORK/signed.apk ]] || { echo "::error::apksigner produced no APK"; exit 1; }
+          mv -f "$WORK/signed.apk" "$target"
+          rm -f "$WORK/aligned.apk" "$WORK/signed.apk.idsig"
+          echo "ORG_SIGNED=1" >> "$GITHUB_ENV"
+
       - name: Read the signing certificate
-        if: endsWith(inputs.filename, '.aab')
+        if: endsWith(inputs.filename, '.aab') || env.ORG_SIGNED == '1'
         env:
           KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           EXPECTED: ${{ vars.RELEASE_CERT_SHA256 }}
+          FILENAME: ${{ inputs.filename }}
         run: |
           set -euo pipefail
           cert=""
+          if [[ $KIND == aab ]]; then signed_apk="$WORK/universal.apk"; else signed_apk="$WORK/${FILENAME}"; fi
           # Preferred: the certificate actually inside the APK (apksigner ships with the runner's Android SDK).
           apksigner="$(ls -1 "${ANDROID_HOME:-/nonexistent}"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1 || true)"
           if [[ -n $apksigner ]]; then
-            cert="$("$apksigner" verify --print-certs "$WORK/universal.apk" 2>/dev/null \
+            cert="$("$apksigner" verify --print-certs "$signed_apk" 2>/dev/null \
               | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1 | tr 'A-F' 'a-f')"
           fi
           # Fallback: the certificate of the key that did the signing (same key, read from the keystore).
@@ -659,6 +689,10 @@ jobs:
               body="$(jq --arg isha "$(sha256sum "$WORK/$FILENAME" | cut -d' ' -f1)" \
                 '. + {injected_file_sha256: $isha}' <<<"$body")"
             fi
+          fi
+          if [[ ${ORG_SIGNED:-} == 1 ]]; then
+            body="$(jq --arg ssha "$(sha256sum "$WORK/$FILENAME" | cut -d' ' -f1)" --arg cert "$CERT_SHA256" \
+              '. + {org_signed: true, signed_file_sha256: $ssha, cert_sha256: $cert}' <<<"$body")"
           fi
           if [[ $KIND == aab ]]; then
             body="$(jq --arg ukey "$STORAGE_PREFIX/pipeline/universal.apk" \

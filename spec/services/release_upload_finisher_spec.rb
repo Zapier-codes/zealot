@@ -251,6 +251,73 @@ RSpec.describe ReleaseUploadFinisher do
     end
   end
 
+  # Task 40l: CI re-signed the uploaded APK with the organisation key before reporting.
+  describe 'organisation signing of an APK' do
+    let(:signed_report) do
+      apk_report.merge('org_signed' => true, 'signed_file_sha256' => 'D' * 64, 'cert_sha256' => 'ab')
+    end
+
+    it 'records the signed APK\'s hash as the release\'s file hash, and still checks the uploaded file\'s' do
+      result = finish(signed_report)
+
+      expect(result).to have_attributes(code: :finished, http: 200)
+      expect(release.reload).to have_attributes(status: 'available', file_sha256: 'd' * 64)
+    end
+
+    it 'refuses a signed APK with no valid signed hash, and changes nothing' do
+      expect(finish(signed_report.except('signed_file_sha256'))).to have_attributes(code: :malformed, http: 422)
+      expect(finish(signed_report.merge('signed_file_sha256' => 'xyz')).http).to eq(422)
+      expect(upload.reload.state).to eq('processing')
+    end
+
+    it 'refuses a signed hash that comes without the flag' do
+      result = finish(apk_report.merge('signed_file_sha256' => 'd' * 64))
+
+      expect(result).to have_attributes(code: :malformed, http: 422)
+      expect(result.payload[:error]).to match(/without org_signed/)
+    end
+
+    it 'refuses a report that says both injected and signed' do
+      result = finish(signed_report.merge('sdk_injected' => true, 'injected_file_sha256' => 'e' * 64))
+
+      expect(result).to have_attributes(code: :malformed, http: 422)
+      expect(upload.reload.state).to eq('processing')
+    end
+
+    context 'when the signing certificate is expected' do
+      let(:env) { { 'CI_COMPILE_EXPECT_CERT_SHA256' => 'ab:cd' } }
+      let(:signed_report) { super().merge('cert_sha256' => 'ABCD') }
+
+      it 'accepts the matching certificate' do
+        expect(finish(signed_report).code).to eq(:finished)
+      end
+
+      it 'requires the certificate to be reported' do
+        expect(finish(signed_report.except('cert_sha256'))).to have_attributes(code: :malformed, http: 422)
+        expect(upload.reload.state).to eq('processing')
+      end
+
+      it 'rejects another certificate: the upload fails and the release stays held' do
+        result = finish(signed_report.merge('cert_sha256' => 'ff'))
+
+        expect(result).to have_attributes(code: :rejected, http: 422)
+        expect(release.reload).to have_attributes(status: 'held', file_storage_key: nil)
+      end
+    end
+
+    context 'for a bundle' do
+      let(:filename) { 'app.aab' }
+      let(:kind) { 'aab' }
+
+      it 'ignores the flag and the hash: the bundle is not replaced' do
+        result = finish(aab_report.merge('org_signed' => true, 'signed_file_sha256' => 'd' * 64))
+
+        expect(result).to have_attributes(code: :finished, http: 200)
+        expect(release.reload.file_sha256).to eq('a' * 64)
+      end
+    end
+  end
+
   describe 'a report that does not check out' do
     it 'refuses a file key that is not where Zealot expects it, and changes nothing' do
       result = finish(report.merge('file_key' => 'uploads/apps/a9/r9/binary/app.apk'))
