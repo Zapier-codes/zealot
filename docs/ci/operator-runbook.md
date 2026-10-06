@@ -617,3 +617,11 @@ is harmless for a public one). If you switch the repo between public and private
 **Not verified:** a real runner. The YAML parse, `bash -n` of every `run:` block, and a mocked-`gh` test of the new wait
 loop (wait then pass, refuse on failure, refuse on wrong branch, time out, retry after an API error) were the only checks.
 The Ruby spec was updated but not run (no Ruby in the sandbox).
+
+### Check everything at once (added with the 2026-10-06 audit)
+
+```
+cd ~/zealot && git pull origin develop && bash docs/ci/check-all-status.sh
+```
+
+It is read-only. Besides Render, the storage repo and the mirrored files, it now covers the harvest: the installed workflow against `docs/ci`, the `zealot-ci` files, the secrets and variables by name, Storeapp's `ZEALOT_STORAGE_PAT` and dispatch step, whether the download door is deployed, and the last three harvest runs. The last line counts the items that need action.

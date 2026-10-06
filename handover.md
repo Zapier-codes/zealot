@@ -8,6 +8,8 @@ removed file or independently re-verified against the code.
 
 **Debugging the Task 40 pipeline, Render or the storage repo? Read `docs/ci/operator-runbook.md` first.** It records every command, route, value and gotcha found in the 2026-10-05 operator session, so nothing has to be rediscovered.
 
+**Before rediscovering what exists, read the entry "Pipeline audit" at the top of the Session log (2026-10-06).** It lists what is installed, what is set, what is missing and what comes next, so a session can start from the next step.
+
 ## Handoff process — ONE combined patch, apply with `git am` + `git push`
 
 **Standing rule for every session (operator's instruction, supersedes any
@@ -5933,6 +5935,29 @@ them is already modernized.
   at it.
 
 ## Session log
+
+### 2026-10-06 (newest of all, latest) -- Pipeline audit: what exists, what is set, what is missing, what is next (operator: "check if 40n-d is complete and fully wired", "provide the patch file for the handover for the full audit so the next session does not rediscover")
+- **Base:** `develop` @ `a9054289` (40n-d3). One combined patch: `docs/ci/check-all-status.sh` (new harvest section, fixed drift and guard checks), `docs/ci/operator-runbook.md` (section 16 pointer), this entry. Nothing was run on a real runner; the operator ran the earlier command and pasted its output, which is where the "verified" facts below come from.
+- **Operator's standing facts:** one shared env serves every tenant and whitelabel (no per-tenant secrets exist or are needed); the existing GitHub token is reused for all repos. The code reads FIXED secret names, so the same token value must be stored under each name: `STOREAPP_ACCESS_TOKEN` (storage repo; read Actions + Contents on Storeapp), `ZEALOT_STORAGE_PAT` (Storeapp; write Contents on the storage repo), `GITHUB_STORAGE_TOKEN` (Render; only needed while the storage repo is private). Whether that token's scopes cover all three is NOT verified until the first real run.
+- **Verified present (operator's output, 2026-10-06):**
+  - Render: every required variable set; `CI_COMPILE_ENABLED=true`, `RELEASE_UPLOAD_SESSIONS_ENABLED=true`, `RELEASE_STORAGE_ADAPTER=github`, `GITHUB_STORAGE_REPO=Zapier-codes/zealot-storage`, `GITHUB_STORAGE_TOKEN` set. Unset on purpose or by default: `RELEASE_UPLOAD_MULTIPART_*`, `ADC_AUTO_REGISTER`, `REQUIRE_ORG_SIGNED_APKS` (gone).
+  - Storage repo variables: `R2_STAGING_BUCKET`, `R2_STAGING_ENDPOINT`, `RELEASE_CERT_SHA256`, `SDK_INJECTION=true`, `ZEALOT_URL`. Secrets: `CI_COMPILE_CALLBACK_TOKEN`, `PROXIES_API_KEY`, `R2_STAGING_CI_ACCESS_KEY_ID`, `R2_STAGING_CI_SECRET_ACCESS_KEY`, `RELEASE_KEYSTORE_BASE64`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `STOREAPP_ACCESS_TOKEN`.
+  - `harvest-tenant-apk.yml` is installed in the storage repo and byte-identical to `docs/ci` (git blob `1d51e7ef`). `zealot-ci/` holds `aab_sdk_patcher.py`, `aab_manifest_patch/ManifestPatch.java`, `proxies_sdk.dex`, `ZealotProxyProvider.java`, and all four are identical to this repo's copies.
+  - Storeapp: `ZEALOT_STORAGE_PAT` is set, and `build-tenant-apk.yml` on main sends the `harvest-tenant-apk` dispatch (commit `4a7e207`, 40n-e).
+  - The harvest workflow uses only org-wide values (`RELEASE_KEYSTORE_*`, `RELEASE_KEY_ALIAS`, `RELEASE_CERT_SHA256`, `PROXIES_API_KEY`), so it fits the shared-env rule. `RELEASE_KEY_PASSWORD` is optional (falls back to the keystore password).
+- **Verified absent:** no harvest run has ever happened (`gh run list` found none). `DISTR_CALLBACK_URL` (variable) and `DISTR_CALLBACK_TOKEN` (secret) are not set: the run only warns that distr was not notified, so this is fine until distr's side (40n-g) exists. `SIGN_UPLOADED_APKS` is not set (correct).
+- **Found, not fixed (operator action): the storage repo's `read-upload.yml` and `compile-aab.yml` are behind this repo.** They lack Task 40r (a first upload is staged under app `a0`; the old check `the storage tag belongs to another app than the staged file` would fail it, read from the diff, not run) and Tasks 41c/41d/41e (`artifact_base`, bare asset names, `Storeapp-1.1.4-218.apk`-style files). Cause: `sync_workflow.py` was last run before those tasks. Fix: `cd ~/zealot-storage && python3 sync_workflow.py && cp ~/zealot/docs/ci/compile-aab.yml .github/workflows/compile-aab.yml && git add -A && git commit -m "sync read-upload and compile-aab with zealot (40r, 41c-e)" && git push`. Then `bash ~/zealot/docs/ci/check-all-status.sh` must show both as identical. Do this BEFORE the 40n-0 part 2 real upload.
+- **Found and corrected: the old status script's "Check-the-inputs guard: MISSING -- this is the hole" line was stale.** The 40o directive ("nothing is rejected, the organisation signs and re-signs every app") removed that guard on purpose, and the APK signing step is live in both copies (its name still says "(disabled)" in `docs/ci`, and the comment above it is stale; that cleanup is the open 40o-r slice). The script now reports the state neutrally. It also now compares `read-upload.yml` after `sync_workflow.py`'s one edit, so a correct sync no longer shows as drift, and it checks the three `zealot-ci` files it did not before.
+- **Risk to watch:** `SDK_INJECTION=true` and `PROXIES_API_KEY` are set, so the next AAB upload compiles and injects `ZealotProxyProvider` for the first time. Earlier sessions recorded that it was never compiled or run anywhere. If the first upload fails in the inject steps, that is the likely place.
+- **40n-d state in one line:** built, installed, wired both ways (Storeapp dispatches, Zealot serves the download door), never run. Open: door has no auth (40n-f); `ZEALOT_STORAGE_PAT` doc wording in Storeapp says "Actions: Write", should be Contents: write; distr's callback side (40n-g, another repo).
+- **How to check everything at once:** `cd ~/zealot && git pull origin develop && bash docs/ci/check-all-status.sh` (the last line counts the items needing action).
+- **Next session starts here, in order:**
+  1. Operator: sync the two storage workflows (command above), re-run the status script.
+  2. Operator: the first real harvest run (runbook section 16 "Try it"; needs a green Storeapp tenant build run id and bundle hash), paste the run log back. This also proves the shared token's scopes.
+  3. Build 40n-f door auth: a distr service token in a Render env var (name to decide; proposal `DISTR_SERVICE_TOKEN`), constant-time compare on `Authorization: Bearer`, 401 otherwise, spec, a row in `check-render-env.sh`, runbook line.
+  4. When distr 40n-g exists: set `DISTR_CALLBACK_URL` and `DISTR_CALLBACK_TOKEN` in the storage repo.
+  5. Operator: 40n-0 part 2 (one real, held upload, runbook section 10), only after step 1.
+  6. 40o-r cleanup (stale comment blocks in `read-upload.yml`, the seven helper scripts in the repo root).
 
 ### 2026-10-06 (newest of all, later) -- Task 40n-d3: harvest waits for the Storeapp run; download works for a public or private storage repo (operator: "Yes", then "repo is public now, make it work both ways")
 - **Base:** `develop` @ `686ee271`. One combined patch.
