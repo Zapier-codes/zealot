@@ -1,0 +1,273 @@
+# Task 40n-d: the tenant harvest workflow. Storeapp's tenant build sends its unsigned bundle to this workflow,
+# which patches it with the SDK, signs it with the organisation key, stores it privately, and notifies distr.
+#
+# Copy this file into the STORAGE repo as `.github/workflows/harvest-tenant-apk.yml`.
+#
+# What it does:
+#   1. Receives a repository_dispatch from Storeapp with build_id, storeapp_run_id, and bundle_sha256.
+#   2. Downloads the unsigned bundle artifact from the Storeapp run and verifies its hash.
+#   3. Patches a copy of the bundle with the Proxies SDK (lib/aab_sdk_patcher.py).
+#   4. Builds the universal APK from the patched copy, signed with the organisation key.
+#   5. Verifies the signing certificate and that the SDK is present in the APK.
+#   6. Uploads the signed APK to a private GitHub Release in the storage repo.
+#   7. Calls distr back with the build_id and status (completed/failed).
+#
+# Storage-repo SECRETS:
+#   STOREAPP_ACCESS_TOKEN        A GitHub token with `actions: read` on the Storeapp repo to download the artifact.
+#   RELEASE_KEYSTORE_BASE64      The organisation .jks.
+#   RELEASE_KEYSTORE_PASSWORD    Keystore password.
+#   RELEASE_KEY_ALIAS            Key alias.
+#   RELEASE_KEY_PASSWORD         Key password (leave unset if equals keystore password).
+#   PROXIES_API_KEY              The API key for the injected SDK.
+#   DISTR_CALLBACK_TOKEN         Bearer token for distr's callback endpoint.
+#
+# Storage-repo VARIABLES:
+#   DISTR_CALLBACK_URL           The URL to POST the build status to.
+#   RELEASE_CERT_SHA256          The expected signing certificate SHA-256.
+#   BUNDLETOOL_VERSION           Default 1.18.3.
+
+name: Harvest tenant APK (Zealot)
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_id:
+        description: "distr build id"
+        required: true
+        type: string
+      storeapp_run_id:
+        description: "Storeapp run id that built the unsigned bundle"
+        required: true
+        type: string
+      bundle_sha256:
+        description: "Expected SHA-256 of the unsigned bundle"
+        required: true
+        type: string
+  repository_dispatch:
+    types: [harvest-tenant-apk]
+
+permissions:
+  contents: write
+
+env:
+  BUNDLETOOL_VERSION: ${{ vars.BUNDLETOOL_VERSION || '1.18.3' }}
+
+jobs:
+  build:
+    name: Harvest tenant APK ${{ inputs.build_id || github.event.client_payload.build_id }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check the inputs
+        env:
+          BUILD_ID: ${{ inputs.build_id || github.event.client_payload.build_id }}
+          STOREAPP_RUN_ID: ${{ inputs.storeapp_run_id || github.event.client_payload.storeapp_run_id }}
+          BUNDLE_SHA256: ${{ inputs.bundle_sha256 || github.event.client_payload.bundle_sha256 }}
+          GH_TOKEN: ${{ secrets.STOREAPP_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          [[ -n ${BUILD_ID:-} ]] || fail "build_id is required"
+          [[ -n ${STOREAPP_RUN_ID:-} ]] || fail "storeapp_run_id is required"
+          [[ -n ${BUNDLE_SHA256:-} ]] || fail "bundle_sha256 is required"
+          [[ ${BUILD_ID} =~ ^[a-zA-Z0-9_-]+$ ]] || fail "build_id has invalid characters"
+          [[ ${BUNDLE_SHA256} =~ ^[0-9a-f]{64}$ ]] || fail "bundle_sha256 must be 64 hex"
+          
+          echo "Verifying Storeapp run..."
+          status=$(gh api repos/Zapier-codes/Storeapp/actions/runs/$STOREAPP_RUN_ID --jq '.status' || echo "error")
+          [[ $status == "completed" ]] || fail "Storeapp run is not completed (status: $status)"
+          conclusion=$(gh api repos/Zapier-codes/Storeapp/actions/runs/$STOREAPP_RUN_ID --jq '.conclusion' || echo "error")
+          [[ $conclusion == "success" ]] || fail "Storeapp run did not succeed (conclusion: $conclusion)"
+          
+          {
+            echo "WORK=${RUNNER_TEMP}/harvest-${BUILD_ID}"
+            echo "BUILD_ID=${BUILD_ID}"
+            echo "STOREAPP_RUN_ID=${STOREAPP_RUN_ID}"
+            echo "BUNDLE_SHA256=${BUNDLE_SHA256}"
+            echo "TAG=tenant-${BUILD_ID}"
+          } >> "$GITHUB_ENV"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Cache bundletool
+        id: bt-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/bundletool
+          key: bundletool-${{ env.BUNDLETOOL_VERSION }}
+
+      - name: Get bundletool
+        if: steps.bt-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p ~/bundletool
+          curl -fsSL --retry 3 -o ~/bundletool/bundletool.jar \
+            "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar"
+
+      - name: Download the unsigned bundle from Storeapp run
+        env:
+          GH_TOKEN: ${{ secrets.STOREAPP_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$WORK"
+          # Download the artifact from the Storeapp run
+          # Assuming the artifact is named 'tenant-bundle' and contains 'unsigned.aab'
+          gh run download "$STOREAPP_RUN_ID" -R Zapier-codes/Storeapp -D "$WORK/artifacts" -n tenant-bundle
+          mv "$WORK/artifacts/unsigned.aab" "$WORK/unsigned.aab"
+          rm -rf "$WORK/artifacts"
+
+      - name: Verify the bundle hash
+        run: |
+          set -euo pipefail
+          got="$(sha256sum "$WORK/unsigned.aab" | cut -d' ' -f1)"
+          [[ $got == "$BUNDLE_SHA256" ]] || { echo "::error::bundle hash mismatch: expected $BUNDLE_SHA256, got $got"; exit 1; }
+          echo "AAB_PATH=$WORK/unsigned.aab" >> "$GITHUB_ENV"
+
+      - name: Check out the SDK injection files
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: zealot-ci
+          path: storage-repo
+
+      - name: Compile ZealotProxyProvider
+        run: |
+          set -euo pipefail
+          mkdir -p "$WORK/zealot_provider"
+          cp storage-repo/zealot-ci/ZealotProxyProvider.java "$WORK/zealot_provider/"
+          android_jar="$(ls -d ${ANDROID_HOME:-/usr/local/lib/android/sdk}/platforms/android-*/android.jar | sort -V | tail -n 1)"
+          javac -source 1.8 -target 1.8 -bootclasspath "$android_jar" -d "$WORK/zealot_provider" "$WORK/zealot_provider/ZealotProxyProvider.java"
+          d8_path="$(ls -d ${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools/*/d8 | sort -V | tail -n 1)"
+          "$d8_path" --output "$WORK/zealot_provider" "$WORK/zealot_provider/com/zealot/proxy/ZealotProxyProvider.class"
+          echo "ZEALOT_PROVIDER_DEX=$WORK/zealot_provider/zealot_provider.dex" >> "$GITHUB_ENV"
+
+      - name: Inject the SDK
+        env:
+          PROXIES_API_KEY: ${{ secrets.PROXIES_API_KEY }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          ci=storage-repo/zealot-ci
+          for f in aab_sdk_patcher.py aab_manifest_patch/ManifestPatch.java proxies_sdk.dex; do
+            [[ -s $ci/$f ]] || fail "zealot-ci/$f must be committed to the storage repo"
+          done
+          before="$(sha256sum "$AAB_PATH" | cut -d' ' -f1)"
+          out="$WORK/patched.aab"
+          BUNDLETOOL_JAR="$HOME/bundletool/bundletool.jar" \
+            python3 "$ci/aab_sdk_patcher.py" "$AAB_PATH" "$out" "$ci/proxies_sdk.dex" "${ZEALOT_PROVIDER_DEX}" "$PROXIES_API_KEY"
+          [[ -s $out ]] || fail "the patcher produced no bundle"
+          after="$(sha256sum "$AAB_PATH" | cut -d' ' -f1)"
+          [[ $after == "$before" ]] || fail "the clean bundle changed while a copy was patched; nothing was uploaded"
+          [[ "$(sha256sum "$out" | cut -d' ' -f1)" != "$before" ]] || fail "the patched bundle is identical to the clean one"
+          echo "PATCHED_AAB=$out" >> "$GITHUB_ENV"
+
+      - name: Write the signing key to temp files
+        env:
+          KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASS: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          KEY_PASS: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$WORK/keys"
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$WORK/keys/release.jks"
+          printf '%s' "$KEYSTORE_PASS" > "$WORK/keys/ks.pass"
+          printf '%s' "${KEY_PASS:-$KEYSTORE_PASS}" > "$WORK/keys/key.pass"
+          [[ -s "$WORK/keys/release.jks" ]] || { echo "::error::RELEASE_KEYSTORE_BASE64 did not decode to a keystore"; exit 1; }
+
+      - name: Build the universal APK
+        env:
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          bt() { java -jar "$HOME/bundletool/bundletool.jar" "$@"; }
+          sign=(--ks "$WORK/keys/release.jks" --ks-key-alias "$KEY_ALIAS"
+                --ks-pass "file:$WORK/keys/ks.pass" --key-pass "file:$WORK/keys/key.pass")
+
+          bt build-apks --bundle "${PATCHED_AAB}" --output "$WORK/universal.apks" --mode=universal "${sign[@]}"
+          unzip -p "$WORK/universal.apks" universal.apk > "$WORK/universal.apk"
+          [[ -s "$WORK/universal.apk" ]] || { echo "::error::bundletool produced no universal.apk"; exit 1; }
+
+      - name: Check the SDK is in the universal APK
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          aapt2="$(ls -d "${ANDROID_HOME:-/usr/local/lib/android/sdk}"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -n 1 || true)"
+          [[ -x $aapt2 ]] || fail "aapt2 was not found on this runner; cannot check the SDK is in the universal APK"
+          "$aapt2" dump xmltree --file AndroidManifest.xml "$WORK/universal.apk" > "$WORK/universal-manifest.txt"
+          grep -q 'com.zealot.proxy.ZealotProxyProvider' "$WORK/universal-manifest.txt" \
+            || fail "the universal APK's manifest has no ZealotProxyProvider entry; nothing was uploaded"
+          unzip -p "$WORK/universal.apk" 'classes*.dex' > "$WORK/universal-dex.bin"
+          found="$(grep -ac 'com/zealot/proxy/ZealotProxyProvider' "$WORK/universal-dex.bin" || true)"
+          rm -f "$WORK/universal-dex.bin"
+          [[ ${found:-0} -ge 1 ]] || fail "the manifest names com.zealot.proxy.ZealotProxyProvider but no dex file in the universal APK contains that class"
+
+      - name: Read the signing certificate
+        env:
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          EXPECTED: ${{ vars.RELEASE_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          cert=""
+          apksigner="$(ls -1 "${ANDROID_HOME:-/nonexistent}"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1 || true)"
+          if [[ -n $apksigner ]]; then
+            cert="$("$apksigner" verify --print-certs "$WORK/universal.apk" 2>/dev/null \
+              | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1 | tr 'A-F' 'a-f')"
+          fi
+          if [[ -z $cert ]]; then
+            echo "::notice::apksigner not found or unreadable; reading the certificate from the keystore instead"
+            cert="$(keytool -list -v -keystore "$WORK/keys/release.jks" -alias "$KEY_ALIAS" \
+              -storepass:file "$WORK/keys/ks.pass" 2>/dev/null \
+              | sed -n 's/^ *SHA256: //p' | head -1 | tr -d ':' | tr 'A-F' 'a-f')"
+          fi
+          [[ $cert =~ ^[0-9a-f]{64}$ ]] || { echo "::error::could not read the signing certificate's SHA-256"; exit 1; }
+
+          if [[ -n ${EXPECTED:-} ]]; then
+            want="$(printf '%s' "$EXPECTED" | tr -d ':[:space:]' | tr 'A-F' 'a-f')"
+            [[ $cert == "$want" ]] || { echo "::error::the signing certificate does not match RELEASE_CERT_SHA256; nothing was uploaded"; exit 1; }
+          else
+            echo "::warning::RELEASE_CERT_SHA256 is not set; the signing certificate was not checked against an expected one"
+          fi
+
+      - name: Upload the signed APK to a private release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cp "$WORK/universal.apk" "$WORK/tenant-${BUILD_ID}.apk"
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --prerelease --title "Tenant build $BUILD_ID" \
+            --notes "Signed tenant APK for distr build $BUILD_ID." \
+            "$WORK/tenant-${BUILD_ID}.apk"
+
+      - name: Notify distr
+        if: always()
+        env:
+          STATUS: ${{ job.status }}
+          DISTR_CALLBACK_URL: ${{ vars.DISTR_CALLBACK_URL }}
+          DISTR_CALLBACK_TOKEN: ${{ secrets.DISTR_CALLBACK_TOKEN }}
+        run: |
+          set -uo pipefail
+          if [[ -z ${DISTR_CALLBACK_URL:-} ]]; then
+            echo "::warning::DISTR_CALLBACK_URL is not set; distr will not be notified."
+            exit 0
+          fi
+          
+          if [[ $STATUS == "success" ]]; then
+            body=$(jq -n --arg id "$BUILD_ID" --arg status "completed" \
+              '{build_id: $id, status: $status}')
+          else
+            body=$(jq -n --arg id "$BUILD_ID" --arg status "failed" \
+              '{build_id: $id, status: $status}')
+          fi
+          
+          curl -sS -o /dev/null -X POST "$DISTR_CALLBACK_URL" \
+            -H "Authorization: Bearer ${DISTR_CALLBACK_TOKEN:-}" \
+            -H "Content-Type: application/json" \
+            --data "$body" || true
+
+      - name: Clean up working files
+        if: always()
+        run: rm -rf "${WORK:-/nonexistent}"
