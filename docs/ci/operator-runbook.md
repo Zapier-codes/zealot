@@ -636,3 +636,21 @@ cd ~/zealot && git pull origin develop && bash docs/ci/check-all-status.sh
 ```
 
 It is read-only. Besides Render, the storage repo and the mirrored files, it now covers the harvest: the installed workflow against `docs/ci`, the `zealot-ci` files, the secrets and variables by name, Storeapp's `ZEALOT_STORAGE_PAT` and dispatch step, whether the download door is deployed, and the last three harvest runs. The last line counts the items that need action.
+
+## 17. Making an app show as Featured in D-Store (Task 42a, 2026-10-06; written, NOT run)
+
+Featured is store-owned data on the `App` row, not something the owner sets. Who owns the app does not matter to it:
+`/admin/apps` lists every app on the default host and an admin may toggle any of them. D-Store reads the flag only from
+Zealot's signed catalog index, and it features first-party (Zealot) apps only; the home hero is the first featured app.
+Do these in order (the app is Storeapp, owned by the developer account `claudeone7492@gmail.com`):
+
+1. **Owner.** Open the app's page, then its owner page (`/apps/<id>/new_owner`; admin or the current owner) and pick the
+   developer account. Check the owner shown on the app page afterwards.
+2. **Default tenant.** The app must belong to no tenant (the default catalog). D-Store's default index never includes an app
+   of another tenant. If the developer account was made on a tenant's host, the app is in that tenant's index instead.
+3. **Listing live.** Signed in as the developer account: the app's Store listing page, request listing (needs a publisher
+   profile). Then, as admin, the same page's mark-paid button (or the B-PAY checkout). Only `listing_status = live` apps are in the index.
+4. **A published release.** The release must be in an available (published) status; re-send `a2-r6` first if it predates Task 41 (section 12).
+5. **Featured.** Admin: `/admin/apps`, toggle Featured on the app. Since 42a this republishes the index by itself;
+   before 42a it did not, and any listing edit was needed to force it.
+6. **Check.** The Pages index carries `"featured": true` for the app, and D-Store's home shows it in the hero after its cache refreshes.

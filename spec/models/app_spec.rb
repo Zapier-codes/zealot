@@ -76,6 +76,27 @@ RSpec.describe App do
       expect { app.update!(archived: true) }.not_to have_enqueued_job(CatalogIndexPublishJob)
     end
 
+    # Task 42a: an admin's Featured / Editors' Pick toggle reaches D-Store only through the signed index.
+    it 'enqueues a publish when featured is toggled' do
+      app = create(:app, listing_status: :live, listed_at: Time.current)
+
+      expect { app.update!(featured: true) }.to have_enqueued_job(CatalogIndexPublishJob).exactly(:once)
+    end
+
+    it "enqueues a publish when Editors' Pick is toggled" do
+      app = create(:app, listing_status: :live, listed_at: Time.current)
+
+      expect { app.update!(editors_pick: true) }.to have_enqueued_job(CatalogIndexPublishJob).exactly(:once)
+    end
+
+    it 'republishes only the owning tenant when featured is toggled' do
+      tenant = create(:tenant, tenant_id: 'acme')
+      app = create(:app, listing_status: :live, listed_at: Time.current, tenant: tenant)
+
+      expect { app.update!(featured: true) }
+        .to have_enqueued_job(CatalogIndexPublishJob).with('acme').exactly(:once)
+    end
+
     it 'does not enqueue a publish on create' do
       expect { create(:app) }.not_to have_enqueued_job(CatalogIndexPublishJob)
     end

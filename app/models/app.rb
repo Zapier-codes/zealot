@@ -598,7 +598,12 @@ class App < ApplicationRecord
   # above for what this watches and why.
   def publish_catalog_index_if_needed
     watched_field_changed = CATALOG_INDEX_LISTING_FIELDS.any? { |field| saved_change_to_attribute?(field) }
-    return unless saved_change_to_listing_status? || watched_field_changed || saved_change_to_tenant_id?
+    # Task 42a: the index carries `editorial.featured` / `editors_pick` (CatalogIndex::Serializer), and D-Store
+    # reads them from the signed index only. They are kept out of CATALOG_INDEX_LISTING_FIELDS on purpose: that
+    # list also decides what ListingEdit may stage, and an owner must never be able to stage an editorial flag.
+    editorial_flag_changed = saved_change_to_featured? || saved_change_to_editors_pick?
+    return unless saved_change_to_listing_status? || watched_field_changed || editorial_flag_changed ||
+                  saved_change_to_tenant_id?
 
     catalog_index_tenants_to_republish.each { |tenant| CatalogIndexPublishJob.enqueue_for(tenant) }
   end
