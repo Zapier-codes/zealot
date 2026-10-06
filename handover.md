@@ -1442,6 +1442,8 @@ The earlier session's one patch exceeded the six-file slice guide. Cut it:
 
 #### 40n-d result (built this session; written, NOT run)
 
+**Follow-up 2026-10-06 (40n-d2).** Three gaps found on review of the first build are closed: (1) the provider dex was never renamed (`d8` writes `classes.dex`, the workflow pointed at `zealot_provider.dex`, so the SDK step would have failed; same fix as `read-upload.yml`); (2) the run check now enforces the approved decision (repo `Zapier-codes/Storeapp`, path `.github/workflows/build-tenant-apk.yml`, branch `main`, completed, success) from one read of the run, not only status and conclusion; (3) runbook section 16 written (install, secrets, token expiry slots, a manual dispatch to try it, pass criteria). `bash -n` of every `run:` block and the YAML parse only; still NOT run on a runner.
+
 **What it is.** The storage-repo tenant harvest workflow (`docs/ci/harvest-tenant-apk.yml`). It receives a `repository_dispatch` from Storeapp with `build_id`, `storeapp_run_id`, and `bundle_sha256`. It re-verifies the Storeapp run, downloads the unsigned bundle artifact, patches it with the SDK, builds the universal APK, signs it with the org key, verifies the certificate, uploads it to a private GitHub Release in the storage repo, and notifies distr via a callback URL.
 
 **Files (1).** `docs/ci/harvest-tenant-apk.yml`.
@@ -5930,7 +5932,13 @@ them is already modernized.
 
 ## Session log
 
-### 2026-10-06 (newest of all) -- Task 41e: the name a browser saves (operator: the 41d "open decision", option (b)), combined with 41c and 41d in one patch
+### 2026-10-06 (newest of all) -- Task 40n-d2: harvest workflow fixes (operator: "Yes" to fixing the dex rename, the trust check and the runbook; one patch, no testing)
+- **Base:** `develop` @ `e12ef1fc`.
+- **Fixed:** `docs/ci/harvest-tenant-apk.yml` (dex rename, full run check). **Added:** `docs/ci/operator-runbook.md` section 16.
+- **Still open, not touched:** 40n-f's door is unauthenticated and redirects to `browser_download_url`, which does not work for a private storage repo and is not short-lived (it should authenticate with a distr service token and stream or sign through Zealot's own storage token); 40n-e's `ZEALOT_STORAGE_PAT` is documented as "Actions: Write", repository dispatch needs Contents: write (runbook 16 says so; the Storeapp doc line is in the other repo); nothing in 40n-d/e/f has run.
+- **Next session starts here:** 40n-f's door (auth plus a working download), then the first real harvest run (runbook 16).
+
+### 2026-10-06 -- Task 41e: the name a browser saves (operator: the 41d "open decision", option (b)), combined with 41c and 41d in one patch
 - **Base:** `develop` @ `2ea89cf`. **One combined commit holds 41c, 41d and 41e** (the earlier 41d patch expected 41c to be applied first; this one replaces both and the earlier 41e patch).
 - **Premise checked, not assumed:** a request to a public GitHub release asset (`github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_checksums.txt`) answers 302 to `release-assets.githubusercontent.com/...` whose query holds `response-content-disposition=attachment; filename=gh_2.102.0_checksums.txt`. So the saved name is the asset name. (Not seen on the private storage repo; the API asset call the adapter makes could not be run unauthenticated, rate limit.)
 - **Built (written):** `GithubAdapter.location_for` drops `pipeline/` for a single-segment file that is not `universal.apk` / `release.apks.br` (`LEGACY_PIPELINE_NAMES`): `pipeline/Storeapp-1.1.4-218.apk` is asset `Storeapp-1.1.4-218.apk`. New `locations_for(key)` gives the current name then the pre-41e `pipeline__<name>`; `locate_asset` tries both (so `exist?`, `get`, `url_for`, `delete`, and the stage-2 finisher's and the compile callback's `exist?` work for releases already stored), `put` deletes both before uploading. `docs/ci/read-upload.yml` and `docs/ci/compile-aab.yml` upload the compiled files under the bare name when Zealot sends `artifact_base`, and under `pipeline__universal.apk` / `pipeline__release.apks.br` when it does not.

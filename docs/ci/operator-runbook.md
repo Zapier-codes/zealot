@@ -565,3 +565,44 @@ sleep 45; gh run list -R Zapier-codes/zealot-storage -L 2
 If it fails again, run the four commands above and upload the log.
 
 **Not verified:** the patched workflows on a real runner. The step script was run locally; the YAML parses and every `run:` block passes `bash -n`.
+
+
+## 16. The tenant harvest workflow (Task 40n-d, 2026-10-06; written, NOT run)
+
+Storeapp's tenant build (`build-tenant-apk.yml`, 40n-e) uploads an unsigned bundle as the artifact `tenant-bundle`
+(file `unsigned.aab`) and sends a `repository_dispatch` of type `harvest-tenant-apk` to the storage repo with
+`build_id`, `storeapp_run_id` and `bundle_sha256`. `docs/ci/harvest-tenant-apk.yml` does the rest and creates no `Release` row.
+
+**Install in the storage repo** (`Zapier-codes/zealot-storage`):
+
+```
+# 1. the workflow
+cp docs/ci/harvest-tenant-apk.yml <storage-clone>/.github/workflows/harvest-tenant-apk.yml
+# 2. zealot-ci/ must already hold the 40n-b files: aab_sdk_patcher.py, aab_manifest_patch/ManifestPatch.java,
+#    proxies_sdk.dex, ZealotProxyProvider.java (see the header of docs/ci/read-upload.yml)
+# 3. secrets and variables
+gh secret   set STOREAPP_ACCESS_TOKEN -R Zapier-codes/zealot-storage   # read-only on Storeapp: Actions + Contents read
+gh secret   set DISTR_CALLBACK_TOKEN  -R Zapier-codes/zealot-storage
+gh variable set DISTR_CALLBACK_URL    -R Zapier-codes/zealot-storage --body "<distr callback url>"
+# already present from stage 2, reused: PROXIES_API_KEY, RELEASE_KEYSTORE_BASE64, RELEASE_KEYSTORE_PASSWORD,
+# RELEASE_KEY_ALIAS, RELEASE_KEY_PASSWORD, and the variable RELEASE_CERT_SHA256
+```
+
+On the Storeapp side the dispatch token (`ZEALOT_STORAGE_PAT`) is a fine-grained token on the storage repo. Repository
+dispatch needs **Contents: write** on that repo; if the dispatch answers 403/404, check that permission first.
+Record both tokens' expiry dates here when minted: `STOREAPP_ACCESS_TOKEN` ____, `ZEALOT_STORAGE_PAT` ____.
+
+**Try it** (after a Storeapp tenant build has finished green, take its run id and the bundle hash from its log):
+
+```
+gh workflow run harvest-tenant-apk.yml -R Zapier-codes/zealot-storage \
+  -f build_id=test1 -f storeapp_run_id=<run id> -f bundle_sha256=<64 hex>
+sleep 45; gh run list -R Zapier-codes/zealot-storage -w "Harvest tenant APK (Zealot)" -L 2
+```
+
+**Pass:** the run is green and the storage repo has a prerelease `tenant-test1` with one asset `tenant-test1.apk`.
+**The run refuses on purpose** when the run is not Storeapp's, is not `build-tenant-apk.yml`, was not on `main`, did not
+succeed, or the artifact hash differs from `bundle_sha256`; the message says which. Delete a test release with
+`gh release delete tenant-test1 -R Zapier-codes/zealot-storage --cleanup-tag -y`.
+
+**Not verified:** a real runner. The YAML parse and `bash -n` of every `run:` block were the only checks.

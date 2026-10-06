@@ -5,7 +5,8 @@
 #
 # What it does:
 #   1. Receives a repository_dispatch from Storeapp with build_id, storeapp_run_id, and bundle_sha256.
-#   2. Downloads the unsigned bundle artifact from the Storeapp run and verifies its hash.
+#   2. Re-checks the Storeapp run itself (repo, workflow path, main, success), then downloads the unsigned
+#      bundle artifact and verifies its hash.
 #   3. Patches a copy of the bundle with the Proxies SDK (lib/aab_sdk_patcher.py).
 #   4. Builds the universal APK from the patched copy, signed with the organisation key.
 #   5. Verifies the signing certificate and that the SDK is present in the APK.
@@ -74,11 +75,17 @@ jobs:
           [[ ${BUNDLE_SHA256} =~ ^[0-9a-f]{64}$ ]] || fail "bundle_sha256 must be 64 hex"
           
           echo "Verifying Storeapp run..."
-          status=$(gh api repos/Zapier-codes/Storeapp/actions/runs/$STOREAPP_RUN_ID --jq '.status' || echo "error")
-          [[ $status == "completed" ]] || fail "Storeapp run is not completed (status: $status)"
-          conclusion=$(gh api repos/Zapier-codes/Storeapp/actions/runs/$STOREAPP_RUN_ID --jq '.conclusion' || echo "error")
-          [[ $conclusion == "success" ]] || fail "Storeapp run did not succeed (conclusion: $conclusion)"
-          
+          # The payload is never trusted: re-read the run itself and require every fact the operator approved
+          # (2026-10-05): it is Storeapp's, it ran build-tenant-apk.yml, it succeeded, and it ran on main.
+          run_json="$(gh api "repos/Zapier-codes/Storeapp/actions/runs/${STOREAPP_RUN_ID}")" \
+            || fail "could not read Storeapp run ${STOREAPP_RUN_ID}"
+          field() { jq -r "$1 // \"\"" <<<"$run_json"; }
+          [[ $(field .repository.full_name) == "Zapier-codes/Storeapp" ]] || fail "the run does not belong to Zapier-codes/Storeapp"
+          [[ $(field .path) == ".github/workflows/build-tenant-apk.yml" ]] || fail "the run is not build-tenant-apk.yml (path: $(field .path))"
+          [[ $(field .head_branch) == "main" ]] || fail "the run was not on main (branch: $(field .head_branch))"
+          [[ $(field .status) == "completed" ]] || fail "Storeapp run is not completed (status: $(field .status))"
+          [[ $(field .conclusion) == "success" ]] || fail "Storeapp run did not succeed (conclusion: $(field .conclusion))"
+
           {
             echo "WORK=${RUNNER_TEMP}/harvest-${BUILD_ID}"
             echo "BUILD_ID=${BUILD_ID}"
@@ -142,6 +149,9 @@ jobs:
           javac -source 1.8 -target 1.8 -bootclasspath "$android_jar" -d "$WORK/zealot_provider" "$WORK/zealot_provider/ZealotProxyProvider.java"
           d8_path="$(ls -d ${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools/*/d8 | sort -V | tail -n 1)"
           "$d8_path" --output "$WORK/zealot_provider" "$WORK/zealot_provider/com/zealot/proxy/ZealotProxyProvider.class"
+          # d8 always writes "classes.dex" into --output; there is no flag to name it (same fix as read-upload.yml).
+          [[ -s "$WORK/zealot_provider/classes.dex" ]] || { echo "::error::d8 produced no classes.dex for ZealotProxyProvider"; exit 1; }
+          mv "$WORK/zealot_provider/classes.dex" "$WORK/zealot_provider/zealot_provider.dex"
           echo "ZEALOT_PROVIDER_DEX=$WORK/zealot_provider/zealot_provider.dex" >> "$GITHUB_ENV"
 
       - name: Inject the SDK
