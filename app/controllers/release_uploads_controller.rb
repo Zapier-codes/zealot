@@ -13,7 +13,8 @@
 # RELEASE_UPLOAD_MULTIPART_ENABLED is on: `create` then answers `{ id, state, multipart: true, part_size,
 # part_count, expires_at, size }` (no `upload_url`), the client asks `POST .../parts` for up to 10 part URLs at a
 # time, PUTs each part to R2, asks `GET .../parts` to resume, and finalizes as before. The page's uploader
-# script must know this answer (Task 40s-d) before the flag is turned on for the console.
+# script (`direct_upload_controller.js`, Task 40s-d) reads this answer: 3 parts in flight, 4 signed per request,
+# a failed part signed again up to 4 times, and a resume from the saved session id after a refresh.
 #
 # Both actions are JSON-only and need a real signed-in user (guest mode does not apply: unlike the install page,
 # an upload is never public) who may upload to the channel's app (`ReleasePolicy#create?`, the same rule as the

@@ -3,6 +3,7 @@ en:
     direct_upload:
       opening: Preparing the upload...
       sending: "Uploading {percent}%"
+      resuming: "Resuming the upload ({percent}% already sent)..."
       finishing: Checking the upload...
       done: Upload received. The build will appear in this channel once Zealot has finished reading it. You can leave this page.
       failed: The upload could not be completed. Please try again.

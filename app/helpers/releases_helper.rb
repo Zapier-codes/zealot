@@ -3,7 +3,7 @@
 # Task 40h-c: the upload form's direct-to-storage mode. Both methods answer "plain form" (an empty hash) until
 # `ReleaseUploadSession.enabled?` is true, so with the flag off the form renders exactly as it did before.
 module ReleasesHelper
-  DIRECT_UPLOAD_MESSAGE_KEYS = %w[opening sending finishing done failed send_failed].freeze
+  DIRECT_UPLOAD_MESSAGE_KEYS = %w[opening sending resuming finishing done failed send_failed].freeze
 
   # HTML options for the upload form: the Stimulus controller, its session URL and its localized messages.
   # Turbo is off for this form so the controller's own submit handling is the only one that runs.

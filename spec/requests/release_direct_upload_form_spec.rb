@@ -50,6 +50,7 @@ RSpec.describe 'Release upload form, direct mode', type: :request do
       expect(response.body).to include('direct-upload#submit')
       expect(response.body).to include("data-direct-upload-session-url-value=\"#{channel_release_uploads_path(channel)}\"")
       expect(response.body).to include('data-direct-upload-messages-value=')
+      expect(response.body).to include('resuming')
       expect(response.body).to include('data-direct-upload-target="status"')
     end
   end
@@ -64,6 +65,7 @@ RSpec.describe 'Release upload form, direct mode', type: :request do
           expect(I18n.exists?("releases.direct_upload.#{key}", locale)).to be(true), "#{locale} is missing #{key}"
         end
         expect(I18n.t('releases.direct_upload.sending', locale: locale)).to include('{percent}')
+        expect(I18n.t('releases.direct_upload.resuming', locale: locale)).to include('{percent}')
       end
     end
   end
