@@ -625,6 +625,26 @@ door asks GitHub's asset API for the file and redirects to the short-lived signe
 `browser_download_url`. `GITHUB_STORAGE_TOKEN` is required on Render only if the storage repo is private (set it anyway; it
 is harmless for a public one). If you switch the repo between public and private, nothing needs to change.
 
+**Door auth: signed, expiring links (40n-f).** The download door refuses any request that does not carry a link signed by
+distr (a browser clicking an email button cannot send an `Authorization` header, so the proof is inside the link). One
+shared secret, `DISTR_LINK_SECRET`, set on Render (`zealot-web`) and in distr; generate it once with `openssl rand -hex 32`.
+`check-render-env.sh` lists it as required. Without it the door answers 503 (closed), never open.
+
+The link is `https://<zealot host>/api/tenant_builds/<build_id>/download?expires=<unix seconds>&signature=<hex>` where
+`signature` is the lowercase hex HMAC-SHA256, keyed with the secret, of three lines joined by newlines:
+`tenant-build-download`, the build id, the expiry. Any HMAC library works; to make one by hand:
+
+```
+B=b123; E=$(( $(date +%s) + 600 ))
+S=$(printf 'tenant-build-download\n%s\n%s' "$B" "$E" | openssl dgst -sha256 -hmac "$DISTR_LINK_SECRET" | awk '{print $NF}')
+curl -sI "https://<zealot host>/api/tenant_builds/$B/download?expires=$E&signature=$S"   # 302 to GitHub, or 404 if no such build
+```
+
+A wrong, missing, altered or other-build signature is 401; an expired link is 401 saying so; an expiry more than 7 days out
+is 401 even if signed. distr picks the lifetime (10 minutes to a few days; the email button should point at a distr page that
+mints a fresh link when pressed, so the email never carries a long-lived one). Rotating the secret: set the new value in both
+places at once; links signed with the old one stop working, which is the intent.
+
 **Not verified:** a real runner. The YAML parse, `bash -n` of every `run:` block, and a mocked-`gh` test of the new wait
 loop (wait then pass, refuse on failure, refuse on wrong branch, time out, retry after an API error) were the only checks.
 The Ruby spec was updated but not run (no Ruby in the sandbox).

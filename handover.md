@@ -5936,6 +5936,15 @@ them is already modernized.
 
 ## Session log
 
+### 2026-10-06 (newest of all, door auth) -- Task 40n-f door auth: signed, expiring links (operator chose the signed link over a Bearer token; "no testing, patch file only")
+
+- **Base:** `develop` @ `9c4d1c7a` (Task 42d is on the remote; this patch sits on top of it).
+- **Decision (operator):** the door `GET /api/tenant_builds/:build_id/download` is authenticated by a link distr signs, not by a Bearer service token, because an email button is a plain browser click that cannot send a header. Supersedes the proposal `DISTR_SERVICE_TOKEN` in the 2026-10-06 audit entries.
+- **Built (written, NOT run; the operator said no testing):** `app/services/tenant_build_link.rb` (HMAC-SHA256 over `tenant-build-download\n<build_id>\n<expires>`, constant-time compare, 7-day cap on the expiry, fails closed); `Api::TenantBuildsController` refuses before contacting GitHub (401 bad, missing, altered, other-build or expired; 503 when `DISTR_LINK_SECRET` is unset); `spec/services/tenant_build_link_spec.rb` (one known-answer vector computed with the `openssl` command line); `spec/requests/api_tenant_builds_download_spec.rb` rewritten to sign its requests plus ten refusal examples; `DISTR_LINK_SECRET` row (required) in `docs/ci/check-render-env.sh`; a runbook paragraph with the link format and an `openssl`/`curl` check.
+- **Needs the operator:** generate the secret (`openssl rand -hex 32`), set `DISTR_LINK_SECRET` on Render `zealot-web` and hand the same value to distr (40n-g, other repo: distr must sign links in this format and mint a fresh one when the button is pressed). Until it is set the door answers 503. Then read the `CI - RSpec` run for this commit.
+- **Not done:** nothing has run on Ruby or on a real runner; the harvest run itself (runbook 16) is still the next real test.
+- **Next:** read the `CI - RSpec` run for this commit, then the first manual harvest run, then 40o-r (stale comment blocks in `read-upload.yml` and the seven helper scripts in the repo root).
+
 ### 2026-10-06 (newest of all, CI read 2) -- Task 42d: run 37533450694 read; 595 -> 189 failures, schema job down to one line; this patch fixes the causes read from the log (operator: "no testing, fix and provide the patch file fully")
 - **Base:** `develop` @ `124ba214` (42c landed). One combined patch. This sandbox had no Postgres, gems or GitHub token, so nothing ran under Rails/RSpec; `ruby -c` (3.2.3) passed on every changed Ruby file and the workflow YAML parses. The operator's log is `run-37533450694.log` (2.7 MB, not committed); its schema diff, per-file counts and failed-example list are in `docs/ci/logs/ci-debug-2026-10-06.txt`.
 - **Evidence:** `CI - RSpec`: `2125 examples, 189 failures` (42b's run had 595). `schema-drift` job: the only difference left is the `channels_track_allowed_values` check constraint text (Postgres here prints `'internal'::character varying::text, ...` inside `ARRAY[...]` with no trailing `::text[]`); `payments` is NOT in the diff, so 42c's hand-written table matched.
