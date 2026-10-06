@@ -5936,6 +5936,21 @@ them is already modernized.
 
 ## Session log
 
+### 2026-10-06 (newest of all, CI read) -- Task 42b: the first `CI - RSpec` run read; three causes fixed, the rest listed (operator: "no test, just fix and provide the patch file")
+- **Base:** `develop` @ `1d6b3b60` (42a landed). One combined patch. Ruby not run (none in the sandbox).
+- **Evidence:** run 37525170638 (workflow_dispatch on `develop`, log saved with `fetch-ci-log.sh gh`). Result: `2124 examples, 595 failures`; the schema job also failed. None of the 595 is in `spec/models/app_spec.rb`, so the three 42a examples did not fail.
+- **Fixed in this patch:**
+  1. `db/schema.rb` drift: the committed file differed from a from-scratch migrate only in column order (Rails 8.1 dumps columns alphabetically), the `channels_track_allowed_values` constraint text (Postgres's own `ANY (ARRAY[...])` form), one index order and the `releases` check constraints moving below the indexes. No column, table or index was missing or extra. The file is now exactly what CI generated (git blob `3622ffc`, read from the log's own diff).
+  2. 79 failures, `Missing Active Record encryption credential: active_record_encryption.primary_key`: the test job had no keys. `ci_rspec.yml` now sets the three `ANTHROPIC_AR_ENCRYPTION_*` variables to throwaway test-only values (the initializer already reads them).
+  3. 159 failures, `undefined method 'call' for an instance of App`: 49 spec files define `let(:app) { create(:app) }`, which shadows the Rack app in request specs. New `spec/support/request_spec_rack_app.rb` builds the integration session from `Rails.application`. Not run: if it does not take effect, the fallback is renaming that `let` in the 49 files.
+- **Still red, NOT fixed (read from the log, causes known):**
+  - `relation "payments" does not exist` (about 10 specs). `db/migrate/20260925110000_create_payments.rb` exists and nothing drops the table, yet `db/schema.rb` has no `payments` table and the from-scratch dump did not add one either, which is unexplained. Read the passing "Run every migration from an empty database" step's output first (`gh run view <id> -R Zapier-codes/zealot --log` and look for `CreatePayments`).
+  - `undefined method 'stub_request'` (`api_tenant_builds_download_spec.rb`) and `undefined local variable 'body'` (`github_oidc_verifier_spec.rb:130`): `webmock` is not in `Gemfile.lock`. Needs `bundle add webmock --group test` on the operator's device (the lockfile must be regenerated, not hand-edited).
+  - `Error loading the 'sqlite3' Active Record adapter` (`release_storage_cleanup_callback_spec.rb:16`): `sqlite3` is not in the bundle; rewrite that spec for Postgres or add the gem.
+  - rswag specs: `undefined method 'token'` (about 12) and `The fragment '/components' does not exist` (5); `user_unlock_url` and `app_listing_graphics_path` missing in a few request specs.
+  - After this patch, re-run the workflow and read the new count: many of the remaining 595 are likely downstream of the three fixed causes.
+- **Next:** apply, push, run `gh workflow run ci_rspec.yml -R Zapier-codes/zealot --ref develop`, save the new log, then work the remaining list above by size. 40n-f door auth and the first harvest run stay queued.
+
 ### 2026-10-06 (newest of all, after the fix went live) -- Task 42a built; how the published Storeapp release becomes Featured in D-Store (operator: the app is under the developer account claudeone7492@gmail.com created by the admin, not under admin's own apps; "make the published release show up in D-Store featured")
 - **Base:** `develop` @ `17a36988`. One combined patch: `app/models/app.rb` (the index republish also fires when `featured` or `editors_pick` changes; kept out of `CATALOG_INDEX_LISTING_FIELDS` so an owner can never stage an editorial flag), `spec/models/app_spec.rb` (three examples), `docs/ci/operator-runbook.md` (new section 17), this entry. Ruby not run (none in the sandbox).
 - **Render is fixed and live:** the operator's `check-all-status.sh` run showed the download door answering 404 with the expired-build message, 0 items needing action. The boot crash entry below is closed.

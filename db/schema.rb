@@ -34,13 +34,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_130000) do
   end
 
   create_table "android_signing_keys", force: :cascade do |t|
+    t.string "checksum", null: false
+    t.datetime "created_at", null: false
     t.string "filename", null: false
     t.string "key_alias", null: false
-    t.string "checksum", null: false
+    t.text "key_password", null: false
     t.text "keystore", null: false
     t.text "keystore_password", null: false
-    t.text "key_password", null: false
-    t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["checksum"], name: "index_android_signing_keys_on_checksum", unique: true
   end
@@ -168,7 +168,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_130000) do
     t.index ["scheme_id", "device_type"], name: "index_channels_on_scheme_id_and_device_type"
     t.index ["slug"], name: "index_channels_on_slug", unique: true
     t.index ["track"], name: "index_channels_on_track"
-    t.check_constraint "track IN ('internal', 'closed', 'open', 'production')", name: "channels_track_allowed_values"
+    t.check_constraint "track::text = ANY (ARRAY['internal'::character varying, 'closed'::character varying, 'open'::character varying, 'production'::character varying]::text[])", name: "channels_track_allowed_values"
   end
 
   create_table "channels_web_hooks", id: false, force: :cascade do |t|
@@ -343,8 +343,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_130000) do
     t.string "status", default: "draft", null: false
     t.datetime "updated_at", null: false
     t.index ["app_id", "status"], name: "index_listing_edits_on_app_id_and_status"
-    t.index ["app_id"], name: "index_listing_edits_on_app_id_when_draft", unique: true, where: "((status)::text = 'draft'::text)"
     t.index ["app_id"], name: "index_listing_edits_on_app_id"
+    t.index ["app_id"], name: "index_listing_edits_on_app_id_when_draft", unique: true, where: "((status)::text = 'draft'::text)"
     t.index ["editor_id"], name: "index_listing_edits_on_editor_id"
   end
 
@@ -469,70 +469,67 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_130000) do
   end
 
   create_table "releases", force: :cascade do |t|
+    t.jsonb "abis", default: [], null: false
+    t.string "asset_pack_type"
     t.string "branch"
+    t.boolean "brotli_compressed", default: false, null: false
     t.string "build_version"
     t.string "bundle_id"
     t.jsonb "changelog", null: false
     t.bigint "channel_id"
+    t.text "ci_compile_error"
+    t.datetime "ci_compile_finished_at"
+    t.string "ci_compile_state"
+    t.datetime "ci_compile_state_at"
     t.string "ci_url"
+    t.string "compressed_apks_storage_key"
+    t.bigint "compressed_size"
     t.datetime "created_at", null: false
     t.jsonb "custom_fields", default: [], null: false
     t.string "device_type"
     t.string "file"
+    t.string "file_sha256"
+    t.string "file_storage_key"
     t.string "git_commit"
     t.string "icon"
-    t.string "name"
-    t.string "release_type"
-    t.string "release_version"
-    t.string "source"
-    t.datetime "updated_at", null: false
-    t.integer "version", null: false
-    t.string "asset_pack_type"
-    t.boolean "brotli_compressed", default: false, null: false
-    t.bigint "original_size"
-    t.bigint "compressed_size"
-    t.string "compressed_apks_storage_key"
-    t.string "mtproto_archived_location"
+    t.string "icon_sha256"
+    t.string "icon_storage_key"
+    t.integer "min_sdk_version"
     t.datetime "mtproto_archived_at"
-    t.boolean "signed", default: false, null: false
-    t.string "signing_key_checksum"
-    t.boolean "play_store_target", default: false, null: false
-    t.string "play_approval_status", default: "not_requested", null: false
-    t.datetime "play_approval_requested_at"
+    t.string "mtproto_archived_location"
+    t.string "name"
+    t.bigint "original_size"
+    t.string "patched_file_path"
+    t.string "patched_file_storage_key"
+    t.jsonb "permissions", default: [], null: false
     t.datetime "play_approval_expires_at"
+    t.datetime "play_approval_requested_at"
+    t.string "play_approval_status", default: "not_requested", null: false
     t.datetime "play_approved_at"
     t.bigint "play_approved_by_id"
     t.string "play_edit_id"
     t.text "play_publish_error"
-    t.datetime "play_published_at"
     t.string "play_publish_status", default: "not_published", null: false
+    t.datetime "play_published_at"
     t.datetime "play_rejected_at"
     t.bigint "play_rejected_by_id"
-    t.string "patched_file_path"
-    t.string "file_storage_key"
-    t.string "patched_file_storage_key"
-    t.string "file_sha256"
-    t.integer "min_sdk_version"
-    t.integer "target_sdk_version"
-    t.jsonb "abis", default: [], null: false
-    t.jsonb "screen_densities", default: [], null: false
+    t.boolean "play_store_target", default: false, null: false
+    t.string "release_type"
+    t.string "release_version"
     t.jsonb "required_features", default: [], null: false
-    t.jsonb "permissions", default: [], null: false
     t.integer "rollout_percentage", default: 100, null: false
     t.string "rollout_status", default: "active", null: false
+    t.jsonb "screen_densities", default: [], null: false
+    t.boolean "signed", default: false, null: false
+    t.string "signing_key_checksum"
+    t.string "source"
     t.string "status", default: "available", null: false
-    t.string "icon_sha256"
-    t.string "icon_storage_key"
-    t.string "ci_compile_state"
-    t.text "ci_compile_error"
-    t.datetime "ci_compile_finished_at"
-    t.string "universal_apk_storage_key"
+    t.integer "target_sdk_version"
     t.string "universal_apk_sha256"
     t.bigint "universal_apk_size"
-    t.datetime "ci_compile_state_at"
-    t.check_constraint "ci_compile_state IS NULL OR ci_compile_state::text = 'queued'::text OR ci_compile_state::text = 'dispatched'::text OR ci_compile_state::text = 'done'::text OR ci_compile_state::text = 'failed'::text", name: "releases_ci_compile_state_known"
-    t.check_constraint "rollout_percentage >= 0 AND rollout_percentage <= 100", name: "releases_rollout_percentage_range"
-    t.check_constraint "status::text = 'available'::text OR status::text = 'held'::text OR status::text = 'halted'::text OR status::text = 'pulled'::text", name: "releases_status_known"
+    t.string "universal_apk_storage_key"
+    t.datetime "updated_at", null: false
+    t.integer "version", null: false
     t.index ["asset_pack_type"], name: "index_releases_on_asset_pack_type"
     t.index ["build_version"], name: "index_releases_on_build_version"
     t.index ["bundle_id"], name: "index_releases_on_bundle_id"
@@ -550,6 +547,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_130000) do
     t.index ["source"], name: "index_releases_on_source"
     t.index ["status"], name: "index_releases_on_status"
     t.index ["version"], name: "index_releases_on_version"
+    t.check_constraint "ci_compile_state IS NULL OR ci_compile_state::text = 'queued'::text OR ci_compile_state::text = 'dispatched'::text OR ci_compile_state::text = 'done'::text OR ci_compile_state::text = 'failed'::text", name: "releases_ci_compile_state_known"
+    t.check_constraint "rollout_percentage >= 0 AND rollout_percentage <= 100", name: "releases_rollout_percentage_range"
+    t.check_constraint "status::text = 'available'::text OR status::text = 'held'::text OR status::text = 'halted'::text OR status::text = 'pulled'::text", name: "releases_status_known"
   end
 
   create_table "schemes", force: :cascade do |t|

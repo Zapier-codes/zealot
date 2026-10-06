@@ -60,6 +60,12 @@ jobs:
       ZEALOT_POSTGRES_USERNAME: postgres
       ZEALOT_POSTGRES_PASSWORD: postgres
       ZEALOT_SENTRY_DISABLE: "true"
+      # Task 42b: throwaway keys for Active Record encryption, test run only (never used anywhere else).
+      # Without them every spec that touches an encrypted column (signing keys, payments) raised
+      # "Missing Active Record encryption credential: active_record_encryption.primary_key".
+      ANTHROPIC_AR_ENCRYPTION_PRIMARY_KEY: ci-test-only-primary-key-00000000000000000000
+      ANTHROPIC_AR_ENCRYPTION_DETERMINISTIC_KEY: ci-test-only-deterministic-key-00000000000000
+      ANTHROPIC_AR_ENCRYPTION_KEY_DERIVATION_SALT: ci-test-only-key-derivation-salt-000000000000
 
     steps:
       - name: Checkout
