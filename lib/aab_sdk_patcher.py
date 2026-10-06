@@ -178,7 +178,7 @@ def main():
         sys.exit(1)
 
     result = patch(args.input_aab, args.output_aab, args.sdk_dex_paths, args.api_key, args.bundletool_jar)
-    print(f"[*] patched bundle written to {args.output_aab} (SDK dexes added: {result['dexes_added']})"
+    print(f"[*] patched bundle written to {args.output_aab} (SDK dexes added: {result['dexes_added']})")
 
     if args.verify:
         apk_path = verify_with_bundletool(args.output_aab, args.bundletool_jar)
