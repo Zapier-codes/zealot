@@ -32,7 +32,9 @@ RSpec.describe 'API CI compile callback', type: :request do
       compressed_apks_key: 'uploads/apps/a1/r1/pipeline/release.apks.br', compressed_size: 99 }.merge(overrides)
   end
 
-  def call(body, headers: bearer)
+  # `call(state: 'failed')` passes bare keywords; collect them into the body (Ruby 3).
+  def call(body = nil, headers: bearer, **fields)
+    body = fields if body.nil?
     post path, params: body.to_json, headers: headers.merge('Content-Type' => 'application/json')
   end
 

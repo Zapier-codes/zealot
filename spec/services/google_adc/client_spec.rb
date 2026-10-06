@@ -24,7 +24,9 @@ RSpec.describe GoogleAdc::Client do
     described_class.new(credentials: credentials, adapter: [:test, stubs], clock: clock)
   end
 
-  def json(body, status: 200)
+  # Accepts a hash or bare keywords (`json(developerAccounts: [])`), which Ruby 3 no longer turns into a positional hash.
+  def json(body = nil, status: 200, **fields)
+    body = fields if body.nil?
     [status, { 'Content-Type' => 'application/json' }, body.is_a?(String) ? body : JSON.generate(body)]
   end
 

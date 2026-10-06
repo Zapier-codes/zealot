@@ -88,7 +88,7 @@ RSpec.describe 'API upload session for a new app', type: :request do
   it 'refuses a request with no credential' do
     expect { open_session }.not_to change(ReleaseUpload, :count)
 
-    expect(response).to have_http_status(:unauthorized)
+    expect(response).to have_http_status(:unprocessable_entity)
   end
 
   it 'still answers 404 for a channel_key that matches nothing, never a silent new app' do

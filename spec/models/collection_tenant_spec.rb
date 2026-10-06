@@ -101,8 +101,10 @@ RSpec.describe Collection, 'tenant ownership' do
     it 'refuses a tenant\'s app in a default collection' do
       membership = CollectionApp.new(app: acme_app, collection: default_picks)
 
-      expect(membership).not_to be_valid
-      expect(membership.errors[:app]).to include('belongs to a different tenant than this collection')
+      I18n.with_locale(:en) do # the app's default locale is zh-CN; the text below is the English one
+        expect(membership).not_to be_valid
+        expect(membership.errors[:app]).to include('belongs to a different tenant than this collection')
+      end
     end
 
     it 'refuses a default app in a tenant\'s collection' do

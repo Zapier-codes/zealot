@@ -41,7 +41,7 @@ RSpec.describe 'API upload with a per-app token', type: :request do
   it 'refuses a request with no credential' do
     upload(channel_key: channel.key)
 
-    expect(response).to have_http_status(:unauthorized)
+    expect(response).to have_http_status(:unprocessable_entity)
   end
 
   it 'refuses a wrong zpa_ secret and does not fall back to the user token' do

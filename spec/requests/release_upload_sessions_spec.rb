@@ -387,7 +387,8 @@ RSpec.describe 'Direct upload sessions', type: :request do
     before { allow(ReleaseUploadParts).to receive(:use_multipart?) { |bytes| bytes.to_i >= 20_000_000 } }
 
     describe 'API door' do
-      def api_parts(params = {}, id: upload.id, as: owner.token)
+      def api_parts(params = nil, id: upload.id, as: owner.token, **fields)
+        params = (params || {}).merge(fields)
         post "/api/apps/upload_sessions/#{id}/parts", params: params.merge(token: as)
       end
 

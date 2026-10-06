@@ -168,7 +168,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_130000) do
     t.index ["scheme_id", "device_type"], name: "index_channels_on_scheme_id_and_device_type"
     t.index ["slug"], name: "index_channels_on_slug", unique: true
     t.index ["track"], name: "index_channels_on_track"
-    t.check_constraint "track::text = ANY (ARRAY['internal'::character varying, 'closed'::character varying, 'open'::character varying, 'production'::character varying]::text[])", name: "channels_track_allowed_values"
+    t.check_constraint "track::text = ANY (ARRAY['internal'::character varying::text, 'closed'::character varying::text, 'open'::character varying::text, 'production'::character varying::text])", name: "channels_track_allowed_values"
   end
 
   create_table "channels_web_hooks", id: false, force: :cascade do |t|

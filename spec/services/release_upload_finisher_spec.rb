@@ -506,7 +506,7 @@ RSpec.describe ReleaseUploadFinisher do
       it 'leaves the release held and does not enqueue deploy email' do
         allow(EmailNotifications).to receive(:enabled?).and_return(true)
 
-        expect { finish(signed_report) }.not_to have_enqueued_job(ReleaseDeployNotificationJob)
+        expect { finish(apk_report) }.not_to have_enqueued_job(ReleaseDeployNotificationJob)
 
         expect(release.reload).to have_attributes(status: 'held', file_storage_key: keys[:file])
         expect(upload.reload.state).to eq('done')
@@ -519,7 +519,7 @@ RSpec.describe ReleaseUploadFinisher do
       it 'makes the release available and enqueues deploy email' do
         allow(EmailNotifications).to receive(:enabled?).and_return(true)
 
-        expect { finish(signed_report) }.to have_enqueued_job(ReleaseDeployNotificationJob)
+        expect { finish(apk_report) }.to have_enqueued_job(ReleaseDeployNotificationJob)
 
         expect(release.reload).to have_attributes(status: 'available', file_storage_key: keys[:file])
         expect(upload.reload.state).to eq('done')

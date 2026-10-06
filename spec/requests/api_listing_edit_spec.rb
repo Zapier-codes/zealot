@@ -35,13 +35,13 @@ RSpec.describe 'API listing edit', type: :request do
 
   it 'refuses every action with no credential' do
     call(:get, path)
-    expect(response).to have_http_status(:unauthorized)
+    expect(response).to have_http_status(:unprocessable_entity)
     call(:patch, path, name: 'x')
-    expect(response).to have_http_status(:unauthorized)
+    expect(response).to have_http_status(:unprocessable_entity)
     call(:post, path(app, '/commit'))
-    expect(response).to have_http_status(:unauthorized)
+    expect(response).to have_http_status(:unprocessable_entity)
     call(:delete, path)
-    expect(response).to have_http_status(:unauthorized)
+    expect(response).to have_http_status(:unprocessable_entity)
   end
 
   it 'refuses a wrong zpa_ secret and does not fall back to the user token' do

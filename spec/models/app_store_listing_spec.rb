@@ -31,7 +31,7 @@ RSpec.describe 'Store listing' do
 
     it 'allows one profile per user' do
       profile
-      expect { make_profile(user) }.to raise_error(ActiveRecord::RecordNotUnique).or raise_error(ActiveRecord::RecordInvalid)
+      expect { make_profile(user) }.to raise_error(ActiveRecord::ActiveRecordError) # RecordNotUnique or RecordInvalid
     end
 
     it 'cannot switch kind while one of the user\'s apps is live' do

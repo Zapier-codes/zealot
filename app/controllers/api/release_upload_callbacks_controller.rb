@@ -93,6 +93,8 @@ class Api::ReleaseUploadCallbacksController < Api::BaseController
     return unauthorized('CI_OIDC_AUDIENCE is not configured') if audience.blank?
 
     token = request.authorization.to_s[/\ABearer\s+(.+)\z/i, 1]
+    return unauthorized('no bearer token') if token.blank?
+
     GithubOidcVerifier.new(audience: audience, repository: storage_repository,
                            workflow: ReleaseUploadDispatcher.workflow_name,
                            ref: ENV['CI_COMPILE_REF'].presence || CiCompileDispatcher::DEFAULT_REF).call(token)

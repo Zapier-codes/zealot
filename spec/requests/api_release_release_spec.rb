@@ -48,7 +48,7 @@ RSpec.describe 'API release of a held release', type: :request do
   it 'refuses a request with no credential' do
     release_it(held)
 
-    expect(response).to have_http_status(:unauthorized)
+    expect(response).to have_http_status(:unprocessable_entity)
     expect(held.reload.status).to eq('held')
   end
 
@@ -95,10 +95,10 @@ RSpec.describe 'API release of a held release', type: :request do
 
   it 'does not let an app token reach update or destroy (still user-token only)' do
     put "/api/releases/#{held.id}", params: { changelog: 'x' }, headers: bearer(issued.secret)
-    expect(response).to have_http_status(:unauthorized)
+    expect(response).to have_http_status(:unprocessable_entity)
 
     delete "/api/releases/#{held.id}", headers: bearer(issued.secret)
-    expect(response).to have_http_status(:unauthorized)
+    expect(response).to have_http_status(:unprocessable_entity)
     expect(Release.exists?(held.id)).to be(true)
   end
 

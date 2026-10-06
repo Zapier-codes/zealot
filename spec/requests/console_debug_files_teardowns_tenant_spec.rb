@@ -31,7 +31,7 @@ RSpec.describe 'Console debug files and teardowns and tenants', type: :request d
   end
 
   def make_teardown(release, name)
-    Metadatum.new(release: release, user: admin, name: name, device: 'Android', platform: 'Android',
+    Metadatum.new(release: release, user: admin, name: name, device: 'Android', platform: 'android',
                   checksum: SecureRandom.hex(8)).tap { |md| md.save!(validate: false) }
   end
 

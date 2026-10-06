@@ -1,0 +1,251 @@
+# CI debug log, run 37533450694 (CI - RSpec on develop @ 124ba214), read 2026-10-06
+result: 2125 examples, 189 failures (run 37525170638 had 595); job 'db/schema.rb matches migrations' failed.
+full log: 17402 lines, kept on the operator's device as ~/storage/downloads/run-37533450694.log (not committed, 2.7 MB)
+
+## schema-drift diff (the only difference)
+diff --git a/db/schema.rb b/db/schema.rb
+@@ -168,7 +168,7 @@
+-    t.check_constraint "track::text = ANY (ARRAY['internal'::character varying, 'closed'::character varying, 'open'::character varying, 'production'::character varying]::text[])", name: "channels_track_allowed_values"
++    t.check_constraint "track::text = ANY (ARRAY['internal'::character varying::text, 'closed'::character varying::text, 'open'::character varying::text, 'production'::character varying::text])", name: "channels_track_allowed_values"
+
+## failures per spec file
+     24 ./spec/api/users_spec.rb
+     22 ./spec/api/apps_spec.rb
+     13 ./spec/api/debug_files_spec.rb
+     12 ./spec/api/schemes_spec.rb
+     12 ./spec/api/collaborators_spec.rb
+     12 ./spec/api/channels_spec.rb
+      8 ./spec/services/google_adc/client_spec.rb
+      8 ./spec/requests/console_debug_files_teardowns_tenant_spec.rb
+      6 ./spec/api/releases_spec.rb
+      5 ./spec/services/release_upload_finisher_spec.rb
+      5 ./spec/services/catalog_index/serializer_spec.rb
+      5 ./spec/requests/release_upload_sessions_spec.rb
+      5 ./spec/requests/api_release_retry_compile_spec.rb
+      4 ./spec/models/listing_edit_spec.rb
+      3 ./spec/requests/api_ci_compile_callback_spec.rb
+      3 ./spec/models/release_storage_cleanup_callback_spec.rb
+      2 ./spec/requests/roles_and_admin_entry_spec.rb
+      2 ./spec/requests/listing_text_spec.rb
+      2 ./spec/requests/canonical_host_spec.rb
+      2 ./spec/requests/auth_flow_spec.rb
+      2 ./spec/requests/app_create_tenant_spec.rb
+      2 ./spec/requests/api_upload_sessions_new_app_spec.rb
+      2 ./spec/requests/api_tenant_spec.rb
+      2 ./spec/requests/api_release_upload_callbacks_spec.rb
+      2 ./spec/requests/api_release_release_spec.rb
+      2 ./spec/requests/api_channel_track_spec.rb
+      2 ./spec/requests/admin_lists_tenant_spec.rb
+      2 ./spec/policies/tenant_access_spec.rb
+      2 ./spec/api/health_spec.rb
+      1 ./spec/services/release_upload_session_spec.rb
+      1 ./spec/services/release_upload_app_resolver_spec.rb
+      1 ./spec/services/listing_edit_service_spec.rb
+      1 ./spec/services/google_adc/registrar_spec.rb
+      1 ./spec/requests/manual_upload_only_spec.rb
+      1 ./spec/requests/direct_upload_required_spec.rb
+      1 ./spec/requests/console_apps_dashboard_tenant_spec.rb
+      1 ./spec/requests/api_listing_edit_spec.rb
+      1 ./spec/requests/api_app_token_upload_spec.rb
+      1 ./spec/requests/api_android_signing_key_spec.rb
+      1 ./spec/requests/admin_tenants_spec.rb
+      1 ./spec/requests/admin_tenant_keys_spec.rb
+      1 ./spec/models/release_universal_apk_spec.rb
+      1 ./spec/models/collection_tenant_spec.rb
+      1 ./spec/models/app_store_listing_spec.rb
+      1 ./spec/api/version_spec.rb
+
+## failed examples (as printed by RSpec)
+Failed examples:
+
+rspec ./spec/api/apps_spec.rb:16 # Apps API /apps get 应用列表 returns a 200 response
+rspec ./spec/api/apps_spec.rb:7 # Apps API /apps get 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/apps_spec.rb:39 # Apps API /apps/version_exist get 应用详情 returns a 200 response
+rspec ./spec/api/apps_spec.rb:26 # Apps API /apps/version_exist get 资源未找到 returns a 404 response
+rspec ./spec/api/apps_spec.rb:59 # Apps API /apps/versions get 应用详情及版本列表 returns a 200 response
+rspec ./spec/api/apps_spec.rb:49 # Apps API /apps/versions get 资源未找到 returns a 404 response
+rspec ./spec/api/apps_spec.rb:81 # Apps API /apps/latest get 最新上传应用版本列表 returns a 200 response
+rspec ./spec/api/apps_spec.rb:69 # Apps API /apps/latest get 资源未找到 returns a 404 response
+rspec ./spec/api/apps_spec.rb:99 # Apps API /apps/upload post 已上传的应用版本详情 returns a 201 response
+rspec ./spec/api/apps_spec.rb[1:5:1:2:1] # Apps API /apps/upload post 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/apps_spec.rb[1:5:1:3:1] # Apps API /apps/upload post 资源未找到 returns a 404 response
+rspec ./spec/api/apps_spec.rb:118 # Apps API /apps/{id} get 应用详情 returns a 200 response
+rspec ./spec/api/apps_spec.rb[1:6:1:2:1] # Apps API /apps/{id} get 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/apps_spec.rb[1:6:1:3:1] # Apps API /apps/{id} get 资源未找到 returns a 404 response
+rspec ./spec/api/apps_spec.rb:137 # Apps API /apps post 应用详情 returns a 201 response
+rspec ./spec/api/apps_spec.rb:129 # Apps API /apps post 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/apps_spec.rb:156 # Apps API /apps/{id} put 应用详情 returns a 200 response
+rspec ./spec/api/apps_spec.rb[1:8:1:2:1] # Apps API /apps/{id} put 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/apps_spec.rb[1:8:1:3:1] # Apps API /apps/{id} put 资源未找到 returns a 404 response
+rspec ./spec/api/apps_spec.rb:175 # Apps API /apps/{id} delete 已删除应用 returns a 200 response
+rspec ./spec/api/apps_spec.rb[1:9:1:2:1] # Apps API /apps/{id} delete 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/apps_spec.rb[1:9:1:3:1] # Apps API /apps/{id} delete 资源未找到 returns a 404 response
+rspec ./spec/api/channels_spec.rb:15 # Channels API /schemes/{scheme_id}/channels get 应用渠道详情 returns a 200 response
+rspec ./spec/api/channels_spec.rb[1:1:1:2:1] # Channels API /schemes/{scheme_id}/channels get 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/channels_spec.rb[1:1:1:3:1] # Channels API /schemes/{scheme_id}/channels get 资源未找到 returns a 404 response
+rspec ./spec/api/channels_spec.rb:35 # Channels API /schemes/{scheme_id}/channels post 应用渠道详情 returns a 201 response
+rspec ./spec/api/channels_spec.rb[1:2:1:2:1] # Channels API /schemes/{scheme_id}/channels post 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/channels_spec.rb[1:2:1:3:1] # Channels API /schemes/{scheme_id}/channels post 资源未找到 returns a 404 response
+rspec ./spec/api/channels_spec.rb:55 # Channels API /channels/{id} put 更新应用渠道信息 returns a 200 response
+rspec ./spec/api/channels_spec.rb[1:3:1:2:1] # Channels API /channels/{id} put 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/channels_spec.rb[1:3:1:3:1] # Channels API /channels/{id} put 资源未找到 returns a 404 response
+rspec ./spec/api/channels_spec.rb:74 # Channels API /channels/{id} delete 应用渠道文件 returns a 200 response
+rspec ./spec/api/channels_spec.rb[1:4:1:2:1] # Channels API /channels/{id} delete 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/channels_spec.rb[1:4:1:3:1] # Channels API /channels/{id} delete 资源未找到 returns a 404 response
+rspec ./spec/api/collaborators_spec.rb:16 # Collaborators API /apps/{app_id}/collaborators/{user_id} get 应用成员详情 returns a 200 response
+rspec ./spec/api/collaborators_spec.rb[1:1:1:2:1] # Collaborators API /apps/{app_id}/collaborators/{user_id} get 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/collaborators_spec.rb[1:1:1:3:1] # Collaborators API /apps/{app_id}/collaborators/{user_id} get 资源未找到 returns a 404 response
+rspec ./spec/api/collaborators_spec.rb:37 # Collaborators API /apps/{app_id}/collaborators post 应用成员详情 returns a 201 response
+rspec ./spec/api/collaborators_spec.rb[1:2:1:2:1] # Collaborators API /apps/{app_id}/collaborators post 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/collaborators_spec.rb[1:2:1:3:1] # Collaborators API /apps/{app_id}/collaborators post 资源未找到 returns a 404 response
+rspec ./spec/api/collaborators_spec.rb:58 # Collaborators API /apps/{app_id}/collaborators/{user_id} put 更新应用成员信息 returns a 200 response
+rspec ./spec/api/collaborators_spec.rb[1:3:1:2:1] # Collaborators API /apps/{app_id}/collaborators/{user_id} put 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/collaborators_spec.rb[1:3:1:3:1] # Collaborators API /apps/{app_id}/collaborators/{user_id} put 资源未找到 returns a 404 response
+rspec ./spec/api/collaborators_spec.rb:78 # Collaborators API /apps/{app_id}/collaborators/{user_id} delete 应用成员文件 returns a 200 response
+rspec ./spec/api/collaborators_spec.rb[1:4:1:2:1] # Collaborators API /apps/{app_id}/collaborators/{user_id} delete 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/collaborators_spec.rb[1:4:1:3:1] # Collaborators API /apps/{app_id}/collaborators/{user_id} delete 资源未找到 returns a 404 response
+rspec ./spec/api/debug_files_spec.rb:17 # DebugFiles API /debug_files get 调试文件列表 returns a 200 response
+rspec ./spec/api/debug_files_spec.rb:7 # DebugFiles API /debug_files get 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/debug_files_spec.rb:38 # DebugFiles API /debug_files/download get 跳转到二进制调试文件文件地址 returns a 302 response
+rspec ./spec/api/debug_files_spec.rb:27 # DebugFiles API /debug_files/download get 资源未找到 returns a 404 response
+rspec ./spec/api/debug_files_spec.rb:56 # DebugFiles API /debug_files/{id} get 调试文件详情 returns a 200 response
+rspec ./spec/api/debug_files_spec.rb[1:3:1:2:1] # DebugFiles API /debug_files/{id} get 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/debug_files_spec.rb[1:3:1:3:1] # DebugFiles API /debug_files/{id} get 资源未找到 returns a 404 response
+rspec ./spec/api/debug_files_spec.rb:75 # DebugFiles API /debug_files/upload post 调试文件详情 returns a 200 response
+rspec ./spec/api/debug_files_spec.rb[1:4:1:2:1] # DebugFiles API /debug_files/upload post 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/debug_files_spec.rb[1:4:1:3:1] # DebugFiles API /debug_files/upload post 资源未找到 returns a 404 response
+rspec ./spec/api/debug_files_spec.rb:94 # DebugFiles API /debug_files/{id} delete 已删除调试文件 returns a 200 response
+rspec ./spec/api/debug_files_spec.rb[1:5:1:2:1] # DebugFiles API /debug_files/{id} delete 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/debug_files_spec.rb[1:5:1:3:1] # DebugFiles API /debug_files/{id} delete 资源未找到 returns a 404 response
+rspec ./spec/api/health_spec.rb:20 # Health API /health get unhealthy returns a 500 response
+rspec ./spec/api/health_spec.rb:40 # Health API /health.json get unhealthy returns a 500 response
+rspec ./spec/api/releases_spec.rb:16 # Releases API /releases/{id} put 应用版本详情 returns a 200 response
+rspec ./spec/api/releases_spec.rb[1:1:1:2:1] # Releases API /releases/{id} put 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/releases_spec.rb[1:1:1:3:1] # Releases API /releases/{id} put 资源未找到 returns a 404 response
+rspec ./spec/api/releases_spec.rb:35 # Releases API /releases/{id} delete 删除应用版本 returns a 200 response
+rspec ./spec/api/releases_spec.rb[1:2:1:2:1] # Releases API /releases/{id} delete 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/releases_spec.rb[1:2:1:3:1] # Releases API /releases/{id} delete 资源未找到 returns a 404 response
+rspec ./spec/api/schemes_spec.rb:15 # Schemes API /apps/{app_id}/schemes get 应用类型详情 returns a 200 response
+rspec ./spec/api/schemes_spec.rb[1:1:1:2:1] # Schemes API /apps/{app_id}/schemes get 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/schemes_spec.rb[1:1:1:3:1] # Schemes API /apps/{app_id}/schemes get 资源未找到 returns a 404 response
+rspec ./spec/api/schemes_spec.rb:35 # Schemes API /apps/{app_id}/schemes post 应用类型详情 returns a 201 response
+rspec ./spec/api/schemes_spec.rb[1:2:1:2:1] # Schemes API /apps/{app_id}/schemes post 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/schemes_spec.rb[1:2:1:3:1] # Schemes API /apps/{app_id}/schemes post 资源未找到 returns a 404 response
+rspec ./spec/api/schemes_spec.rb:55 # Schemes API /schemes/{id} put 更新应用类型信息 returns a 200 response
+rspec ./spec/api/schemes_spec.rb[1:3:1:2:1] # Schemes API /schemes/{id} put 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/schemes_spec.rb[1:3:1:3:1] # Schemes API /schemes/{id} put 资源未找到 returns a 404 response
+rspec ./spec/api/schemes_spec.rb:74 # Schemes API /schemes/{id} delete 应用类型文件 returns a 200 response
+rspec ./spec/api/schemes_spec.rb[1:4:1:2:1] # Schemes API /schemes/{id} delete 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/schemes_spec.rb[1:4:1:3:1] # Schemes API /schemes/{id} delete 资源未找到 returns a 404 response
+rspec ./spec/api/users_spec.rb:16 # Users API /users get 用户列表 returns a 200 response
+rspec ./spec/api/users_spec.rb[1:1:1:2:1] # Users API /users get 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/users_spec.rb[1:1:1:3:1] # Users API /users get 资源未找到 returns a 404 response
+rspec ./spec/api/users_spec.rb:35 # Users API /users/{id} get 用户详情 returns a 200 response
+rspec ./spec/api/users_spec.rb[1:2:1:2:1] # Users API /users/{id} get 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/users_spec.rb[1:2:1:3:1] # Users API /users/{id} get 资源未找到 returns a 404 response
+rspec ./spec/api/users_spec.rb:54 # Users API /users/search get 搜索用户列表 returns a 200 response
+rspec ./spec/api/users_spec.rb[1:3:1:2:1] # Users API /users/search get 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/users_spec.rb[1:3:1:3:1] # Users API /users/search get 资源未找到 returns a 404 response
+rspec ./spec/api/users_spec.rb:73 # Users API /users post 用户详情 returns a 201 response
+rspec ./spec/api/users_spec.rb[1:4:1:2:1] # Users API /users post 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/users_spec.rb[1:4:1:3:1] # Users API /users post 资源未找到 returns a 404 response
+rspec ./spec/api/users_spec.rb:93 # Users API /users/{id} put 更新用户信息 returns a 200 response
+rspec ./spec/api/users_spec.rb[1:5:1:2:1] # Users API /users/{id} put 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/users_spec.rb[1:5:1:3:1] # Users API /users/{id} put 资源未找到 returns a 404 response
+rspec ./spec/api/users_spec.rb:112 # Users API /users/{id}/lock get 更新用户信息 returns a 202 response
+rspec ./spec/api/users_spec.rb[1:6:1:2:1] # Users API /users/{id}/lock get 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/users_spec.rb[1:6:1:3:1] # Users API /users/{id}/lock get 资源未找到 returns a 404 response
+rspec ./spec/api/users_spec.rb:131 # Users API /users/{id}/unlock delete 更新用户信息 returns a 202 response
+rspec ./spec/api/users_spec.rb[1:7:1:2:1] # Users API /users/{id}/unlock delete 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/users_spec.rb[1:7:1:3:1] # Users API /users/{id}/unlock delete 资源未找到 returns a 404 response
+rspec ./spec/api/users_spec.rb:151 # Users API /users/{id} delete 用户文件 returns a 200 response
+rspec ./spec/api/users_spec.rb[1:8:1:2:1] # Users API /users/{id} delete 用户密钥认证失败 returns a 401 response
+rspec ./spec/api/users_spec.rb[1:8:1:3:1] # Users API /users/{id} delete 资源未找到 returns a 404 response
+rspec ./spec/api/version_spec.rb:15 # Version API /version get 版本信息 returns a 200 response
+rspec ./spec/models/app_store_listing_spec.rb:32 # Store listing PublisherProfile allows one profile per user
+rspec ./spec/models/collection_tenant_spec.rb:101 # Collection tenant ownership CollectionApp membership refuses a tenant's app in a default collection
+rspec ./spec/models/listing_edit_spec.rb:64 # ListingEdit#staged_attributes_valid_against_app (validation) does not surface an App validation error on a field this edit never staged
+rspec ./spec/models/listing_edit_spec.rb:135 # ListingEdit#commit! leaves the live App and itself untouched when staged_attributes fails App validation
+rspec ./spec/models/listing_edit_spec.rb:152 # ListingEdit#commit! is a harmless no-op success for an empty draft
+rspec ./spec/models/listing_edit_spec.rb:172 # ListingEdit#discard! refuses to discard an already-committed edit
+rspec ./spec/models/release_storage_cleanup_callback_spec.rb:74 # Release storage-cleanup callback (harness) enqueues the job with every present key, once, after a direct destroy
+rspec ./spec/models/release_storage_cleanup_callback_spec.rb:91 # Release storage-cleanup callback (harness) still fires through a has_many dependent: :destroy cascade
+rspec ./spec/models/release_storage_cleanup_callback_spec.rb:100 # Release storage-cleanup callback (harness) fires once per release, not once per row touched by the cascade
+rspec ./spec/models/release_universal_apk_spec.rb:79 # Release universal APK (Task 40e) what a compiled release reports a channel that offers the original file name (Task 41d) offers the stored name of a release held only in storage
+rspec ./spec/policies/tenant_access_spec.rb:131 # Tenant access rule policy scope on a tenant host covers other tenant-owned models through for_tenant
+rspec ./spec/policies/tenant_access_spec.rb:140 # Tenant access rule policy scope on a tenant host is empty for a model that cannot say which tenant a row belongs to
+rspec ./spec/requests/admin_lists_tenant_spec.rb:101 # Admin lists and tenants on a tenant host, as a member lists only the tenant's own collections
+rspec ./spec/requests/admin_lists_tenant_spec.rb:117 # Admin lists and tenants on a tenant host, as a member answers 404 for another tenant's (or the default catalog's) collection, slot and app
+rspec ./spec/requests/admin_tenant_keys_spec.rb:101 # Admin tenant keys as an admin has no GET, index or destroy routes for keys
+rspec ./spec/requests/admin_tenants_spec.rb:59 # Admin tenants as an admin has no destroy route
+rspec ./spec/requests/api_android_signing_key_spec.rb:167 # API Android signing key POST /api/android_signing_key refuses a keystore that keytool cannot open (422) and saves nothing
+rspec ./spec/requests/api_app_token_upload_spec.rb:41 # API upload with a per-app token refuses a request with no credential
+rspec ./spec/requests/api_channel_track_spec.rb:39 # API channel track refuses a request with no credential
+rspec ./spec/requests/api_channel_track_spec.rb:90 # API channel track does not let an app token reach destroy (still user-token only)
+rspec ./spec/requests/api_ci_compile_callback_spec.rb:236 # API CI compile callback refuses an unknown state
+rspec ./spec/requests/api_ci_compile_callback_spec.rb:216 # API CI compile callback a failed result flips dispatched to failed and keeps the reason
+rspec ./spec/requests/api_ci_compile_callback_spec.rb:226 # API CI compile callback a failed result refuses a failure for a release that is already done
+rspec ./spec/requests/api_listing_edit_spec.rb:36 # API listing edit refuses every action with no credential
+rspec ./spec/requests/api_release_release_spec.rb:48 # API release of a held release refuses a request with no credential
+rspec ./spec/requests/api_release_release_spec.rb:96 # API release of a held release does not let an app token reach update or destroy (still user-token only)
+rspec ./spec/requests/api_release_retry_compile_spec.rb:41 # API release retry_compile refuses a request with no credential
+rspec ./spec/requests/api_release_retry_compile_spec.rb:48 # API release retry_compile refuses a non-admin user
+rspec ./spec/requests/api_release_retry_compile_spec.rb:56 # API release retry_compile queues a failed AAB release for CI again and clears the old error
+rspec ./spec/requests/api_release_retry_compile_spec.rb:88 # API release retry_compile answers 404 for an unknown release id
+rspec ./spec/requests/api_release_retry_compile_spec.rb:68 # API release retry_compile when the release is already dispatched answers 422 naming the state and changes nothing
+rspec ./spec/requests/api_release_upload_callbacks_spec.rb:82 # Api::ReleaseUploadCallbacks without a valid token refuses a missing header, with one generic answer, and changes nothing
+rspec ./spec/requests/api_release_upload_callbacks_spec.rb:190 # Api::ReleaseUploadCallbacks stage 2 refuses a missing header and a token the verifier rejects, before it looks the upload up
+rspec ./spec/requests/api_tenant_spec.rb:37 # API and tenants on the default host lists every app, tenants' included (unchanged), and finds any app, scheme and channel
+rspec ./spec/requests/api_tenant_spec.rb:103 # API and tenants on a tenant host, as a member reads schemes and channels of its own app, and answers 404 for another tenant's
+rspec ./spec/requests/api_upload_sessions_new_app_spec.rb:59 # API upload session for a new app ignores the new-app options when a channel_key is sent
+rspec ./spec/requests/api_upload_sessions_new_app_spec.rb:88 # API upload session for a new app refuses a request with no credential
+rspec ./spec/requests/app_create_tenant_spec.rb:33 # Creating an app and tenants POST /api/apps refuses a non-member on a tenant host and creates nothing
+rspec ./spec/requests/app_create_tenant_spec.rb:53 # Creating an app and tenants POST /apps (console) refuses a non-member on a tenant host and creates nothing
+rspec ./spec/requests/auth_flow_spec.rb:15 # Unified login / sign-up registers an unknown email, signs it in and remembers it
+rspec ./spec/requests/auth_flow_spec.rb:24 # Unified login / sign-up logs an existing user in without creating anything
+rspec ./spec/requests/canonical_host_spec.rb:47 # Canonical host redirect also redirects the release page and the channel overview
+rspec ./spec/requests/canonical_host_spec.rb:115 # Canonical host redirect does not redirect when the owning tenant has no usable host (fails open)
+rspec ./spec/requests/console_apps_dashboard_tenant_spec.rb:130 # Console apps list and dashboard and tenants on a tenant host, as a member does not show the platform-wide figures (users, webhooks, jobs, disk) to a tenant's admin
+rspec ./spec/requests/console_debug_files_teardowns_tenant_spec.rb:54 # Console debug files and teardowns and tenants on the default host lists every app's debug files and every teardown (unchanged)
+rspec ./spec/requests/console_debug_files_teardowns_tenant_spec.rb:73 # Console debug files and teardowns and tenants on a tenant host, as an admin who is not a member refuses both lists (403)
+rspec ./spec/requests/console_debug_files_teardowns_tenant_spec.rb:81 # Console debug files and teardowns and tenants on a tenant host, as an admin who is not a member does not find the tenant's own file or teardown by id
+rspec ./spec/requests/console_debug_files_teardowns_tenant_spec.rb:96 # Console debug files and teardowns and tenants on a tenant host, as a member lists only the tenant's own apps' debug files
+rspec ./spec/requests/console_debug_files_teardowns_tenant_spec.rb:105 # Console debug files and teardowns and tenants on a tenant host, as a member lists only the tenant's own teardowns
+rspec ./spec/requests/console_debug_files_teardowns_tenant_spec.rb:114 # Console debug files and teardowns and tenants on a tenant host, as a member opens its own file and teardown, and answers 404 for another tenant's or the default catalo
+rspec ./spec/requests/console_debug_files_teardowns_tenant_spec.rb:130 # Console debug files and teardowns and tenants on a tenant host, as a member cannot delete another tenant's file or teardown
+rspec ./spec/requests/console_debug_files_teardowns_tenant_spec.rb:135 # Console debug files and teardowns and tenants on a tenant host, as a member cannot open the device list, or place a file, on another tenant's app
+rspec ./spec/requests/direct_upload_required_spec.rb:75 # Direct upload required POST /api/apps/upload tells nothing to a caller with no credential
+rspec ./spec/requests/listing_text_spec.rb:169 # Listing text editor as the app owner PATCH says nothing was changed when nothing differs, and creates no draft
+rspec ./spec/requests/listing_text_spec.rb:285 # Listing text editor as the app owner POST commit (publish) refuses a draft that no longer passes the app rules, and keeps both draft and listing
+rspec ./spec/requests/manual_upload_only_spec.rb:265 # Manual upload only (f.viii) lets the stage-2 finisher create no release, mark no intake and fetch nothing from a URL
+rspec ./spec/requests/release_upload_sessions_spec.rb:416 # Direct upload sessions multipart uploads API door signs a batch of parts
+rspec ./spec/requests/release_upload_sessions_spec.rb:426 # Direct upload sessions multipart uploads API door accepts a comma list of part numbers
+rspec ./spec/requests/release_upload_sessions_spec.rb:432 # Direct upload sessions multipart uploads API door answers 422 for part numbers outside the plan, and for none at all
+rspec ./spec/requests/release_upload_sessions_spec.rb:505 # Direct upload sessions multipart uploads API door answers 409 once the upload is no longer open
+rspec ./spec/requests/release_upload_sessions_spec.rb:513 # Direct upload sessions multipart uploads API door answers 404 for both while direct upload is switched off
+rspec ./spec/requests/roles_and_admin_entry_spec.rb:31 # Registration roles and admin entry creates the admin account from the /admin entry and lands in the admin area
+rspec ./spec/requests/roles_and_admin_entry_spec.rb:59 # Registration roles and admin entry shows the login form at /admin when signed out, marked as the admin entry
+rspec ./spec/services/catalog_index/serializer_spec.rb:568 # CatalogIndex::Serializer.call lists every release across the app's channels, newest first, not just the latest
+rspec ./spec/services/catalog_index/serializer_spec.rb:597 # CatalogIndex::Serializer.call includes only current-or-upcoming sponsored slots, soonest first (Task 31a)
+rspec ./spec/services/catalog_index/serializer_spec.rb:314 # CatalogIndex::Serializer.call listing graphics (Task 27d-e1) produces a listing that validates against docs/catalog_index_v2.schema.json when a schema gem is loaded
+rspec ./spec/services/catalog_index/serializer_spec.rb:379 # CatalogIndex::Serializer.call listing text (Task 27e-a, 27e-b) produces an entry that validates against docs/catalog_index_v2.schema.json when a schema gem is loaded
+rspec ./spec/services/catalog_index/serializer_spec.rb:492 # CatalogIndex::Serializer.call suggested_version_code (Task 27f-c) produces an entry that validates against docs/catalog_index_v2.schema.json when a schema gem is loaded
+rspec ./spec/services/google_adc/client_spec.rb:44 # GoogleAdc::Client access token is exchanged once and sent as a bearer token on later calls
+rspec ./spec/services/google_adc/client_spec.rb:59 # GoogleAdc::Client access token is refreshed once it is within a minute of expiry
+rspec ./spec/services/google_adc/client_spec.rb:94 # GoogleAdc::Client#verified_account_name returns the single verified account
+rspec ./spec/services/google_adc/client_spec.rb:106 # GoogleAdc::Client#verified_account_name refuses more than one account
+rspec ./spec/services/google_adc/client_spec.rb:113 # GoogleAdc::Client#verified_account_name refuses an account that is not verified
+rspec ./spec/services/google_adc/client_spec.rb:155 # GoogleAdc::Client writes sends the package name as the androidPackageId query
+rspec ./spec/services/google_adc/client_spec.rb:175 # GoogleAdc::Client writes sends the fingerprint as lower-case hex without colons
+rspec ./spec/services/google_adc/client_spec.rb:197 # GoogleAdc::Client paging follows nextPageToken until it is empty
+rspec ./spec/services/google_adc/registrar_spec.rb:58 # GoogleAdc::Registrar with a package name Google does not know does nothing the second time once it is registered
+rspec ./spec/services/listing_edit_service_spec.rb:63 # ListingEditService#stage records the editor on the draft it creates
+rspec ./spec/services/release_upload_app_resolver_spec.rb:67 # ReleaseUploadAppResolver reuses an existing app the uploader may change and its Android channel
+rspec ./spec/services/release_upload_finisher_spec.rb:221 # ReleaseUploadFinisher a bundle report that checks out when the signing certificate is expected rejects another certificate: the upload fails and the release stays held with the rea
+rspec ./spec/services/release_upload_finisher_spec.rb:313 # ReleaseUploadFinisher a pre-existing bandwidth-sharing SDK accepts the upload as usual when CI reported false (or nothing)
+rspec ./spec/services/release_upload_finisher_spec.rb:378 # ReleaseUploadFinisher organisation signing of an APK when the signing certificate is expected rejects another certificate: the upload fails and the release stays held
+rspec ./spec/services/release_upload_finisher_spec.rb:506 # ReleaseUploadFinisher the upload source decides whether the release is held when uploaded via manual dashboard (source: web) leaves the release held and does not enqueue deploy ema
+rspec ./spec/services/release_upload_finisher_spec.rb:519 # ReleaseUploadFinisher the upload source decides whether the release is held when uploaded via API (source: api) makes the release available and enqueues deploy email
+rspec ./spec/services/release_upload_session_spec.rb:115 # ReleaseUploadSession#call for a multipart upload keeps the row open for the longer multipart window
+
+##[error]Process completed with exit code 1.

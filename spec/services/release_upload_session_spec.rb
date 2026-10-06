@@ -115,7 +115,7 @@ RSpec.describe ReleaseUploadSession do
     it 'keeps the row open for the longer multipart window' do
       upload = open_session(size: big).upload.reload
 
-      expect(upload.expires_at).to be_within(1.minute).of(ReleaseUploadParts::WINDOW.from_now)
+      expect(upload.expires_at).to be_within(1.minute).of(ReleaseUploadParts::WINDOW.seconds.from_now)
       expect(result_expires(upload).to_i).to be > ReleaseUpload::UPLOAD_WINDOW.to_i
     end
 

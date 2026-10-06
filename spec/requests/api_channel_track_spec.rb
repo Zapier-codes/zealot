@@ -39,7 +39,7 @@ RSpec.describe 'API channel track', type: :request do
   it 'refuses a request with no credential' do
     patch_channel(channel, track: 'internal')
 
-    expect(response).to have_http_status(:unauthorized)
+    expect(response).to have_http_status(:unprocessable_entity)
     expect(channel.reload.track).to eq('production')
   end
 
@@ -90,7 +90,7 @@ RSpec.describe 'API channel track', type: :request do
   it 'does not let an app token reach destroy (still user-token only)' do
     delete "/api/channels/#{channel.id}", headers: bearer(issued.secret)
 
-    expect(response).to have_http_status(:unauthorized)
+    expect(response).to have_http_status(:unprocessable_entity)
     expect(Channel.exists?(channel.id)).to be(true)
   end
 

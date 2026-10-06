@@ -25,8 +25,9 @@ RSpec.describe 'API release retry_compile', type: :request do
                  password_confirmation: password, confirmed_at: Time.current).tap { |u| u.update!(role: role) }
   end
 
+  # This door is the legacy user-token one (Api::BaseController#validate_user_token): it reads params[:token].
   def as(user)
-    { 'Authorization' => "Bearer #{user.token}" }
+    { token: user.token }
   end
 
   let!(:admin) { make_user('admin@example.com', :admin) }
@@ -46,7 +47,7 @@ RSpec.describe 'API release retry_compile', type: :request do
   end
 
   it 'refuses a non-admin user' do
-    post path, headers: as(developer)
+    post path, params: as(developer)
 
     expect(response).to have_http_status(:forbidden)
     expect(release.reload.ci_compile_state).to eq('failed')
@@ -54,7 +55,7 @@ RSpec.describe 'API release retry_compile', type: :request do
   end
 
   it 'queues a failed AAB release for CI again and clears the old error' do
-    post path, headers: as(admin)
+    post path, params: as(admin)
 
     expect(response).to have_http_status(:accepted)
     expect(response.parsed_body).to include('id' => release.id, 'ci_compile_state' => 'queued')
@@ -66,7 +67,7 @@ RSpec.describe 'API release retry_compile', type: :request do
     let(:state) { 'dispatched' }
 
     it 'answers 422 naming the state and changes nothing' do
-      post path, headers: as(admin)
+      post path, params: as(admin)
 
       expect(response).to have_http_status(:unprocessable_entity)
       expect(response.parsed_body['ci_compile_state']).to eq('dispatched')
@@ -78,7 +79,7 @@ RSpec.describe 'API release retry_compile', type: :request do
     before { stub_const('ENV', ENV.to_hash.merge('CI_COMPILE_ENABLED' => 'false')) }
 
     it 'answers 422 and does not queue' do
-      post path, headers: as(admin)
+      post path, params: as(admin)
 
       expect(response).to have_http_status(:unprocessable_entity)
       expect(release.reload.ci_compile_state).to eq('failed')
@@ -86,7 +87,7 @@ RSpec.describe 'API release retry_compile', type: :request do
   end
 
   it 'answers 404 for an unknown release id' do
-    post '/api/releases/0/retry_compile', headers: as(admin)
+    post '/api/releases/0/retry_compile', params: as(admin)
 
     expect(response).to have_http_status(:not_found)
   end

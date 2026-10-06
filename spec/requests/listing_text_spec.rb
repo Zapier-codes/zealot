@@ -289,7 +289,7 @@ RSpec.describe 'Listing text editor', type: :request do
         publish
 
         expect(response).to redirect_to(app_listing_text_path(app))
-        expect(flash[:alert]).to start_with(I18n.t('apps.listing_texts.commit.refused', reasons: '').chomp('.'))
+        expect(flash[:alert]).to start_with(I18n.t('apps.listing_texts.commit.refused', reasons: '').chomp('.').chomp('。'))
         expect(app.reload.description).to eq('Live long')
         expect(edit.reload).to be_status_draft
       end

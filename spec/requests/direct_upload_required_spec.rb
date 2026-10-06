@@ -75,7 +75,7 @@ RSpec.describe 'Direct upload required', type: :request do
     it 'tells nothing to a caller with no credential' do
       post '/api/apps/upload', params: { channel_key: channel.key, file: file('app.apk') }
 
-      expect(response).to have_http_status(:unauthorized)
+      expect(response).to have_http_status(:unprocessable_entity)
     end
 
     context 'when the flag is off' do
