@@ -269,6 +269,7 @@ Same route family: `POST /api/play_credential` (Play service account), `bin/boot
   ```
   then upload the file. The stage-1/2 workflow is `read-upload.yml`; its report to Zealot is the callback
   (`/stage1`, `/stage2`), verified by GitHub OIDC (audience = `ZEALOT_URL`).
+- **A compile run failed in the storage repo (name, step and fix):** section 15 reads one from start to finish, with the commands that fetch the latest run's id and its failing step.
 - **Render deploy failed or the app will not boot:** save the deploy log from the Render dashboard (or with
   D-Store's `scripts/fetch-ci-log.sh`) to `~/storage/downloads` and upload it. The 2026-10-03 boot crash
   (`Unknown validator: 'MessageValidator'`) was found this way.
@@ -390,7 +391,7 @@ rules out a `rails console` from the API. The only other way to run `rails runne
 - Render web Shell: works, but it is the browser path the operator wants to avoid.
 
 **What replaced it: `POST /api/releases/:id/retry_compile`** (Task 40q). Platform admin only, user token only (a `zpa_` per-app token
-is refused). It calls `CiCompileDispatchJob.enqueue_for(release)` and nothing else, so the 40b rules still decide:
+is refused). **The user token goes in the `token` parameter, NOT in an `Authorization: Bearer` header** (`Api::BaseController#validate_user_token` reads `params[:token]` only; the Bearer form answered "未授权用户 token" on 2026-10-06 and the example here used to show it). It calls `CiCompileDispatchJob.enqueue_for(release)` and nothing else, so the 40b rules still decide:
 
 | Answer | Meaning |
 |---|---|
@@ -401,7 +402,7 @@ is refused). It calls `CiCompileDispatchJob.enqueue_for(release)` and nothing el
 ```
 . ~/.zealot.env
 Z=https://zealot-deploy-latest.onrender.com
-curl -sS -X POST -H "Authorization: Bearer $(zealot-token)" "$Z/api/releases/3/retry_compile" | jq .
+curl -sS -X POST "$Z/api/releases/3/retry_compile" -d token="$(zealot-token)" | jq .
 # then read what CI did (outcome is NOT readable from the API yet, see below):
 gh run list -R Zapier-codes/zealot-storage -L 3
 ```
@@ -506,3 +507,61 @@ the old `read-upload.yml` is still in the storage repo.
 resumed and finalized until their window closes; new ones are single PUTs.
 
 **Not verified:** everything against a real R2, browser or Render. The loop was run against a local stand-in only.
+
+## 15. A compile run failed: read it, fix it, put the fix in the storage repo (Task 40t, 2026-10-06)
+
+**Found.** Release 3 (Storeapp, app 2) was re-sent with `retry_compile` and run `37427410330` of `Compile release 3` failed after 36 s.
+The log (saved with section 8's command) shows every step before the failure passing: inputs, bundletool, the download of
+`app-default-release.aab` (30 MB) from the storage release `a2-r3`, the signing key, and `bundletool build-apks` producing the signed
+universal APK. It failed at **`Read the signing certificate`** with "could not read the signing certificate's SHA-256".
+
+**Why.** The step prefers `apksigner` and falls back to reading the certificate from the keystore with `keytool -list -v | sed`. The
+fallback ran (the `::notice::apksigner not found or unreadable` line is in the log) and found nothing: `keytool` indents its fingerprint
+line with a **TAB then a space** (`\t SHA256: ...`) and the `sed` expected only spaces. Reproduced with a real `keytool` (JDK 17).
+Why `apksigner` itself gave nothing on the runner is **not known**: its error output was thrown away.
+
+**The fix** (`docs/ci/compile-aab.yml` and the same step in `docs/ci/read-upload.yml`, which would have failed the same way at stage 2):
+the fallback now hashes the exported certificate (`keytool -exportcert | sha256sum`), so no text is parsed; and `apksigner`'s own output is
+kept, so the next failure says why (`::notice::apksigner printed no certificate: ...`). The step script, extracted from the workflow, was
+run against a real keystore: a match with no `apksigner` (the failing case), the expected value written with colons and capitals, a
+mismatch (fails with "nothing was uploaded"), and an `apksigner` that prints only an error (reason logged, fallback still passes).
+
+**Get a failed run (the same four commands every time):**
+
+```
+RID=$(gh run list -R Zapier-codes/zealot-storage -L 1 --json databaseId --jq '.[0].databaseId')
+gh run list -R Zapier-codes/zealot-storage -L 3 --json databaseId,workflowName,conclusion,displayTitle
+gh run view $RID -R Zapier-codes/zealot-storage --log > ~/storage/downloads/run-$RID.log
+gh run view $RID -R Zapier-codes/zealot-storage --log-failed | tail -40
+```
+
+**Put the fix in the storage repo.** Run this right after `git am` (so the fix is `HEAD`). It applies the commit's own change to each
+storage copy as a patch instead of overwriting the file, because the storage repo's `read-upload.yml` already differs from this repo's
+(APK org-signing, 40o); a `patch` that does not apply cleanly stops that file and changes nothing.
+
+```
+cd ~/zealot
+for F in compile-aab read-upload; do
+  git diff HEAD~1 HEAD -- docs/ci/$F.yml > /tmp/$F.diff
+  gh api repos/Zapier-codes/zealot-storage/contents/.github/workflows/$F.yml --jq .content | base64 -d > /tmp/$F.storage.yml
+  patch /tmp/$F.storage.yml < /tmp/$F.diff || { echo "$F: did not apply, stop and report"; continue; }
+  SHA=$(gh api repos/Zapier-codes/zealot-storage/contents/.github/workflows/$F.yml --jq .sha)
+  gh api -X PUT repos/Zapier-codes/zealot-storage/contents/.github/workflows/$F.yml \
+    -f message="task 40t: read the signing certificate by hashing the exported cert" \
+    -f content="$(base64 -w0 /tmp/$F.storage.yml)" -f sha="$SHA" --jq .commit.sha
+done
+```
+
+Then re-send the release (it is `failed`, so it is sendable) and read the new run:
+
+```
+. ~/.zealot.env; Z=https://zealot-deploy-latest.onrender.com
+curl -sS -X POST "$Z/api/releases/3/retry_compile" -d token="$(zealot-token)" | jq .
+sleep 45; gh run list -R Zapier-codes/zealot-storage -L 2
+```
+
+**Pass:** the run is green, the release page shows the compile `done`, and `zealot-storage` release `a2-r3` gains
+`pipeline__universal.apk` and `pipeline__release.apks.br` next to the AAB (those names are what Task 41 replaces).
+If it fails again, run the four commands above and upload the log.
+
+**Not verified:** the patched workflows on a real runner. The step script was run locally; the YAML parses and every `run:` block passes `bash -n`.

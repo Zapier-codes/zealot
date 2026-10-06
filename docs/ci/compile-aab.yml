@@ -191,15 +191,17 @@ jobs:
           # Preferred: the certificate actually inside the APK (apksigner ships with the runner's Android SDK).
           apksigner="$(ls -1 "${ANDROID_HOME:-/nonexistent}"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1 || true)"
           if [[ -n $apksigner ]]; then
-            cert="$("$apksigner" verify --print-certs "$WORK/universal.apk" 2>/dev/null \
-              | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1 | tr 'A-F' 'a-f')"
+            apk_out="$("$apksigner" verify --print-certs "$WORK/universal.apk" 2>&1 || true)"
+            cert="$(printf '%s\n' "$apk_out" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1 | tr 'A-F' 'a-f')"
+            [[ -n $cert ]] || echo "::notice::apksigner printed no certificate: $(printf '%s' "$apk_out" | head -3 | tr '\n' ' ')"
           fi
           # Fallback: the certificate of the key that did the signing (same key, read from the keystore).
           if [[ -z $cert ]]; then
             echo "::notice::apksigner not found or unreadable; reading the certificate from the keystore instead"
-            cert="$(keytool -list -v -keystore "$WORK/keys/release.jks" -alias "$KEY_ALIAS" \
-              -storepass:file "$WORK/keys/ks.pass" 2>/dev/null \
-              | sed -n 's/^ *SHA256: //p' | head -1 | tr -d ':' | tr 'A-F' 'a-f')"
+            # Hash the exported certificate itself: no parsing of keytool's text (its fingerprint line starts with a
+            # TAB, which broke a `sed` that expected spaces, and the wording changes between JDK releases and locales).
+            cert="$(keytool -exportcert -keystore "$WORK/keys/release.jks" -alias "$KEY_ALIAS" \
+              -storepass:file "$WORK/keys/ks.pass" | sha256sum | cut -d' ' -f1)"
           fi
           [[ $cert =~ ^[0-9a-f]{64}$ ]] || { echo "::error::could not read the signing certificate's SHA-256"; exit 1; }
 
