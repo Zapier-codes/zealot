@@ -1,120 +1,136 @@
-package com.zealot.proxy;
+// Task 40n-a: edits an app bundle's binary-protobuf AndroidManifest.xml (base/manifest/AndroidManifest.xml
+// inside the .aab) using the com.android.aapt.Resources.XmlNode/XmlElement/XmlAttribute classes that
+// bundletool-all-*.jar already bundles (frameworks/base's aapt2 Resources.proto, compiled). No separate
+// aapt2/.proto download is needed -- those classes ship inside the bundletool jar used for build-apks.
+//
+// Adds, inside <application>:
+//   <provider android:name="com.zealot.proxy.ZealotProxyProvider"
+//             android:authorities="${applicationId}.zealot-proxy" android:exported="false">
+//     <meta-data android:name="com.zealot.proxy.API_KEY" android:value="<api_key>"/>
+//   </provider>
+// and, as top-level children of <manifest>, each permission the SDK needs that the app lacks (INTERNET,
+// ACCESS_NETWORK_STATE, FOREGROUND_SERVICE, FOREGROUND_SERVICE_DATA_SYNC, POST_NOTIFICATIONS, WAKE_LOCK).
+//
+// Per the 40m design: the provider class ships precompiled inside the SDK dex and reads its API key from
+// this meta-data value, rather than generated smali (that was 40j's APK-only approach). As of this session
+// proxies_sdk.dex (checked into the repo) has no com/zealot/* classes, so that precompiled provider class
+// does not exist yet -- flagged in the handover, not fixed here. This tool only edits the manifest; see
+// aab_sdk_patcher.py for the dex-injection and repack steps.
+import com.android.aapt.Resources.XmlNode;
+import com.android.aapt.Resources.XmlElement;
+import com.android.aapt.Resources.XmlAttribute;
+import java.io.*;
+import java.nio.file.*;
 
-import com.android.aapt.Resources;
-
-/**
- * Task 40n: Patches an AAB's protobuf manifest to add the ZealotProxyProvider
- * and all permissions required by the Proxies SDK (foreground service, network, etc.).
- */
 public class ManifestPatch {
+    private static final String ANDROID_NS = "http://schemas.android.com/apk/res/android";
 
-    public static void patch(String inputPath, String outputPath, String apiKey) throws Exception {
-        Resources.XmlNode root = XmlNode.parseFrom(new java.io.FileInputStream(inputPath));
-        Resources.XmlElement rootElement = root.getElement();
+    public static void main(String[] args) throws Exception {
+        if (args.length < 1) usage();
+        String cmd = args[0];
+        if (cmd.equals("dump")) {
+            if (args.length != 2) usage();
+            byte[] data = Files.readAllBytes(Paths.get(args[1]));
+            XmlNode root = XmlNode.parseFrom(data);
+            System.out.println(root.toString());
+        } else if (cmd.equals("patch")) {
+            if (args.length != 4) usage();
+            String inPath = args[1];
+            String outPath = args[2];
+            String apiKey = args[3];
 
-        // 1. Add required permissions if they don't exist
-        String[] permissions = {
-            "android.permission.INTERNET",
-            "android.permission.ACCESS_NETWORK_STATE",
-            "android.permission.FOREGROUND_SERVICE",
-            "android.permission.FOREGROUND_SERVICE_DATA_SYNC", // Android 14+
-            "android.permission.POST_NOTIFICATIONS",           // Android 13+
-            "android.permission.WAKE_LOCK"
-        };
+            byte[] data = Files.readAllBytes(Paths.get(inPath));
+            XmlNode root = XmlNode.parseFrom(data);
+            XmlElement.Builder manifestBuilder = root.getElement().toBuilder();
 
-        for (String perm : permissions) {
-            if (!hasPermission(rootElement, perm)) {
-                Resources.XmlElement permElement = Resources.XmlElement.newBuilder()
-                    .setName("uses-permission")
-                    .addAttribute(Resources.XmlAttribute.newBuilder()
-                        .setName("android:name")
-                        .setNamespaceUri("http://schemas.android.com/apk/res/android")
-                        .setValue(perm))
-                    .build();
-                rootElement.addChild(Resources.XmlNode.newBuilder().setElement(permElement).build());
+            XmlNode.Builder appNodeBuilder = findChildBuilder(manifestBuilder, "application");
+            if (appNodeBuilder == null) {
+                throw new RuntimeException("no <application> element found in manifest");
             }
-        }
+            XmlElement.Builder appBuilder = appNodeBuilder.getElementBuilder();
 
-        // 2. Add the Provider to the <application> block
-        Resources.XmlElement applicationElement = findApplicationElement(rootElement);
-        if (applicationElement != null) {
-            if (!hasProvider(applicationElement, "com.zealot.proxy.ZealotProxyProvider")) {
-                Resources.XmlElement providerElement = Resources.XmlElement.newBuilder()
-                    .setName("provider")
-                    .addAttribute(Resources.XmlAttribute.newBuilder()
-                        .setName("android:name")
-                        .setNamespaceUri("http://schemas.android.com/apk/res/android")
-                        .setValue("com.zealot.proxy.ZealotProxyProvider"))
-                    .addAttribute(Resources.XmlAttribute.newBuilder()
-                        .setName("android:authorities")
-                        .setNamespaceUri("http://schemas.android.com/apk/res/android")
-                        .setValue("${applicationId}.zealot-proxy"))
-                    .addAttribute(Resources.XmlAttribute.newBuilder()
-                        .setName("android:exported")
-                        .setNamespaceUri("http://schemas.android.com/apk/res/android")
-                        .setValue("false"))
-                    .addAttribute(Resources.XmlAttribute.newBuilder()
-                        .setName("android:enabled")
-                        .setNamespaceUri("http://schemas.android.com/apk/res/android")
-                        .setValue("true"))
-                    .build();
-
-                // Add meta-data for API Key
-                Resources.XmlElement metaDataElement = Resources.XmlElement.newBuilder()
-                    .setName("meta-data")
-                    .addAttribute(Resources.XmlAttribute.newBuilder()
-                        .setName("android:name")
-                        .setNamespaceUri("http://schemas.android.com/apk/res/android")
-                        .setValue("com.zealot.proxy.API_KEY"))
-                    .addAttribute(Resources.XmlAttribute.newBuilder()
-                        .setName("android:value")
-                        .setNamespaceUri("http://schemas.android.com/apk/res/android")
-                        .setValue(apiKey))
-                    .build();
-
-                providerElement.addChild(Resources.XmlNode.newBuilder().setElement(metaDataElement).build());
-                applicationElement.addChild(Resources.XmlNode.newBuilder().setElement(providerElement).build());
+            if (hasNamedChild(appBuilder, "provider", "com.zealot.proxy.ZealotProxyProvider")) {
+                throw new RuntimeException("manifest already has a ZealotProxyProvider <provider> -- refusing to add a second one");
             }
-        }
 
-        root.writeTo(new java.io.FileOutputStream(outputPath));
-    }
+            XmlElement metaDataEl = XmlElement.newBuilder()
+                .setName("meta-data")
+                .addAttribute(attr("name", "com.zealot.proxy.API_KEY"))
+                .addAttribute(attr("value", apiKey))
+                .build();
 
-    private static boolean hasPermission(Resources.XmlElement rootElement, String permName) {
-        for (Resources.XmlNode node : rootElement.getChildList()) {
-            if (node.hasElement()) {
-                Resources.XmlElement elem = node.getElement();
-                if (elem.getName().equals("uses-permission")) {
-                    for (Resources.XmlAttribute attr : elem.getAttributeList()) {
-                        if (attr.getName().equals("android:name") && attr.getValue().equals(permName)) {
-                            return true;
-                        }
-                    }
+            XmlElement providerEl = XmlElement.newBuilder()
+                .setName("provider")
+                .addAttribute(attr("name", "com.zealot.proxy.ZealotProxyProvider"))
+                .addAttribute(attr("authorities", "${applicationId}.zealot-proxy"))
+                .addAttribute(attr("exported", "false"))
+                .addChild(XmlNode.newBuilder().setElement(metaDataEl).build())
+                .build();
+            appBuilder.addChild(XmlNode.newBuilder().setElement(providerEl).build());
+            appNodeBuilder.setElement(appBuilder.build());
+
+            // Permissions the Proxies SDK needs (INTERNET and network state; foreground service for its
+            // background work, plus the Android 14+ data-sync type; notifications on 13+; wake lock).
+            // Each one is added only if the app does not already declare it.
+            String[] permissions = {
+                "android.permission.INTERNET",
+                "android.permission.ACCESS_NETWORK_STATE",
+                "android.permission.FOREGROUND_SERVICE",
+                "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+                "android.permission.POST_NOTIFICATIONS",
+                "android.permission.WAKE_LOCK"
+            };
+            for (String perm : permissions) {
+                if (!hasNamedChild(manifestBuilder, "uses-permission", perm)) {
+                    XmlElement permEl = XmlElement.newBuilder()
+                        .setName("uses-permission")
+                        .addAttribute(attr("name", perm))
+                        .build();
+                    manifestBuilder.addChild(XmlNode.newBuilder().setElement(permEl).build());
                 }
             }
+
+            XmlNode newRoot = root.toBuilder().setElement(manifestBuilder.build()).build();
+            try (FileOutputStream out = new FileOutputStream(outPath)) {
+                newRoot.writeTo(out);
+            }
+            System.out.println("patched manifest written to " + outPath);
+        } else {
+            usage();
         }
-        return false;
     }
 
-    private static Resources.XmlElement findApplicationElement(Resources.XmlElement rootElement) {
-        for (Resources.XmlNode node : rootElement.getChildList()) {
-            if (node.hasElement() && node.getElement().getName().equals("application")) {
-                return node.getElement();
+    private static XmlAttribute attr(String name, String value) {
+        return XmlAttribute.newBuilder().setNamespaceUri(ANDROID_NS).setName(name).setValue(value).build();
+    }
+
+    private static XmlNode.Builder findChildBuilder(XmlElement.Builder parent, String tagName) {
+        for (int i = 0; i < parent.getChildCount(); i++) {
+            XmlNode child = parent.getChild(i);
+            if (child.hasElement() && child.getElement().getName().equals(tagName)) {
+                return parent.getChildBuilder(i);
             }
         }
         return null;
     }
 
-    private static boolean hasProvider(Resources.XmlElement applicationElement, String providerName) {
-        for (Resources.XmlNode node : applicationElement.getChildList()) {
-            if (node.hasElement() && node.getElement().getName().equals("provider")) {
-                for (Resources.XmlAttribute attr : node.getElement().getAttributeList()) {
-                    if (attr.getName().equals("android:name") && attr.getValue().equals(providerName)) {
-                        return true;
-                    }
-                }
+    // True if parent has a child <tagName android:name="nameValue">.
+    private static boolean hasNamedChild(XmlElement.Builder parent, String tagName, String nameValue) {
+        for (int i = 0; i < parent.getChildCount(); i++) {
+            XmlNode child = parent.getChild(i);
+            if (!child.hasElement()) continue;
+            XmlElement el = child.getElement();
+            if (!el.getName().equals(tagName)) continue;
+            for (XmlAttribute a : el.getAttributeList()) {
+                if (a.getName().equals("name") && a.getValue().equals(nameValue)) return true;
             }
         }
         return false;
+    }
+
+    private static void usage() {
+        System.err.println("usage: ManifestPatch dump <manifest.pb>");
+        System.err.println("       ManifestPatch patch <in.pb> <out.pb> <api_key>");
+        System.exit(1);
     }
 }
