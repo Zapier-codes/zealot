@@ -1450,7 +1450,18 @@ The earlier session's one patch exceeded the six-file slice guide. Cut it:
 
 **Not verified.** Nothing was run. The workflow has not been tested.
 
-| 40n-e | **Storeapp tenant build produces an unsigned bundle.** `build-tenant-apk.yml` runs `bundleTenantRelease`, holds no keystore secret and hands the bundle to 40n-d's workflow instead of cutting a GitHub Release itself (its own patch in the Storeapp repo; `TENANT_KEYSTORE_*` secrets can then be deleted) | 40n-d | Storeapp `build-tenant-apk.yml`, `docs/RELEASING.md`, `HANDOVER.md` | a harvest build ends with the signed APK in 40n-d's storage and no tenant key anywhere | high; cross-repo |
+| 40n-e ✅ | **Storeapp tenant build produces an unsigned bundle.** `build-tenant-apk.yml` runs `bundleTenantRelease`, holds no keystore secret and hands the bundle to 40n-d's workflow instead of cutting a GitHub Release itself (its own patch in the Storeapp repo; `TENANT_KEYSTORE_*` secrets can then be deleted) | 40n-d | Storeapp `build-tenant-apk.yml`, `docs/RELEASING.md`, `HANDOVER.md` | a harvest build ends with the signed APK in 40n-d's storage and no tenant key anywhere | high; cross-repo |
+
+#### 40n-e result (built this session; written, NOT run)
+
+**What it is.** The Storeapp tenant build workflow (`.github/workflows/build-tenant-apk.yml` in the Storeapp repo) was rewritten. It no longer signs the APK with a tenant keystore. Instead, it runs `:app:bundleTenantRelease` to produce an unsigned `.aab`, calculates its SHA-256, uploads it as an artifact, and sends a `repository_dispatch` to `Zapier-codes/zealot-storage` to trigger the `harvest-tenant-apk` workflow (40n-d).
+
+**Files (1, in Storeapp repo).** `.github/workflows/build-tenant-apk.yml`.
+
+**Operator setup.** Add a `ZEALOT_STORAGE_PAT` secret to the Storeapp repo (a fine-grained PAT with `Actions: Write` on `Zapier-codes/zealot-storage`). The old `TENANT_KEYSTORE_*` secrets in Storeapp can now be deleted.
+
+**Not verified.** Nothing was run.
+
 | 40n-f | **Delivery: the file behind the email button.** A small endpoint that, when clicked, hands out a short-lived download link for the signed APK (so the email never carries a long-lived link and the user needs no GitHub account); retention period for the file to be agreed | 40n-d | one endpoint (Zealot or distr, to be decided), spec | the button works on the day of the email and again later by asking for a fresh link; an expired file says how to request a rebuild | medium |
 | 40n-g | **distr side (not in this repo).** The harvest form, the two emails (request received, build complete) through Novu and Supabase, and the build-complete callback contract (build id, status, download reference) replacing `release_id` and `asset_id` | 40n-d | distr repo | the tenant gets two emails and a working download; distr stores metadata only | high; separate repo, its own handover |
 | 40n-h ✅ | **Owed fix to two operator scripts.** `enable-pipeline.sh` and `add-r2-adapter-vars.sh` assumed a variable change starts a deploy and read the old `live` deploy as a pass. They must wait for a deploy newer than the change (and start one through the API if none appears) | none | `docs/ci/enable-pipeline.sh`, `docs/ci/add-r2-adapter-vars.sh`, runbook | after a flag change the script waits for a new deploy to be `live` | **BUILT 2026-10-05, written; tested against a stub only, see "40n-h result"** | low |
