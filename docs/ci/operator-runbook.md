@@ -271,7 +271,18 @@ Same route family: `POST /api/play_credential` (Play service account), `bin/boot
   (`/stage1`, `/stage2`), verified by GitHub OIDC (audience = `ZEALOT_URL`).
 - **A compile run failed in the storage repo (name, step and fix):** section 15 reads one from start to finish, with the commands that fetch the latest run's id and its failing step.
 - **Render deploy failed or the app will not boot:** save the deploy log from the Render dashboard (or with
-  D-Store's `scripts/fetch-ci-log.sh`) to `~/storage/downloads` and upload it. The 2026-10-03 boot crash
+  D-Store's `scripts/fetch-ci-log.sh`) to `~/storage/downloads` and upload it.
+  Exact command (Termux; it saves one `render-deploy-<id>.log` per failed deploy, secrets stripped):
+  ```
+  export RENDER_API_KEY="${RENDER_API_KEY:-$RENDER_TOKEN}"
+  for d in $(curl -s -m 30 -H "Authorization: Bearer $RENDER_API_KEY" "https://api.render.com/v1/services/srv-dalsvf942hec73dk2vg0/deploys?limit=5" | jq -r '.[].deploy | select(.status|test("failed")) | .id'); do
+    bash ~/D-Store/scripts/fetch-ci-log.sh render srv-dalsvf942hec73dk2vg0 "$d"; done
+  ```
+  The boot error is the line starting `! Unable to load application`; the `from /app/app/...` lines under it name the file.
+- **Boot crash `Before process_action callback :verify_authenticity_token has not been defined`:** a controller under
+  `ApplicationController` has its own `skip_before_action :verify_authenticity_token`. `ApplicationController` already skips
+  it, so delete the line (or write `raise: false`). Found on 2026-10-06 in `Api::TenantBuildsController` (Task 40n-f); three
+  deploys failed on it. The 2026-10-03 boot crash
   (`Unknown validator: 'MessageValidator'`) was found this way.
 - **An upload ends `uploaded` with no release:** `RELEASE_UPLOAD_SESSIONS_ENABLED` is on but stage 1/2
   never reported; check the run in the storage repo, then the 40g-2 sweeper fails it after 90 minutes.
