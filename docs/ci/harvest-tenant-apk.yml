@@ -1,16 +1,17 @@
-# Task 40n-d: the tenant harvest workflow. Storeapp's tenant build sends its unsigned bundle to this workflow,
-# which patches it with the SDK, signs it with the organisation key, stores it privately, and notifies distr.
+# Task 40n-d (+40n-d3: waits for the Storeapp run to finish): the tenant harvest workflow. Storeapp's tenant build sends its unsigned bundle to this workflow,
+# which patches it with the SDK, signs it with the organisation key, stores it in the storage repo, and notifies distr.
 #
 # Copy this file into the STORAGE repo as `.github/workflows/harvest-tenant-apk.yml`.
 #
 # What it does:
 #   1. Receives a repository_dispatch from Storeapp with build_id, storeapp_run_id, and bundle_sha256.
-#   2. Re-checks the Storeapp run itself (repo, workflow path, main, success), then downloads the unsigned
+#   2. Waits for the Storeapp run to finish (it dispatches from its own last step), re-checks it itself (repo,
+#      workflow path, main, success), then downloads the unsigned
 #      bundle artifact and verifies its hash.
 #   3. Patches a copy of the bundle with the Proxies SDK (lib/aab_sdk_patcher.py).
 #   4. Builds the universal APK from the patched copy, signed with the organisation key.
 #   5. Verifies the signing certificate and that the SDK is present in the APK.
-#   6. Uploads the signed APK to a private GitHub Release in the storage repo.
+#   6. Uploads the signed APK to a GitHub Release (the storage repo may be public or private; either works) in the storage repo.
 #   7. Calls distr back with the build_id and status (completed/failed).
 #
 # Storage-repo SECRETS:
@@ -77,13 +78,28 @@ jobs:
           echo "Verifying Storeapp run..."
           # The payload is never trusted: re-read the run itself and require every fact the operator approved
           # (2026-10-05): it is Storeapp's, it ran build-tenant-apk.yml, it succeeded, and it ran on main.
-          run_json="$(gh api "repos/Zapier-codes/Storeapp/actions/runs/${STOREAPP_RUN_ID}")" \
-            || fail "could not read Storeapp run ${STOREAPP_RUN_ID}"
+          #
+          # Storeapp sends this dispatch from the LAST STEP of its own run, so at the moment this workflow starts
+          # that run is still "in_progress". Wait for it to finish (up to ~10 minutes) instead of refusing at once.
+          # The identity facts (repo, workflow path, branch) never change, so they are checked on every read and
+          # a wrong run fails immediately without waiting.
           field() { jq -r "$1 // \"\"" <<<"$run_json"; }
-          [[ $(field .repository.full_name) == "Zapier-codes/Storeapp" ]] || fail "the run does not belong to Zapier-codes/Storeapp"
-          [[ $(field .path) == ".github/workflows/build-tenant-apk.yml" ]] || fail "the run is not build-tenant-apk.yml (path: $(field .path))"
-          [[ $(field .head_branch) == "main" ]] || fail "the run was not on main (branch: $(field .head_branch))"
-          [[ $(field .status) == "completed" ]] || fail "Storeapp run is not completed (status: $(field .status))"
+          run_json=""
+          for attempt in $(seq 1 60); do
+            if run_json="$(gh api "repos/Zapier-codes/Storeapp/actions/runs/${STOREAPP_RUN_ID}" 2>/dev/null)"; then
+              [[ $(field .repository.full_name) == "Zapier-codes/Storeapp" ]] || fail "the run does not belong to Zapier-codes/Storeapp"
+              [[ $(field .path) == ".github/workflows/build-tenant-apk.yml" ]] || fail "the run is not build-tenant-apk.yml (path: $(field .path))"
+              [[ $(field .head_branch) == "main" ]] || fail "the run was not on main (branch: $(field .head_branch))"
+              [[ $(field .status) == "completed" ]] && break
+              echo "Storeapp run ${STOREAPP_RUN_ID} is $(field .status); waiting (attempt ${attempt}/60)..."
+            else
+              echo "Could not read Storeapp run ${STOREAPP_RUN_ID} yet; retrying (attempt ${attempt}/60)..."
+              run_json=""
+            fi
+            sleep 10
+          done
+          [[ -n $run_json ]] || fail "could not read Storeapp run ${STOREAPP_RUN_ID}"
+          [[ $(field .status) == "completed" ]] || fail "Storeapp run did not finish within 10 minutes (status: $(field .status))"
           [[ $(field .conclusion) == "success" ]] || fail "Storeapp run did not succeed (conclusion: $(field .conclusion))"
 
           {
@@ -242,7 +258,7 @@ jobs:
             echo "::warning::RELEASE_CERT_SHA256 is not set; the signing certificate was not checked against an expected one"
           fi
 
-      - name: Upload the signed APK to a private release
+      - name: Upload the signed APK to a release in the storage repo
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

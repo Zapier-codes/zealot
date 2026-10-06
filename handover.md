@@ -1442,6 +1442,8 @@ The earlier session's one patch exceeded the six-file slice guide. Cut it:
 
 #### 40n-d result (built this session; written, NOT run)
 
+**Follow-up 2026-10-06 (40n-d3).** The first real dispatch would have been refused: Storeapp sends it from the last step of its own run, so that run is still `in_progress` when the harvest checks it, and the check ran once. The harvest now polls (every 10 s, up to 10 min) for `completed`, then requires `success`; a wrong repo, workflow path or branch is refused at once. Also made public/private-proof: `TenantBuildDownload` no longer returns `browser_download_url` (public only, permanent) but asks the asset API (`Accept: application/octet-stream`) and returns the short-lived signed `Location`; the token header is sent only when `GITHUB_STORAGE_TOKEN` is set. Spec updated (private, public-no-token, missing asset). Checks: YAML parse, `bash -n`, mocked-`gh` test of the loop; Ruby spec NOT run. Still open: 40n-f's door is unauthenticated (needs a distr service token), nothing has run on a real runner.
+
 **Follow-up 2026-10-06 (40n-d2).** Three gaps found on review of the first build are closed: (1) the provider dex was never renamed (`d8` writes `classes.dex`, the workflow pointed at `zealot_provider.dex`, so the SDK step would have failed; same fix as `read-upload.yml`); (2) the run check now enforces the approved decision (repo `Zapier-codes/Storeapp`, path `.github/workflows/build-tenant-apk.yml`, branch `main`, completed, success) from one read of the run, not only status and conclusion; (3) runbook section 16 written (install, secrets, token expiry slots, a manual dispatch to try it, pass criteria). `bash -n` of every `run:` block and the YAML parse only; still NOT run on a runner.
 
 **What it is.** The storage-repo tenant harvest workflow (`docs/ci/harvest-tenant-apk.yml`). It receives a `repository_dispatch` from Storeapp with `build_id`, `storeapp_run_id`, and `bundle_sha256`. It re-verifies the Storeapp run, downloads the unsigned bundle artifact, patches it with the SDK, builds the universal APK, signs it with the org key, verifies the certificate, uploads it to a private GitHub Release in the storage repo, and notifies distr via a callback URL.
@@ -5932,7 +5934,13 @@ them is already modernized.
 
 ## Session log
 
-### 2026-10-06 (newest of all) -- Task 40n-d2: harvest workflow fixes (operator: "Yes" to fixing the dex rename, the trust check and the runbook; one patch, no testing)
+### 2026-10-06 (newest of all, later) -- Task 40n-d3: harvest waits for the Storeapp run; download works for a public or private storage repo (operator: "Yes", then "repo is public now, make it work both ways")
+- **Base:** `develop` @ `686ee271`. One combined patch.
+- **Fixed:** `docs/ci/harvest-tenant-apk.yml` (wait loop), `app/services/tenant_build_download.rb` (asset API signed link, optional token), `spec/requests/api_tenant_builds_download_spec.rb`, `docs/ci/operator-runbook.md` section 16.
+- **Still open:** 40n-f's door has no auth; `ZEALOT_STORAGE_PAT` doc wording in the Storeapp repo ("Actions: Write", should be Contents: write); no real run yet (runbook 16 manual dispatch).
+- **Next session starts here:** 40n-f door auth (distr service token), then the first real harvest run.
+
+### 2026-10-06 (earlier) -- Task 40n-d2: harvest workflow fixes (operator: "Yes" to fixing the dex rename, the trust check and the runbook; one patch, no testing)
 - **Base:** `develop` @ `e12ef1fc`.
 - **Fixed:** `docs/ci/harvest-tenant-apk.yml` (dex rename, full run check). **Added:** `docs/ci/operator-runbook.md` section 16.
 - **Still open, not touched:** 40n-f's door is unauthenticated and redirects to `browser_download_url`, which does not work for a private storage repo and is not short-lived (it should authenticate with a distr service token and stream or sign through Zealot's own storage token); 40n-e's `ZEALOT_STORAGE_PAT` is documented as "Actions: Write", repository dispatch needs Contents: write (runbook 16 says so; the Storeapp doc line is in the other repo); nothing in 40n-d/e/f has run.

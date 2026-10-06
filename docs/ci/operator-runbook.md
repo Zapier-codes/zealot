@@ -605,4 +605,15 @@ sleep 45; gh run list -R Zapier-codes/zealot-storage -w "Harvest tenant APK (Zea
 succeed, or the artifact hash differs from `bundle_sha256`; the message says which. Delete a test release with
 `gh release delete tenant-test1 -R Zapier-codes/zealot-storage --cleanup-tag -y`.
 
-**Not verified:** a real runner. The YAML parse and `bash -n` of every `run:` block were the only checks.
+**Timing (40n-d3).** Storeapp dispatches from the last step of its own run, so the run is still `in_progress` when the
+harvest starts. The harvest now waits for it (checks every 10 seconds, up to 10 minutes) and then requires `completed` and
+`success`. A run that is the wrong repo, workflow or branch is refused at once without waiting.
+
+**Public or private storage repo.** Both work. The harvest uploads with the job's own token either way. The Zealot download
+door asks GitHub's asset API for the file and redirects to the short-lived signed link it returns, so it does not depend on
+`browser_download_url`. `GITHUB_STORAGE_TOKEN` is required on Render only if the storage repo is private (set it anyway; it
+is harmless for a public one). If you switch the repo between public and private, nothing needs to change.
+
+**Not verified:** a real runner. The YAML parse, `bash -n` of every `run:` block, and a mocked-`gh` test of the new wait
+loop (wait then pass, refuse on failure, refuse on wrong branch, time out, retry after an API error) were the only checks.
+The Ruby spec was updated but not run (no Ruby in the sandbox).
