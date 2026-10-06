@@ -6,6 +6,14 @@
 #
 #   POST /channels/:channel_id/release_uploads                 -> 201 { id, upload_url, method, headers, ... }
 #   POST /channels/:channel_id/release_uploads/:id/finalize    -> 200 { id, state } | 4xx/503 { error }
+#   POST /channels/:channel_id/release_uploads/:id/parts       -> 200 { parts: [{ part_number, url, ... }] } (40s-c)
+#   GET  /channels/:channel_id/release_uploads/:id/parts       -> 200 { uploaded: [...], missing: [...] } (Task 40s-c)
+#
+# Task 40s-c: a file of at least RELEASE_UPLOAD_MULTIPART_THRESHOLD_MIB is opened in parts when
+# RELEASE_UPLOAD_MULTIPART_ENABLED is on: `create` then answers `{ id, state, multipart: true, part_size,
+# part_count, expires_at, size }` (no `upload_url`), the client asks `POST .../parts` for up to 10 part URLs at a
+# time, PUTs each part to R2, asks `GET .../parts` to resume, and finalizes as before. The page's uploader
+# script must know this answer (Task 40s-d) before the flag is turned on for the console.
 #
 # Both actions are JSON-only and need a real signed-in user (guest mode does not apply: unlike the install page,
 # an upload is never public) who may upload to the channel's app (`ReleasePolicy#create?`, the same rule as the
@@ -23,6 +31,7 @@ class ReleaseUploadsController < ApplicationController
   before_action :require_sessions_enabled
   before_action :set_channel
   before_action :authorize_upload
+  before_action :set_upload, only: %i[finalize sign_parts list_parts]
 
   def create
     session = ReleaseUploadSession.new(channel: @channel, user: current_user,
@@ -37,12 +46,29 @@ class ReleaseUploadsController < ApplicationController
   end
 
   def finalize
-    upload = ReleaseUpload.where(channel_id: @channel.id, user_id: current_user.id).find(params[:id])
-    result = ReleaseUploadFinalizer.new(upload).call
-    render json: { id: upload.id, state: upload.reload.state, error: result.error }.compact, status: result.http
+    result = ReleaseUploadFinalizer.new(@upload).call
+    render json: { id: @upload.id, state: @upload.reload.state, error: result.error }.merge(result.details).compact,
+           status: result.http
+  end
+
+  # Task 40s-c
+  def sign_parts
+    result = ReleaseUploadPartSigner.new(@upload).sign(ReleaseUploadPartSigner.parse_numbers(params[:parts]))
+    render json: result.body, status: result.http
+  end
+
+  # Task 40s-c
+  def list_parts
+    result = ReleaseUploadPartSigner.new(@upload).list
+    render json: result.body, status: result.http
   end
 
   private
+
+  # Only the user who opened the upload, on this channel.
+  def set_upload
+    @upload = ReleaseUpload.where(channel_id: @channel.id, user_id: current_user.id).find(params[:id])
+  end
 
   def require_sessions_enabled
     head :not_found unless ReleaseUploadSession.enabled?

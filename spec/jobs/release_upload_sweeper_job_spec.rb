@@ -61,6 +61,29 @@ RSpec.describe ReleaseUploadSweeperJob do
       expect(staging).not_to have_received(:delete)
     end
 
+    # Task 40s-c: a half-sent multipart upload is aborted, so R2 stops keeping its parts.
+    it 'aborts the multipart upload of an expired multipart row before deleting the object' do
+      multi = instance_double(ReleaseUploadStaging, delete: true, abort_multipart: true)
+      allow(ReleaseUploadStaging).to receive(:new).and_return(multi)
+      upload = make_upload(state: 'awaiting_bytes', expires_at: 8.hours.ago)
+      upload.update_columns(part_size: 16 * 1024 * 1024, multipart_upload_id: 'mp-1')
+
+      described_class.perform_now
+
+      expect(upload.reload.state).to eq('expired')
+      expect(multi).to have_received(:abort_multipart).with(upload)
+      expect(multi).to have_received(:delete).with(upload)
+    end
+
+    it 'does not abort anything for a single PUT row' do
+      multi = instance_double(ReleaseUploadStaging, delete: true)
+      allow(ReleaseUploadStaging).to receive(:new).and_return(multi)
+      make_upload(state: 'awaiting_bytes', expires_at: 3.hours.ago)
+
+      expect { described_class.perform_now }.not_to raise_error
+      expect(multi).to have_received(:delete)
+    end
+
     it 'still expires the row when the delete fails' do
       allow(staging).to receive(:delete).and_raise(ReleaseStorage::StorageError, 'boom')
       upload = make_upload(state: 'awaiting_bytes', expires_at: 3.hours.ago)

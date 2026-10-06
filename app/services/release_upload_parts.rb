@@ -24,7 +24,7 @@
 #
 #   plan = ReleaseUploadParts::Plan.new(size: 40_000_000, part_size: 16 * 1024 * 1024)
 #   plan.count               # => 3
-#   plan.size_of(3)          # => 6_445_952 (the last part is what is left)
+#   plan.size_of(3)          # => 6_445_568 (the last part is what is left)
 #   plan.problem_with(parts) # => nil, or a sentence saying which parts are missing or the wrong size
 #
 # Not verified: no Rails and no R2 here; the arithmetic was exercised with a plain Ruby script only.

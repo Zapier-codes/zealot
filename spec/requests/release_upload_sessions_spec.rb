@@ -354,4 +354,243 @@ RSpec.describe 'Direct upload sessions', type: :request do
       end
     end
   end
+
+  # Task 40s-c: a large file is opened in parts; the client signs part URLs in batches, resumes by asking R2 which
+  # parts it holds, and finalizes. R2 is a fake (the staging double); nothing reaches a network.
+  describe 'multipart uploads' do
+    let(:size) { 40_000_000 } # 3 parts: 16 MiB, 16 MiB and 6,445,568 bytes
+    let(:part_size) { 16 * 1024 * 1024 }
+    let(:listed) { [] }
+    let(:object) { ReleaseUploadStaging::Head.new(size: size, etag: 'final-3') }
+    let(:staging) do
+      instance_double(ReleaseUploadStaging, presign_put: presigned, start_multipart: 'mp-1', list_parts: listed,
+                                            complete_multipart: true, delete: true, head: object).tap do |double|
+        allow(double).to receive(:presign_part) do |_upload, part_number:, expires_in:|
+          ReleaseUploadStaging::Presigned.new(url: "https://r2.example/part/#{part_number}?sig=1", method: 'PUT',
+                                              headers: {}, expires_at: expires_in.seconds.from_now)
+        end
+      end
+    end
+    let!(:upload) do
+      ReleaseUpload.create!(channel: channel, user: owner, filename: 'app.aab', declared_size: size,
+                            part_size: part_size).tap { |row| row.update_columns(multipart_upload_id: 'mp-1') }
+    end
+
+    def held_part(number, bytes)
+      ReleaseUploadParts::Held.new(part_number: number, size: bytes, etag: "e#{number}")
+    end
+
+    def full_listing
+      [held_part(1, part_size), held_part(2, part_size), held_part(3, 6_445_568)]
+    end
+
+    before { allow(ReleaseUploadParts).to receive(:use_multipart?) { |bytes| bytes.to_i >= 20_000_000 } }
+
+    describe 'API door' do
+      def api_parts(params = {}, id: upload.id, as: owner.token)
+        post "/api/apps/upload_sessions/#{id}/parts", params: params.merge(token: as)
+      end
+
+      def api_list(id: upload.id, as: owner.token)
+        get "/api/apps/upload_sessions/#{id}/parts", params: { token: as }
+      end
+
+      it 'opens a large file in parts: the part plan and no upload URL' do
+        expect { api_open(token: owner.token, channel_key: channel.key, size: size) }
+          .to change(ReleaseUpload, :count).by(1)
+
+        expect(response).to have_http_status(:created)
+        body = response.parsed_body
+        expect(body).to include('multipart' => true, 'part_size' => part_size, 'part_count' => 3, 'size' => size)
+        expect(body).not_to have_key('upload_url')
+        expect(ReleaseUpload.find(body['id'])).to have_attributes(part_size: part_size, multipart_upload_id: 'mp-1')
+      end
+
+      it 'keeps a small file a single PUT' do
+        api_open(token: owner.token, channel_key: channel.key, size: 5000)
+
+        expect(response.parsed_body).to include('upload_url' => presigned.url)
+        expect(response.parsed_body).not_to have_key('multipart')
+      end
+
+      it 'signs a batch of parts' do
+        api_parts(parts: [1, 3])
+
+        expect(response).to have_http_status(:ok)
+        parts = response.parsed_body['parts']
+        expect(parts.map { |part| part['part_number'] }).to eq([1, 3])
+        expect(parts.map { |part| part['size'] }).to eq([part_size, 6_445_568])
+        expect(parts.first).to include('method' => 'PUT', 'url' => 'https://r2.example/part/1?sig=1')
+      end
+
+      it 'accepts a comma list of part numbers' do
+        api_parts(parts: '1,2')
+
+        expect(response.parsed_body['parts'].size).to eq(2)
+      end
+
+      it 'answers 422 for part numbers outside the plan, and for none at all' do
+        api_parts(parts: [9])
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response.parsed_body).to have_key('error')
+
+        api_parts
+        expect(response).to have_http_status(:unprocessable_entity)
+      end
+
+      it 'tells the client what R2 holds, for resuming' do
+        allow(staging).to receive(:list_parts).and_return([held_part(1, part_size)])
+
+        api_list
+
+        expect(response).to have_http_status(:ok)
+        expect(response.parsed_body).to include('part_count' => 3, 'uploaded' => [1], 'missing' => [2, 3])
+      end
+
+      it 'finalizes once every part is in R2' do
+        allow(staging).to receive(:list_parts).and_return(full_listing)
+
+        post "/api/apps/upload_sessions/#{upload.id}/finalize", params: { token: owner.token }
+
+        expect(response).to have_http_status(:ok)
+        expect(response.parsed_body).to include('state' => 'uploaded')
+        expect(staging).to have_received(:complete_multipart)
+        expect(upload.reload).to have_attributes(state: 'uploaded', etag: 'final-3')
+      end
+
+      it 'answers 422 parts_incomplete with the missing parts and leaves the upload open' do
+        allow(staging).to receive(:list_parts).and_return([held_part(1, part_size)])
+
+        post "/api/apps/upload_sessions/#{upload.id}/finalize", params: { token: owner.token }
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response.parsed_body).to include('code' => 'parts_incomplete', 'missing' => [2, 3],
+                                                'state' => 'awaiting_bytes')
+        expect(upload.reload.state).to eq('awaiting_bytes')
+      end
+
+      it 'works with a per-app token for its own app' do
+        issued = AppApiToken.issue!(app: app, name: 'ci', created_by: owner)
+
+        post "/api/apps/upload_sessions/#{upload.id}/parts", params: { parts: [1] }, headers: bearer(issued.secret)
+
+        expect(response).to have_http_status(:ok)
+      end
+
+      it 'refuses a per-app token for another app' do
+        other = AppApiToken.issue!(app: other_app, name: 'ci', created_by: owner)
+        other_app.create_owner(owner)
+
+        post "/api/apps/upload_sessions/#{upload.id}/parts", params: { parts: [1] }, headers: bearer(other.secret)
+
+        expect(response.status).to be_between(403, 404)
+        expect(staging).not_to have_received(:presign_part)
+      end
+
+      it 'answers 404 to a different user, for signing and for listing' do
+        api_parts({ parts: [1] }, as: stranger.token)
+        expect(response).to have_http_status(:not_found)
+
+        api_list(as: stranger.token)
+        expect(response).to have_http_status(:not_found)
+        expect(staging).not_to have_received(:presign_part)
+      end
+
+      it 'refuses a request with no credential' do
+        post "/api/apps/upload_sessions/#{upload.id}/parts", params: { parts: [1] }
+
+        expect(response).to have_http_status(:unauthorized).or have_http_status(:unprocessable_entity)
+      end
+
+      it 'answers 409 once the upload is no longer open' do
+        upload.update_columns(state: 'uploaded')
+
+        api_parts(parts: [1])
+
+        expect(response).to have_http_status(:conflict)
+      end
+
+      it 'answers 404 for both while direct upload is switched off' do
+        allow(ReleaseUploadSession).to receive(:enabled?).and_return(false)
+
+        api_parts(parts: [1])
+        expect(response).to have_http_status(:not_found)
+
+        api_list
+        expect(response).to have_http_status(:not_found)
+      end
+    end
+
+    describe 'console door' do
+      before { sign_in owner }
+
+      it 'opens a large file in parts' do
+        console_open(size: size)
+
+        expect(response).to have_http_status(:created)
+        expect(response.parsed_body).to include('multipart' => true, 'part_size' => part_size, 'part_count' => 3)
+        expect(response.parsed_body).not_to have_key('upload_url')
+      end
+
+      it 'signs a batch of parts for the upload it opened' do
+        post parts_channel_release_upload_path(channel, upload.id), params: { parts: [1, 2] }
+
+        expect(response).to have_http_status(:ok)
+        expect(response.parsed_body['parts'].map { |part| part['part_number'] }).to eq([1, 2])
+      end
+
+      it 'tells the client what R2 holds, for resuming' do
+        allow(staging).to receive(:list_parts).and_return([held_part(1, part_size), held_part(2, part_size)])
+
+        get list_parts_channel_release_upload_path(channel, upload.id)
+
+        expect(response).to have_http_status(:ok)
+        expect(response.parsed_body).to include('uploaded' => [1, 2], 'missing' => [3])
+      end
+
+      it 'finalizes once every part is in R2, and answers 422 parts_incomplete before that' do
+        post finalize_channel_release_upload_path(channel, upload.id)
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response.parsed_body).to include('code' => 'parts_incomplete', 'missing' => [1, 2, 3])
+
+        allow(staging).to receive(:list_parts).and_return(full_listing)
+        post finalize_channel_release_upload_path(channel, upload.id)
+        expect(response).to have_http_status(:ok)
+        expect(upload.reload.state).to eq('uploaded')
+      end
+
+      it 'answers 404 when the channel is not the upload\'s own' do
+        post parts_channel_release_upload_path(other_channel, upload.id), params: { parts: [1] }
+
+        expect(response.status).to be >= 400
+        expect(staging).not_to have_received(:presign_part)
+      end
+
+      context 'when the feature is off' do
+        let(:enabled) { false }
+
+        it 'answers 404' do
+          post parts_channel_release_upload_path(channel, upload.id), params: { parts: [1] }
+
+          expect(response).to have_http_status(:not_found)
+        end
+      end
+    end
+
+    describe 'console door as another user' do
+      before do
+        app.create_owner(stranger)
+        sign_in stranger
+      end
+
+      it 'answers 404 for signing and listing an upload that is not theirs' do
+        post parts_channel_release_upload_path(channel, upload.id), params: { parts: [1] }
+        expect(response).to have_http_status(:not_found)
+
+        get list_parts_channel_release_upload_path(channel, upload.id)
+        expect(response).to have_http_status(:not_found)
+        expect(staging).not_to have_received(:presign_part)
+      end
+    end
+  end
 end

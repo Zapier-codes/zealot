@@ -66,6 +66,19 @@ class ReleaseUpload < ApplicationRecord
     form_options.is_a?(Hash) && form_options['new_app'] == true
   end
 
+  # Task 40s-c: true for an upload opened in parts. `part_size` is stored when the row is opened (the env can be
+  # edited while an upload is open and R2 needs equal parts); it is what tells the two kinds of row apart.
+  def multipart?
+    part_size.present?
+  end
+
+  # @return [ReleaseUploadParts::Plan, nil] the split this upload was opened with; nil for a single PUT
+  def plan
+    return nil unless multipart?
+
+    ReleaseUploadParts::Plan.new(size: declared_size, part_size: part_size)
+  end
+
   # True while the client may still send the bytes.
   def window_open?(now = Time.current)
     state_awaiting_bytes? && expires_at.present? && expires_at > now

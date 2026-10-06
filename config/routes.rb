@@ -106,6 +106,9 @@ Rails.application.routes.draw do
     resources :release_uploads, only: :create do
       member do
         post :finalize
+        # Task 40s-c: parts of a multipart upload (sign a batch, list what R2 holds).
+        post :parts, action: :sign_parts
+        get :parts, action: :list_parts, as: :list_parts
       end
     end
 
@@ -368,6 +371,9 @@ Rails.application.routes.draw do
         post 'upload_sessions/:id/finalize', to: 'apps/upload_sessions#finalize', as: :finalize_upload_session
         # Task 40h-c-2: the outcome of an upload, polled by the CI that opened it.
         get 'upload_sessions/:id', to: 'apps/upload_sessions#show', as: :upload_session
+        # Task 40s-c: parts of a multipart upload (sign a batch, list what R2 holds).
+        post 'upload_sessions/:id/parts', to: 'apps/upload_sessions#sign_parts', as: :sign_upload_session_parts
+        get 'upload_sessions/:id/parts', to: 'apps/upload_sessions#list_parts', as: :list_upload_session_parts
 
         get :latest, to: 'apps/latest#show'
         get :version_exist, to: 'apps/version_exist#show'

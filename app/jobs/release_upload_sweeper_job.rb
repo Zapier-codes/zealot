@@ -6,7 +6,8 @@
 #   uploaded       -> failed    finalized, but nothing picked the file up within the limit
 #   processing     -> failed    (Task 40i-c) stage 1 made the release but stage 2 never reported back
 #
-# For an `expired` row the staged object is deleted too (best effort: the bucket's lifecycle rule on `staging/`
+# For an `expired` row the staged object is deleted too, and the half-sent multipart upload of a row opened in
+# parts (Task 40s-c) is aborted (best effort: the bucket's lifecycle rule on `staging/`
 # is the backstop, so a delete that fails is only logged). A `failed` row keeps its object for CI to retry.
 # `done` is never touched. A `processing` row has a release (held, with no file); when stage 2 does not report
 # within the same limit, counted from the stage-1 report, the row is failed and the reason is written on the held
@@ -101,10 +102,14 @@ class ReleaseUploadSweeperJob < ApplicationJob
     "The file was received but not processed within #{self.class.stale_after.in_minutes.round} minutes. Upload it again."
   end
 
+  # Task 40s-c: a multipart row's half-sent upload is aborted first (R2 keeps the parts, and bills them, until it
+  # is; the bucket's one-day rule is the backstop), then the object is deleted as for any row.
   def delete_staged(upload)
     return unless ReleaseUploadStaging.configured?
 
-    ReleaseUploadStaging.new.delete(upload)
+    staging = ReleaseUploadStaging.new
+    staging.abort_multipart(upload) if upload.multipart?
+    staging.delete(upload)
   rescue ReleaseStorage::StorageError, ReleaseStorage::ConfigurationError => e
     logger.warn("[ReleaseUploadSweeperJob] staged object for upload #{upload.id} not deleted: #{e.message}")
   end

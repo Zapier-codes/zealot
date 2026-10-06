@@ -8,6 +8,17 @@
 #   POST /api/apps/upload_sessions                -> 201 { id, upload_url, method, headers, expires_at, size }
 #   POST /api/apps/upload_sessions/:id/finalize   -> 200 { id, state } | 4xx/503 { error }
 #   GET  /api/apps/upload_sessions/:id            -> 200 { id, state, error?, release_id?, app_id?, ... } (Task 40h-c-2)
+#   POST /api/apps/upload_sessions/:id/parts      -> 200 { parts: [{ part_number, url, method, headers, size, ... }] }
+#   GET  /api/apps/upload_sessions/:id/parts      -> 200 { uploaded: [...], missing: [...] }
+#
+# Task 40s-c: a file of at least RELEASE_UPLOAD_MULTIPART_THRESHOLD_MIB (default 100) is opened in parts when
+# RELEASE_UPLOAD_MULTIPART_ENABLED is on. `create` then answers `{ id, state, multipart: true, part_size,
+# part_count, expires_at, size }` and no `upload_url`: the caller cuts the file into `part_size` pieces (the last
+# one is what is left), asks `POST .../parts` with `parts=[1,2,3,4]` (at most 10 numbers) for one presigned PUT
+# per part, sends each part to R2 (a failed part is signed again and resent), asks `GET .../parts` after a
+# dropped connection to learn which parts R2 holds, and calls finalize when `missing` is empty. Finalize answers
+# 422 `{ code: "parts_incomplete", missing: [...] }` when parts are missing; the upload stays open. Same
+# credentials and ownership rule as finalize and show. A file under the threshold keeps the single `upload_url`.
 #
 # Task 40h-c-2: `show` is how a CI that opened a session learns the outcome. Finalize answers as soon as the
 # bytes are in staging; CI then reads the file and builds (minutes), and the release exists only from the first
@@ -44,7 +55,7 @@ class Api::Apps::UploadSessionsController < Api::BaseController
   before_action :validate_user_token, unless: :app_token_presented?
   before_action :require_sessions_enabled
   before_action :set_channel, only: :create
-  before_action :set_upload, only: %i[finalize show]
+  before_action :set_upload, only: %i[finalize show sign_parts list_parts]
   before_action :confine_app_token, if: :app_token_presented?
   before_action :authorize_upload
   before_action :authorize_new_app, if: :new_app_session?
@@ -60,7 +71,20 @@ class Api::Apps::UploadSessionsController < Api::BaseController
 
   def finalize
     result = ReleaseUploadFinalizer.new(@upload).call
-    render json: { id: @upload.id, state: @upload.reload.state, error: result.error }.compact, status: result.http
+    render json: { id: @upload.id, state: @upload.reload.state, error: result.error }.merge(result.details).compact,
+           status: result.http
+  end
+
+  # Task 40s-c
+  def sign_parts
+    result = ReleaseUploadPartSigner.new(@upload).sign(ReleaseUploadPartSigner.parse_numbers(params[:parts]))
+    render json: result.body, status: result.http
+  end
+
+  # Task 40s-c
+  def list_parts
+    result = ReleaseUploadPartSigner.new(@upload).list
+    render json: result.body, status: result.http
   end
 
   # Task 40h-c-2

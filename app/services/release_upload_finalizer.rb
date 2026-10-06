@@ -9,9 +9,17 @@
 # workflow (`read-upload.yml`) that reads the manifest and icon. A repeated finalize enqueues nothing.
 #
 #   result = ReleaseUploadFinalizer.new(upload).call
-#   result.code   # :uploaded, :already_uploaded, :no_bytes, :size_mismatch, :expired, :not_open, :storage_unavailable
+#   result.code   # :uploaded, :already_uploaded, :no_bytes, :size_mismatch, :parts_incomplete, :expired, :not_open,
+#                 # :storage_unavailable
 #   result.http   # the status the doors answer with
 #   result.error  # a short reason for the client, nil on success
+#
+# Task 40s-c: a multipart row (`ReleaseUpload#multipart?`) is finalized by asking R2 which parts it holds
+# (`ReleaseUploadStaging#list_parts`), comparing them with the plan stored on the row (`:parts_incomplete`, 422,
+# the row stays open, `missing` names the parts to send again) and completing the upload with the ETags R2
+# listed: the client never reports one. The object is then checked exactly like a single PUT (HEAD, size). When
+# R2 no longer knows the upload id (a finalize that completed it but lost its database write, or a racing
+# finalize) the object itself is checked, so a repeated finalize still ends `uploaded`.
 #
 # Idempotent: finalizing an `uploaded` row again answers 200 and writes nothing. Every write is conditional on
 # the state still being `awaiting_bytes`, so two concurrent finalize calls cannot both win and a sweeper that
@@ -25,13 +33,19 @@ class ReleaseUploadFinalizer
   GRACE = 30.minutes
 
   HTTP = {
-    uploaded: 200, already_uploaded: 200, no_bytes: 422, size_mismatch: 422,
+    uploaded: 200, already_uploaded: 200, no_bytes: 422, size_mismatch: 422, parts_incomplete: 422,
     expired: 409, not_open: 409, storage_unavailable: 503
   }.freeze
 
-  Result = Struct.new(:code, :error, keyword_init: true) do
+  Result = Struct.new(:code, :error, :missing, keyword_init: true) do
     def http
       HTTP.fetch(code)
+    end
+
+    # What the doors add to the answer for a multipart upload that is not complete: the code and the part
+    # numbers to send again. Empty for every other result.
+    def details
+      code == :parts_incomplete ? { code: code, missing: missing } : {}
     end
 
     def ok?
@@ -51,11 +65,9 @@ class ReleaseUploadFinalizer
     return Result.new(code: :not_open, error: "This upload is #{@upload.state}.") unless @upload.state_awaiting_bytes?
     return expire if @upload.expires_at.nil? || @upload.expires_at + GRACE < @now
 
-    held = staging.head(@upload)
-    return Result.new(code: :no_bytes, error: 'No file has reached the staging bucket for this upload.') if held.nil?
-    return reject_size(held) unless held.size == @upload.declared_size
+    return finalize_parts if @upload.multipart?
 
-    record_uploaded(held)
+    check_object
   rescue ReleaseStorage::StorageError, ReleaseStorage::ConfigurationError => e
     Rails.logger.error("[ReleaseUploadFinalizer] upload #{@upload.id}: #{e.message}")
     Result.new(code: :storage_unavailable, error: 'Staging storage is unavailable. Try again shortly.')
@@ -65,6 +77,31 @@ class ReleaseUploadFinalizer
 
   def staging
     @staging ||= ReleaseUploadStaging.new
+  end
+
+  # What R2 holds at the staging key must be the declared size; a single PUT and a completed multipart upload
+  # are checked the same way.
+  def check_object
+    held = staging.head(@upload)
+    return Result.new(code: :no_bytes, error: 'No file has reached the staging bucket for this upload.') if held.nil?
+    return reject_size(held) unless held.size == @upload.declared_size
+
+    record_uploaded(held)
+  end
+
+  # Task 40s-c: list what R2 holds, require exactly the planned parts, complete with R2's own ETags, then check
+  # the object. `nil` from either R2 call means the upload id is gone (completed or aborted already): the object
+  # is checked instead, which is also what makes a repeated finalize safe.
+  def finalize_parts
+    held = staging.list_parts(@upload)
+    return check_object if held.nil?
+
+    plan = @upload.plan
+    problem = plan.problem_with(held)
+    return Result.new(code: :parts_incomplete, error: problem, missing: plan.missing(held)) if problem
+
+    staging.complete_multipart(@upload, parts: held.map { |part| { part_number: part.part_number, etag: part.etag } })
+    check_object
   end
 
   def expire

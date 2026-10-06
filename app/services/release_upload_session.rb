@@ -12,6 +12,12 @@
 #   session.upload      # the ReleaseUpload row
 #   session.presigned   # ReleaseUploadStaging::Presigned (url, method, headers, expires_at)
 #
+# Task 40s-c: when `ReleaseUploadParts.use_multipart?(size)` (RELEASE_UPLOAD_MULTIPART_ENABLED on and the file at
+# least RELEASE_UPLOAD_MULTIPART_THRESHOLD_MIB), the row is opened as a multipart upload instead: `part_size` is
+# stored on the row, the window is `ReleaseUploadParts::WINDOW` (6 hours) and there is no presigned URL here;
+# the client asks for part URLs in batches (`ReleaseUploadPartSigner`). The answer then carries
+# `multipart: true, part_size, part_count` and no `upload_url`. A single-PUT answer is unchanged.
+#
 # `params` is the already-permitted request data: `filename` and `size` are required, `content_type` is
 # optional (when present it is signed into the URL and the client must send the same header), and the keys in
 # FORM_OPTION_KEYS are copied to `form_options` untouched. Nothing in `form_options` is trusted or acted on
@@ -35,13 +41,23 @@ class ReleaseUploadSession
   # these two kinds (`ReleaseUploadIntake::KINDS`); every other format keeps the multipart door.
   ANDROID_EXTENSIONS = %w[.apk .aab].freeze
 
-  # `payload` is what both doors return to the client. It carries the presigned URL (a bearer token for one
-  # PUT, good until `expires_at`) and the headers the client must send with it; it never carries the staging
-  # key, which only Zealot and CI need.
+  # `payload` is what both doors return to the client. A single PUT carries the presigned URL (a bearer token for
+  # one PUT, good until `expires_at`) and the headers the client must send with it; a multipart upload carries
+  # the part size and count instead (`presigned` is nil). Neither carries the staging key, which only Zealot and
+  # CI need.
   Result = Struct.new(:upload, :presigned, keyword_init: true) do
     def payload
+      return multipart_payload if upload.multipart?
+
       { id: upload.id, state: upload.state, upload_url: presigned.url, method: presigned.method,
         headers: presigned.headers, expires_at: presigned.expires_at.iso8601, size: upload.declared_size }
+    end
+
+    private
+
+    def multipart_payload
+      { id: upload.id, state: upload.state, multipart: true, part_size: upload.part_size,
+        part_count: upload.plan.count, expires_at: upload.expires_at.iso8601, size: upload.declared_size }
     end
   end
 
@@ -72,12 +88,15 @@ class ReleaseUploadSession
   # @raise [ActiveRecord::RecordInvalid] a missing or out-of-range file name or size
   # @raise [ReleaseStorage::StorageError, ReleaseStorage::ConfigurationError] the presign failed
   def call
+    size = integer_size
+    multipart = ReleaseUploadParts.use_multipart?(size)
     upload = ReleaseUpload.create!(
       channel: @channel, user: @user, filename: @params[:filename], content_type: @params[:content_type].presence,
-      declared_size: integer_size, form_options: form_options
+      declared_size: size, form_options: form_options, **(multipart ? multipart_attributes : {})
     )
-    presigned = presign(upload)
-    Result.new(upload: upload, presigned: presigned)
+    return open_multipart(upload) if multipart
+
+    Result.new(upload: upload, presigned: presign(upload))
   end
 
   private
@@ -97,11 +116,33 @@ class ReleaseUploadSession
     options.merge(@params.to_h.stringify_keys.slice(*NEW_APP_KEYS).compact_blank).merge('new_app' => true)
   end
 
+  # Task 40s-c: the part size is read once, here, and stored on the row; the longer window is the row's own.
+  def multipart_attributes
+    { part_size: ReleaseUploadParts.part_size_bytes, expires_at: Time.current + ReleaseUploadParts::WINDOW }
+  end
+
+  def staging
+    @staging ||= ReleaseUploadStaging.new
+  end
+
   def presign(upload)
-    (@staging || ReleaseUploadStaging.new).presign_put(upload)
+    staging.presign_put(upload)
   rescue ReleaseStorage::StorageError, ReleaseStorage::ConfigurationError => e
-    ReleaseUpload.where(id: upload.id, state: 'awaiting_bytes')
-                 .update_all(state: 'failed', error: e.message.to_s.truncate(1000), updated_at: Time.current)
+    fail_row(upload, e)
     raise
+  end
+
+  # Task 40s-c: starts the multipart upload in R2 and keeps its id on the row.
+  def open_multipart(upload)
+    upload.update_columns(multipart_upload_id: staging.start_multipart(upload))
+    Result.new(upload: upload, presigned: nil)
+  rescue ReleaseStorage::StorageError, ReleaseStorage::ConfigurationError => e
+    fail_row(upload, e)
+    raise
+  end
+
+  def fail_row(upload, error)
+    ReleaseUpload.where(id: upload.id, state: 'awaiting_bytes')
+                 .update_all(state: 'failed', error: error.message.to_s.truncate(1000), updated_at: Time.current)
   end
 end
