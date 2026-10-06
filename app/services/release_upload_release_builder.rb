@@ -14,6 +14,8 @@
 # - `:existing`  the row already has a release (a replayed callback); nothing is created, nothing changes;
 # - `:not_ready` the row is not `uploaded` with a recorded report (never finalized, failed, expired); nothing is
 #                created. A callback can therefore never make a release for an upload nobody finalized;
+# - Task 40r: a first upload of an app (no channel yet) gets its app, scheme and channel from
+#   `ReleaseUploadAppResolver` first, in this same transaction; a refusal there is a refused upload like any other;
 # - otherwise builds the release from the report and the options the owner chose at session time, runs the SAME
 #   model validations the upload form runs (`bundle_id_matched`, and for a Play target `play_target_bundle_valid`
 #   and `play_version_code_newer`), and saves it **held**, so it is not in the signed catalog index until stage 2
@@ -81,6 +83,9 @@ class ReleaseUploadReleaseBuilder
   end
 
   def create_release(row)
+    resolved = ReleaseUploadAppResolver.new(row).call
+    return refuse_reason(row, resolved.reason) if resolved.reason
+
     release = build_release(row)
     return refuse(row, release) unless release.save
 
@@ -89,7 +94,10 @@ class ReleaseUploadReleaseBuilder
   end
 
   def refuse(row, release)
-    reason = release.errors.full_messages.to_sentence.presence || 'The release was refused.'
+    refuse_reason(row, release.errors.full_messages.to_sentence.presence || 'The release was refused.')
+  end
+
+  def refuse_reason(row, reason)
     row.update_columns(state: 'failed', error: reason.truncate(1000), updated_at: Time.current)
     Result.new(code: :refused, reason: reason)
   end

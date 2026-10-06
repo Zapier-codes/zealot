@@ -205,6 +205,29 @@ RSpec.describe 'Manual upload only (f.viii)', type: :request do
     expect(callers).to eq(['app/controllers/api/release_upload_callbacks_controller.rb'])
   end
 
+  # --- Task 40r: the first upload of an app, through a session ---
+
+  it 'reaches the app resolver from exactly one place, the release builder' do
+    callers = source_files.select { |f| File.read(f).match?(/ReleaseUploadAppResolver\.new/) }.map { |f| relative(f) }
+    callers -= ['app/services/release_upload_app_resolver.rb'] # its own usage example in the header comment
+    expect(callers).to eq(['app/services/release_upload_release_builder.rb'])
+  end
+
+  it 'lets the session doors, the intake and the callbacks create no app, scheme or channel' do
+    files = session_doors.keys + ['app/services/release_upload_session.rb', 'app/services/release_upload_intake.rb',
+                                  'app/controllers/api/release_upload_callbacks_controller.rb']
+    forbidden = /\bApp\.create|\bschemes\.(create|find_or_create)|\bchannels\.(create|find_or_create)/
+    files.each do |file|
+      expect(File.read(Rails.root.join(file))).not_to match(forbidden), "#{file} can create an app, scheme or channel"
+    end
+  end
+
+  it 'lets the app resolver read no file from disk and fetch nothing from a URL' do
+    text = File.read(Rails.root.join('app/services/release_upload_app_resolver.rb'))
+
+    expect(text).not_to match(/open-uri|URI\.open|Net::HTTP|Faraday|HTTParty|File\.(read|open|binread)|upload_file/)
+  end
+
   it 'lets the release builder fetch nothing from a URL and read no file from disk' do
     text = File.read(Rails.root.join('app/services/release_upload_release_builder.rb'))
 

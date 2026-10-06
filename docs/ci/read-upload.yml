@@ -424,7 +424,9 @@ jobs:
           [[ ${STAGING_KEY##*/} == "$FILENAME" ]] || fail "filename does not match the end of staging_key"
           [[ $RELEASE_ID =~ ^[0-9]+$ ]] || fail "stage 1 gave no release id"
           [[ $TAG =~ ^a([0-9]+)-r([0-9]+)$ ]] || fail "stage 1 gave no storage tag like a12-r345"
-          [[ ${BASH_REMATCH[1]} == "$staged_app" ]] || fail "the storage tag belongs to another app than the staged file"
+          # Task 40r: the first upload of an app is staged under a0 (its app does not exist until stage 1 made it),
+          # so only a staged app id above 0 is compared with the storage tag's app.
+          [[ $staged_app == 0 || ${BASH_REMATCH[1]} == "$staged_app" ]] || fail "the storage tag belongs to another app than the staged file"
           [[ ${BASH_REMATCH[2]} == "$RELEASE_ID" ]] || fail "the storage tag belongs to another release than the release id"
           [[ $FILE_SHA256 =~ ^[0-9a-f]{64}$ ]] || fail "stage 1 gave no file hash"
           if [[ -n $ICON_KEY ]]; then

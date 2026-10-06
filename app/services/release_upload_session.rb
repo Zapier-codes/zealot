@@ -7,6 +7,8 @@
 #   ReleaseUploadSession.enabled?   # false unless RELEASE_UPLOAD_SESSIONS_ENABLED is exactly "true" AND the
 #                                   # four R2_STAGING_* variables are set; the doors answer 404 until then
 #   session = ReleaseUploadSession.new(channel: channel, user: user, params: params).call
+#   # Task 40r: `channel: nil` opens the FIRST upload of an app (API door only). The row is marked
+#   # `form_options['new_app']`; the app, scheme and channel are created at stage 1 (ReleaseUploadAppResolver).
 #   session.upload      # the ReleaseUpload row
 #   session.presigned   # ReleaseUploadStaging::Presigned (url, method, headers, expires_at)
 #
@@ -24,6 +26,15 @@ class ReleaseUploadSession
     hold play_store_target changelog branch git_commit ci_url release_type source custom_fields devices
   ].freeze
 
+  # Task 40r: what the owner may choose for a brand-new app and channel (the multipart door's `name`, `slug`,
+  # `git_url` and `download_filename_type`). The channel's download `password` is deliberately NOT here: it
+  # would sit in plain text in `release_uploads.form_options`; set it in the console after the first release.
+  NEW_APP_KEYS = %w[name slug git_url download_filename_type].freeze
+
+  # Task 40r: the files that must go through a session once REQUIRE_DIRECT_UPLOAD is on. Stage 1 only reads
+  # these two kinds (`ReleaseUploadIntake::KINDS`); every other format keeps the multipart door.
+  ANDROID_EXTENSIONS = %w[.apk .aab].freeze
+
   # `payload` is what both doors return to the client. It carries the presigned URL (a bearer token for one
   # PUT, good until `expires_at`) and the headers the client must send with it; it never carries the staging
   # key, which only Zealot and CI need.
@@ -36,6 +47,18 @@ class ReleaseUploadSession
 
   def self.enabled?
     ENV['RELEASE_UPLOAD_SESSIONS_ENABLED'] == 'true' && ReleaseUploadStaging.configured?
+  end
+
+  # Task 40r: true when Android uploads may no longer arrive as multipart bodies on Render. Needs the sessions
+  # to be usable (`enabled?`) so turning it on can never leave an Android upload with no door at all.
+  def self.direct_upload_required?
+    ENV['REQUIRE_DIRECT_UPLOAD'] == 'true' && enabled?
+  end
+
+  # @param file [#original_filename, nil] an uploaded multipart file
+  def self.android_file?(file)
+    name = file.respond_to?(:original_filename) ? file.original_filename.to_s : ''
+    ANDROID_EXTENSIONS.include?(File.extname(name).downcase)
   end
 
   def initialize(channel:, user:, params:, staging: nil)
@@ -68,7 +91,10 @@ class ReleaseUploadSession
   end
 
   def form_options
-    @params.to_h.stringify_keys.slice(*FORM_OPTION_KEYS)
+    options = @params.to_h.stringify_keys.slice(*FORM_OPTION_KEYS)
+    return options if @channel
+
+    options.merge(@params.to_h.stringify_keys.slice(*NEW_APP_KEYS).compact_blank).merge('new_app' => true)
   end
 
   def presign(upload)

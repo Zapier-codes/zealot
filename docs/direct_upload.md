@@ -23,7 +23,14 @@ Nothing in these steps creates a `Release`. That happens only when CI has read t
 
 Credentials are the same two as `POST /api/apps/upload`, never both and never a fallback: a per-app token
 (`Authorization: Bearer zpa_...`, header only, confined to its own app) or the user token (`token` parameter).
-`channel_key` is required: a session is for an **existing** channel, so a first upload still uses the multipart endpoint.
+`channel_key` names an **existing** channel. **Task 40r:** leave it out for the **first upload of an app**: nothing is
+created when the session opens; once CI has read the package name, Zealot creates the app (named by `name` if you sent
+one, else the file's label, else its package name), an `Adhoc` scheme and an Android channel, with you as owner, then the
+release as usual. It needs the same right as the multipart door's first upload (an admin or developer account), it is
+refused for a per-app token (a token is for one existing app) and it is only available on the default host. Extra
+optional fields for a new app: `name`, `slug`, `git_url`, `download_filename_type` (the channel `password` is not
+accepted; set it in the console afterwards). If the app already exists and you may change it, the upload goes to its
+Android channel; if you may not, the upload ends `failed` with the reason.
 
 | Request | Body (JSON or form) | Answer |
 |---|---|---|
@@ -71,3 +78,20 @@ source of truth once CI has read it.
 The R2 staging bucket, its CORS rule (the console origin may `PUT` and `HEAD`, and read `ETag`), the lifecycle rule and
 the token are in the Task 40 entry of `handover.md` ("R2 staging bucket: terminal commands"). The browser PUT goes
 cross-origin to R2, so the CORS rule is required for the console form; CI is not affected by CORS.
+
+## Task 40r: R2 staging as the only door for Android files
+
+With `REQUIRE_DIRECT_UPLOAD=true` (and sessions usable) an `.apk` or `.aab` can no longer be sent as a multipart body:
+
+- `POST /api/apps/upload` answers `426` with `{ "error": "Android files must be uploaded through POST /api/apps/upload_sessions ..." }`;
+- the console's plain form post redirects back to the channel with the same advice (the form's own script already sends
+  the file to R2, so this only catches the no-script and hand-made-request cases).
+
+Other formats (for example `.ipa`) keep both doors. Nothing is rejected as an *upload*: the same file goes through a
+session and CI signs it and injects the SDK exactly as before; only the transport changes. The flag ships **off**; turn
+it on only after the order in the runbook, section 13, and only after one real session
+upload, first-app case included, has finished `done`.
+
+The staged-file name for a first upload is `staging/a0/u<id>/<32 hex>/<file>`: `a0` because the app does not exist
+yet. The stage-2 workflow skips its "storage tag belongs to the staged app" comparison for `a0` only
+(`docs/ci/read-upload.yml`; the copy in the storage repo must be replaced, runbook section 13).

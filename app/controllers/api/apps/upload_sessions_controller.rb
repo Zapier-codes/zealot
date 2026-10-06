@@ -16,15 +16,22 @@
 # asked for `hold`) or `failed` (`error` says why). Same credentials and same ownership rule as finalize: only
 # the user who opened the upload sees it, and a per-app token only its own app. Read-only; it changes nothing.
 #
-# `channel_key` is required: a session is for an EXISTING channel, so it never creates an app, a scheme or a
-# channel (a first upload still goes through the multipart endpoint). The caller must pass
-# `ReleasePolicy#create?` for the channel's app, as for the multipart door. Nothing here creates a `Release`
-# (that is CI's callback, 40i-b). Finalize only works for the user who opened the upload, and, for an app token,
+# `channel_key` names an EXISTING channel. Task 40r: it may be left out for the FIRST upload of an app, which
+# is how a new app now reaches Zealot without a multipart body. Nothing is created here: the row is marked
+# `new_app` and the app, scheme and channel are made at stage 1 (`ReleaseUploadAppResolver`), once CI has read
+# the package name. Optional `name`, `slug`, `git_url` and `download_filename_type` shape the new app and
+# channel (the channel `password` is not accepted). The caller must pass `AppPolicy#create?` (the multipart
+# door's rule for a new app), a per-app token is refused (it is for one existing app), and only the default
+# host takes it (a tenant host's first upload is not available through a session). With a channel_key the
+# caller must pass `ReleasePolicy#create?` for the channel's app, as for the multipart door. Nothing here
+# creates a `Release` (that is CI's callback, 40i-b). Finalize only works for the user who opened the upload, and, for an app token,
 # only for its own app. The door answers 404 until `ReleaseUploadSession.enabled?`.
 #
-# @param channel_key  [String]  required  (create)
+# @param channel_key  [String]  optional  (create) omit for the first upload of an app (Task 40r)
 # @param filename     [String]  required  (create)
 # @param size         [Integer] required  bytes, 1 to 2 GiB - 1 (create)
+# @param name, slug, git_url, download_filename_type
+#                     optional  only without a channel_key: the new app's name and its channel's options
 # @param content_type [String]  optional  signed into the URL when sent; the PUT must then carry the same header
 # @param hold, play_store_target, changelog, branch, git_commit, ci_url, release_type, custom_fields, devices
 #                     optional  kept on the upload record, not trusted until the release exists
@@ -40,6 +47,7 @@ class Api::Apps::UploadSessionsController < Api::BaseController
   before_action :set_upload, only: %i[finalize show]
   before_action :confine_app_token, if: :app_token_presented?
   before_action :authorize_upload
+  before_action :authorize_new_app, if: :new_app_session?
 
   def create
     session = ReleaseUploadSession.new(channel: @channel, user: current_user,
@@ -78,27 +86,53 @@ class Api::Apps::UploadSessionsController < Api::BaseController
   end
 
   # A missing or foreign channel is a plain 404 (`scoped_channels` also hides another tenant's channels).
+  # Task 40r: no `channel_key` at all is the first upload of an app (`@channel` stays nil); a key that is sent
+  # but matches nothing is still a 404, never a silent switch to "new app".
   def set_channel
+    return unless params.key?(:channel_key)
+
     @channel = scoped_channels.find_by!(key: params[:channel_key])
   end
 
+  # Task 40r: a channel-less upload belongs to its uploader alone and is only visible on the default host.
   def set_upload
-    @upload = ReleaseUpload.where(channel_id: scoped_channels.select(:id), user_id: current_user.id)
-                           .find(params[:id])
+    owned = ReleaseUpload.where(user_id: current_user.id)
+    scope = owned.where(channel_id: scoped_channels.select(:id))
+    scope = scope.or(owned.where(channel_id: nil)) if default_host?
+    @upload = scope.find(params[:id])
     @channel = @upload.channel
   end
 
   def confine_app_token
-    require_app_token_for!(@channel.app)
+    require_app_token_for!(@channel&.app)
   end
 
   def authorize_upload
+    return if @channel.nil?
+
     raise_if_app_archived!(@channel.app)
     authorize Release.new(channel: @channel), :create?
   end
 
-  # `source` is never read from the client: the door sets it.
+  # Task 40r: no channel means the first upload of an app, for create, finalize and show alike (a row that
+  # was opened that way keeps `channel_id` nil until stage 1).
+  def new_app_session?
+    @channel.nil?
+  end
+
+  # The rules the multipart door applies to a first upload, asked up front so a caller who could never finish
+  # finds out before sending bytes (the same rules run again at stage 1, which is the check that counts).
+  def authorize_new_app
+    return render(json: { error: t('api.new_app_session_default_host_only') }, status: :forbidden) unless default_host?
+    return if AppPolicy.new(current_user, App.new).create?
+
+    render json: { error: t('api.new_app_session_refused') }, status: :forbidden
+  end
+
+  # `source` is never read from the client: the door sets it. The new-app keys are only kept without a channel
+  # (`ReleaseUploadSession` ignores them otherwise).
   def session_params
-    params.permit(:filename, :size, :content_type, *(ReleaseUploadSession::FORM_OPTION_KEYS - %w[source]))
+    params.permit(:filename, :size, :content_type, *ReleaseUploadSession::NEW_APP_KEYS,
+                  *(ReleaseUploadSession::FORM_OPTION_KEYS - %w[source]))
   end
 end

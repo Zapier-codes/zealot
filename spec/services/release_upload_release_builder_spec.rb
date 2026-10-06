@@ -167,4 +167,43 @@ RSpec.describe ReleaseUploadReleaseBuilder do
       expect(release.play_store_target).to be(false)
     end
   end
+
+  # Task 40r: a first upload (no channel) gets its app, scheme and channel at stage 1, in the same transaction.
+  describe 'a first upload of an app' do
+    let(:developer) do
+      User.create!(email: 'first@example.com', username: 'first', password: 'correct-horse-9',
+                   password_confirmation: 'correct-horse-9', confirmed_at: Time.current, role: :developer)
+    end
+    let!(:first_upload) do
+      ReleaseUpload.create!(channel: nil, user: developer, filename: 'app.apk', declared_size: 2048,
+                            form_options: { 'new_app' => true, 'source' => 'api' })
+                   .tap do |row|
+        row.update_columns(state: 'uploaded', uploaded_size: 2048, stage1_at: Time.current, metadata: metadata)
+      end
+    end
+
+    it 'creates the app and one held release for it, and points the row at both' do
+      result = nil
+      expect { result = described_class.new(first_upload.reload, staging: staging).call }
+        .to change(App, :count).by(1).and change(Release, :count).by(1)
+
+      expect(result.code).to eq(:created)
+      expect(result.release.channel.scheme.app.name).to eq('Example')
+      expect(first_upload.reload).to have_attributes(state: 'processing', release_id: result.release.id)
+      expect(first_upload.channel).to eq(result.release.channel)
+    end
+
+    it 'refuses the upload when the uploader may not create the app, creating nothing' do
+      developer.update_columns(role: User.roles[:member])
+      result = nil
+
+      expect { result = described_class.new(first_upload.reload, staging: staging).call }
+        .not_to change { [App.count, Release.count] }
+
+      expect(result.code).to eq(:refused)
+      expect(result.reason).to include('may not create')
+      expect(first_upload.reload.state).to eq('failed')
+      expect(staging).to have_received(:delete)
+    end
+  end
 end

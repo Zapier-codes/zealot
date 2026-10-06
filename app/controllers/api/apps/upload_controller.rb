@@ -14,6 +14,7 @@ class Api::Apps::UploadController < Api::BaseController
   before_action :validate_user_token, unless: :app_token_presented?
   before_action :require_channel_app_token, if: :app_token_presented?
   before_action :set_parser
+  before_action :refuse_android_multipart, if: -> { ReleaseUploadSession.direct_upload_required? }
   before_action :set_channel
 
   # Upload an App
@@ -179,6 +180,17 @@ class Api::Apps::UploadController < Api::BaseController
       append_present_value_from_params(obj, :download_filename_type)
       obj
     }.call
+  end
+
+  # Task 40r: with REQUIRE_DIRECT_UPLOAD on, an Android file may not arrive as a multipart body (it would land on
+  # Render's disk): the answer says where to go instead. Only the transport is refused; the same file goes
+  # through `POST /api/apps/upload_sessions` (R2 staging, then CI signs it and injects the SDK as always).
+  # Other formats keep this door. Runs after authentication and the per-app-token confinement, so only a caller
+  # who could have uploaded learns the rule, and before the channel lookup, so nothing is created.
+  def refuse_android_multipart
+    return unless ReleaseUploadSession.android_file?(params[:file]) || @app_parser&.platform.to_s == 'android'
+
+    render json: { error: t('api.direct_upload_required') }, status: :upgrade_required
   end
 
   def set_parser

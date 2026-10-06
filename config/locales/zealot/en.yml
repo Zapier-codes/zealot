@@ -854,6 +854,7 @@ en:
         play_target_unsupported: "Not supported for Google Play: only Android App Bundles (.aab) can be published there. .apk and other file types are not supported. The build was uploaded and is available on our stores."
         play_package_name_taken: "applicationId %{got} already belongs to another app in Zealot. Upload this bundle to that app instead."
         upload_to_archived_app: "App %{app} is archived, so new releases can not be uploaded."
+        direct_upload_required: "Android files are uploaded straight to storage now. Use the upload form with scripts enabled, or the upload sessions API (docs/direct_upload.md)."
         status_change_not_allowed: "A %{from} release can not be changed to %{to}."
         play_package_name_mismatch: "applicationId %{got} in this bundle does not match this app's Play applicationId %{expect}. Upload the matching bundle, or correct the app's Play applicationId if it was entered wrongly."
         play_version_code_not_newer: "This bundle's versionCode (%{got}) is not higher than %{latest}, which was already approved for Google Play. Google only accepts an update whose versionCode is higher — raise it (android.defaultConfig.versionCode) and upload again."
@@ -1227,6 +1228,9 @@ en:
     release_app_archived: This app is archived, so its releases cannot be changed
     release_not_held: Only a held release can be released this way (this release is %{status})
     ci_compile_retry_refused: "Not sent to CI: CI_COMPILE_ENABLED must be true, the release must be an AAB, and its CI state must be empty or failed (it is %{state})"
+    direct_upload_required: "Android files must be uploaded through POST /api/apps/upload_sessions (then PUT to the URL it returns, then finalize). See docs/direct_upload.md."
+    new_app_session_default_host_only: "The first upload of an app is only available on the default host. Upload to an existing channel, or use the console."
+    new_app_session_refused: "Your account may not create apps, so the first upload of an app was refused. Send channel_key to upload to an existing app."
     api_token_params_invalid: "A token needs a name (text) and an expiry of one of: %{choices}"
     signing_key_already_configured: A signing key is already configured. Remove it (with its checksum) before adding another
     signing_key_checksum_mismatch: The checksum does not match the current signing key, so nothing was removed

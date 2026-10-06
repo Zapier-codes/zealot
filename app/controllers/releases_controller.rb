@@ -49,6 +49,12 @@ class ReleasesController < ApplicationController
       return
     end
 
+    # Task 40r: with REQUIRE_DIRECT_UPLOAD on, an Android file may not be posted to Render as a multipart body
+    # (the form sends it to R2 itself when its script runs; this is the no-script and hand-made-request case).
+    if ReleaseUploadSession.direct_upload_required? && ReleaseUploadSession.android_file?(release_params[:file])
+      return redirect_to channel_path(@channel), alert: t('releases.messages.errors.direct_upload_required')
+    end
+
     @title = t('releases.new.title')
     @release = @channel.releases.upload_file(release_params)
     authorize @release

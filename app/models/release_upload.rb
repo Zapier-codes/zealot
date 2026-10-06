@@ -32,7 +32,8 @@ class ReleaseUpload < ApplicationRecord
   MAX_FILENAME_BASE = 120
   MAX_FILENAME_EXT = 16
 
-  belongs_to :channel
+  # Task 40r: nil only for the first upload of an app (`form_options['new_app']`), until stage 1 resolves it.
+  belongs_to :channel, optional: true
   belongs_to :user, optional: true
   belongs_to :release, optional: true
 
@@ -46,12 +47,23 @@ class ReleaseUpload < ApplicationRecord
   validates :declared_size, numericality: { only_integer: true, greater_than: 0, less_than_or_equal_to: MAX_BYTES }
   validates :content_type, length: { maximum: 255 }, allow_blank: true
   validate :form_options_is_a_hash
+  validate :channel_or_new_app
 
   # Rows still waiting for bytes after their window closed: what the sweeper (gap H) expires.
   scope :stale_awaiting, ->(now = Time.current) { state_awaiting_bytes.where(expires_at: ...now) }
 
+  # Segment of the staging key where a channel-less upload has no app id yet. `a0` fits the CI workflow's key
+  # pattern (`a<digits>`), which is why the storage repo's stage-1 check needs no change; stage 2 skips its
+  # same-app comparison for it (docs/ci/read-upload.yml).
+  NEW_APP_KEY_SEGMENT = 'a0'
+
   def app
-    channel.scheme.app
+    channel&.scheme&.app
+  end
+
+  # True for the first upload of an app: no channel yet, the app is created from stage 1's report.
+  def new_app?
+    form_options.is_a?(Hash) && form_options['new_app'] == true
   end
 
   # True while the client may still send the bytes.
@@ -80,10 +92,15 @@ class ReleaseUpload < ApplicationRecord
   # Needs the row's id, so it is written right after the insert. A random segment keeps the key unguessable
   # even for someone who knows the app and upload ids. The unique index on `staging_key` is the backstop.
   def assign_staging_key
-    update_columns(staging_key: "staging/a#{app.id}/u#{id}/#{SecureRandom.hex(16)}/#{filename}")
+    segment = app ? "a#{app.id}" : NEW_APP_KEY_SEGMENT
+    update_columns(staging_key: "staging/#{segment}/u#{id}/#{SecureRandom.hex(16)}/#{filename}")
   end
 
   def form_options_is_a_hash
     errors.add(:form_options, :invalid) unless form_options.is_a?(Hash)
+  end
+
+  def channel_or_new_app
+    errors.add(:channel, :blank) if channel.nil? && !new_app?
   end
 end

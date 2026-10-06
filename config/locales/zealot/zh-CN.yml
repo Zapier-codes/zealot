@@ -848,6 +848,7 @@ zh-CN:
         play_package_name_mismatch: "该安装包的 applicationId %{got} 与此应用的 Play applicationId %{expect} 不一致。请上传匹配的安装包；如果应用的 Play applicationId 填写有误，请先更正。"
         play_version_code_not_newer: "该安装包的 versionCode（%{got}）不高于已通过审批并提交到 Google Play 的 %{latest}。Google 只接受 versionCode 更高的更新——请调高（android.defaultConfig.versionCode）后重新上传。"
         upload_to_archived_app: "应用 %{app} 已归档，无法上传新的版本。"
+        direct_upload_required: "Android 文件现在直接上传到存储。请在启用脚本的情况下使用上传表单，或使用上传会话 API（docs/direct_upload.md）。"
         status_change_not_allowed: "状态为%{from}的版本不能变更为%{to}。"
   debug_files:
     title: 调试文件
@@ -1203,6 +1204,9 @@ zh-CN:
     release_app_archived: 该应用已归档，无法更改其版本
     release_not_held: 只有已暂缓的版本才能通过此方式发布（当前版本状态为 %{status}）
     ci_compile_retry_refused: "未发送到 CI：CI_COMPILE_ENABLED 必须为 true，版本必须是 AAB，且其 CI 状态必须为空或 failed（当前为 %{state}）"
+    direct_upload_required: "Android 文件必须通过 POST /api/apps/upload_sessions 上传（再 PUT 到返回的地址，然后完成）。参见 docs/direct_upload.md。"
+    new_app_session_default_host_only: "应用的首次上传仅在默认主机上可用。请上传到已有频道，或使用控制台。"
+    new_app_session_refused: "您的账号不能创建应用，因此首次上传被拒绝。请发送 channel_key 以上传到已有应用。"
     api_token_params_invalid: "令牌需要名称（文本）和有效期，有效期为以下之一：%{choices}"
     signing_key_already_configured: 已配置签名密钥。请先（凭其校验和）移除，再添加新的
     signing_key_checksum_mismatch: 校验和与当前签名密钥不一致，未移除任何内容

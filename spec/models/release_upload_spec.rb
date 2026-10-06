@@ -122,4 +122,32 @@ RSpec.describe ReleaseUpload do
       expect(upload.reload.release_id).to be_nil
     end
   end
+
+  # Task 40r: the first upload of an app has no channel until stage 1.
+  describe 'a first upload with no channel' do
+    def build_channel_less(options)
+      described_class.new(channel: nil, filename: 'app.apk', declared_size: 10, form_options: options)
+    end
+
+    it 'is valid only when it was opened as a new app' do
+      expect(build_channel_less('new_app' => true)).to be_valid
+      expect(build_channel_less({})).not_to be_valid
+      expect(build_channel_less('new_app' => 'yes')).not_to be_valid
+    end
+
+    it 'has no app yet and stages its file under the a0 segment, which the CI key pattern accepts' do
+      upload = build_channel_less('new_app' => true).tap(&:save!)
+
+      expect(upload.app).to be_nil
+      expect(upload).to be_new_app
+      expect(upload.reload.staging_key).to match(%r{\Astaging/a0/u#{upload.id}/[0-9a-f]{32}/app\.apk\z})
+    end
+
+    it 'keeps the app id in the staging key of an upload that has a channel' do
+      upload = build_upload.tap(&:save!)
+
+      expect(upload).not_to be_new_app
+      expect(upload.reload.staging_key).to start_with("staging/a#{upload.app.id}/")
+    end
+  end
 end

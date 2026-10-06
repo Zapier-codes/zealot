@@ -397,3 +397,51 @@ release page in the console. A read-only `ci_compile_state` field on the release
 **Not verified:** the action, route, policy predicate and spec were written without a Ruby runtime or database (`ruby -c` not run
 either: no Ruby in this sandbox). The endpoint exists only after this patch is pushed and the Render deploy is `live`
 (it touches `.rb`, so the push does start `Anthropic - Build & Deploy develop`).
+
+## 13. R2 staging as the only door for Android files (Task 40r, 2026-10-06)
+
+**What it is.** Two changes, both in this patch:
+1. **A session can open the first upload of an app** (no `channel_key`). The app, scheme and channel are created at stage 1
+   from the file's package name, owned by the uploader (`ReleaseUploadAppResolver`). Details: `docs/direct_upload.md`.
+2. **`REQUIRE_DIRECT_UPLOAD`** (Render variable, ships **unset = off**): when `true` and sessions are usable, an `.apk`/`.aab`
+   posted as multipart to `POST /api/apps/upload` answers `426`, and the console form's plain post is redirected back. Other
+   formats keep those doors.
+
+**One storage-repo change is required before the first new-app upload.** The stage-2 job compared the app id in the staging
+key with the app id in the storage tag; a first upload is staged under `a0` (no app yet), so the comparison would fail.
+`docs/ci/read-upload.yml` now skips it for `a0` only. Replace the copy in the storage repo and check the hashes:
+
+```
+cd ~/zealot
+gh api repos/Zapier-codes/zealot-storage/contents/.github/workflows/read-upload.yml --jq .sha
+git hash-object docs/ci/read-upload.yml
+# if they differ, replace it (same method as 2026-10-05: the contents API), then compare again:
+SHA=$(gh api repos/Zapier-codes/zealot-storage/contents/.github/workflows/read-upload.yml --jq .sha)
+gh api -X PUT repos/Zapier-codes/zealot-storage/contents/.github/workflows/read-upload.yml \
+  -f message="task 40r: skip the staged-app comparison for a0 (first upload of an app)" \
+  -f content="$(base64 -w0 docs/ci/read-upload.yml)" -f sha="$SHA"
+gh api repos/Zapier-codes/zealot-storage/contents/.github/workflows/read-upload.yml --jq .sha   # must equal git hash-object
+```
+
+Uploads to an existing channel are not affected by this edit (their key still carries the real app id and is still compared),
+so the workflow can be replaced before or after the Render deploy.
+
+**Order to turn it on (do not reorder).**
+1. Push the patch, wait for the Render deploy to be `live` (it runs the migration `20261006120000`).
+2. Replace `read-upload.yml` in the storage repo (above).
+3. Prove a **first upload through a session** with a throwaway package (commands in section 10, but **without** `channel_key`,
+   optionally `-d name="Throwaway"`); the final session JSON must show `state: done` and an `app_id`. A throwaway app then
+   exists in the console; delete it.
+4. Prove an upload to the new app's channel (section 10 as written).
+5. Only then set `REQUIRE_DIRECT_UPLOAD=true` on Render (a variable change starts a deploy; wait for it to be `live`).
+
+**Revert.** Unset `REQUIRE_DIRECT_UPLOAD` (instant after the deploy), or `git revert` the commit (the migration only relaxed a
+NOT NULL; leave it applied).
+
+**Reading the failures.** A first upload that ends `failed` with "may not create" / "already exists and you may not upload to
+it" / "is archived" is the resolver refusing (the reason is in the session's `error`). `403` on the session itself: a plain
+member account, a per-app token, or a tenant host. A stage-2 run failing at "the storage tag belongs to another app" means
+the old `read-upload.yml` is still in the storage repo.
+
+**Not verified:** everything. No Rails, Postgres, R2 or runner in the sandbox that wrote it (`ruby -c`, the YAML parse and
+`bash -n` on every `run:` block of `read-upload.yml` passed; the changed shell condition was run against sample values).
