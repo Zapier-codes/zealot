@@ -460,3 +460,49 @@ the old `read-upload.yml` is still in the storage repo.
 
 **Not verified:** everything. No Rails, Postgres, R2 or runner in the sandbox that wrote it (`ruby -c`, the YAML parse and
 `bash -n` on every `run:` block of `read-upload.yml` passed; the changed shell condition was run against sample values).
+
+## 14. Large files in parts: turn-on order, variables and the real-file test (Task 40s, 2026-10-06)
+
+**What it is.** A file at or over a threshold goes to R2 in parts (resumable) instead of one PUT, on both doors. Built in
+40s-a to 40s-d, ships **off**. API loop and the full flow: `docs/direct_upload.md`, "Large files in parts".
+
+**The three Render variables** (a change starts a deploy; wait for it to be `live`; `docs/ci/check-render-env.sh` lists them):
+
+| Variable | Default | Notes |
+|---|---|---|
+| `RELEASE_UPLOAD_MULTIPART_ENABLED` | off | `true` is the switch |
+| `RELEASE_UPLOAD_MULTIPART_THRESHOLD_MIB` | 100 | at or over this goes in parts; editable any time (affects uploads opened afterwards) |
+| `RELEASE_UPLOAD_PART_SIZE_MIB` | 16 | floor 5; a 2 GiB file at 16 MiB is 128 parts |
+
+**Before turning it on, check these (read-only):**
+1. `check-render-env.sh` shows the staging and sessions variables set, and the bucket's lifecycle rule (1-day abort of unfinished
+   multipart uploads) was read back on 2026-10-06 (`handover.md`, Task 40s-a entry). The 6-hour row window is inside it.
+2. **The bucket's CORS rule allows `PUT` from the console origin with any request header.** The 40h-a commands set it; the
+   40s-d session never read it back. Read it back (the same method as the lifecycle rule) before the first browser test.
+3. **Storeapp:** its `release-aab.yml` direct-upload path (`ZEALOT_DIRECT_UPLOAD`) does a single PUT and fails on a bundle at
+   or over the threshold. Leave `ZEALOT_DIRECT_UPLOAD` off there, or set the threshold above its largest bundle, until the
+   workflow runs the parts loop (a separate Storeapp patch, not yet cut).
+
+**Order to turn it on (do not reorder).**
+1. The 40s-a migration (`part_size`) is live (it ran on the deploy after 40s-a).
+2. Set `RELEASE_UPLOAD_MULTIPART_THRESHOLD_MIB` first if the default does not suit; leave the other two at their defaults.
+3. Set `RELEASE_UPLOAD_MULTIPART_ENABLED=true`; wait for `live`. Files under the threshold behave exactly as before.
+4. **Console test:** from a channel's upload page choose a file over the threshold. The bar climbs; close the tab at about half;
+   reopen the page, choose the same file, press the button: the message says it is resuming and only the rest is sent.
+5. **API test** with the loop in `docs/direct_upload.md` (section 10's commands for the same file, then follow `GET
+   /api/apps/upload_sessions/:id` until `done` or `failed`). Try `RESUME_ID=<id>` after interrupting it with Ctrl-C.
+6. The real-file test, section 13 (first upload of an app) and 40n-0 part 2, now with a big file. These were waiting on this.
+
+**Reading the failures.**
+- Console message `send_failed` on every part: almost always the CORS rule (check 2 above); the browser's network tab shows the
+  blocked `PUT` to the R2 host.
+- `409` on `.../parts` or finalize: the 6-hour window closed, or R2 dropped the upload; start again (the sweeper cleans the old one).
+- `422 parts_incomplete` that repeats after resending: R2 holds a part at the wrong size; `GET .../parts` lists it under `missing`.
+- `422` on `POST .../parts`: bad numbers, more than 10, or the upload was opened as a single PUT (the flag changed between open and sign).
+- A large upload with no `upload_url` in the answer, from a client that does not know parts: the flag is on and that client needs
+  the loop (Storeapp, see above). Turn the flag off to restore the single PUT for everyone at once.
+
+**Revert.** Unset `RELEASE_UPLOAD_MULTIPART_ENABLED` (effective after the deploy). Uploads already open in parts can still be
+resumed and finalized until their window closes; new ones are single PUTs.
+
+**Not verified:** everything against a real R2, browser or Render. The loop was run against a local stand-in only.

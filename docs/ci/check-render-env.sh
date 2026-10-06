@@ -34,6 +34,9 @@ CI_COMPILE_CALLBACK_TOKEN S R
 CI_COMPILE_EXPECT_CERT_SHA256 P R
 CI_COMPILE_ENABLED F R
 RELEASE_UPLOAD_SESSIONS_ENABLED F R
+RELEASE_UPLOAD_MULTIPART_ENABLED F O
+RELEASE_UPLOAD_MULTIPART_THRESHOLD_MIB P O
+RELEASE_UPLOAD_PART_SIZE_MIB P O
 ADC_AUTO_REGISTER F O
 REQUIRE_ORG_SIGNED_APKS F O
 RELEASE_STORAGE_ADAPTER P R
@@ -65,5 +68,9 @@ echo
 echo "Compare by hand: the storage repo's ZEALOT_URL variable must equal CI_OIDC_AUDIENCE ($aud),"
 echo "and its R2_STAGING_ENDPOINT / R2_STAGING_BUCKET must equal the two Render values above."
 echo "Turn CI_COMPILE_ENABLED and RELEASE_UPLOAD_SESSIONS_ENABLED on LAST."
+if [ "$(echo "$vars" | jq -r '.RELEASE_UPLOAD_MULTIPART_ENABLED // empty')" = true ]; then
+  echo "Multipart uploads are ON: Storeapp's direct-upload path (ZEALOT_DIRECT_UPLOAD) must stay off, or the threshold"
+  echo "above its largest bundle, until its workflow runs the parts loop (runbook section 14)."
+fi
 [ "$miss" -gt 0 ] && { echo "$miss required variable(s) MISSING"; exit 1; }
 echo "All required variables are set."

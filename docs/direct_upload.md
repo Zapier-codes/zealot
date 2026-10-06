@@ -1,4 +1,4 @@
-# Direct upload (Task 40, slices 40h-b and 40h-c)
+# Direct upload (Task 40, slices 40h-b, 40h-c and 40s)
 
 Status: **written, not run, switched off.** The doors answer 404 until `RELEASE_UPLOAD_SESSIONS_ENABLED=true` and the four
 `R2_STAGING_*` variables are set. Do not switch it on before slice 40i-a (the CI stage that reads the uploaded file)
@@ -60,6 +60,125 @@ URL=$(echo "$SESSION" | jq -r .upload_url)
 curl -sS -X PUT "$URL" --data-binary "@$FILE" $(echo "$SESSION" | jq -r '.headers | to_entries[] | "-H \(.key):\(.value)"')
 curl -sS -X POST "$ZEALOT_URL/api/apps/upload_sessions/$ID/finalize" -H "Authorization: Bearer $ZEALOT_APP_TOKEN"
 ```
+
+## Large files in parts (Task 40s)
+
+Status: **built, switched off.** With `RELEASE_UPLOAD_MULTIPART_ENABLED=true`, a file of at least
+`RELEASE_UPLOAD_MULTIPART_THRESHOLD_MIB` (default 100) is sent to R2 in parts instead of one PUT: a dropped connection
+costs one part, not the whole file, and an upload can be resumed. Smaller files, and everything while the flag is off,
+use the single PUT above, unchanged. Both doors (console and API) behave the same.
+
+| Variable (Render) | Default | Meaning |
+|---|---|---|
+| `RELEASE_UPLOAD_MULTIPART_ENABLED` | off | `true` turns parts on |
+| `RELEASE_UPLOAD_MULTIPART_THRESHOLD_MIB` | 100 | files of at least this many MiB go in parts (never below the part size) |
+| `RELEASE_UPLOAD_PART_SIZE_MIB` | 16 | size of every part but the last (floor 5; R2 needs equal-sized parts but the last) |
+
+A change only affects uploads opened after it: the part size of an open upload is stored on its row.
+
+**The flow.**
+
+1. **Open.** `POST /api/apps/upload_sessions` as before. For a large file the answer has `multipart: true`, `part_size`,
+   `part_count`, `expires_at` (6 hours) and **no `upload_url`**.
+2. **Sign.** `POST /api/apps/upload_sessions/:id/parts` with `parts=1,2,3,4` (a JSON array also works; 1 to 10 distinct
+   numbers inside `1..part_count`) answers `{ parts: [{ part_number, url, method, headers, size, expires_at }] }`.
+3. **PUT each part.** Part *n* is bytes `(n-1) x part_size` up to `part_size` long; the last part is what is left. Send it
+   to its `url` with the headers listed (none today): the URL signs no content type, so send none. A part that fails
+   (network, an expired URL) is signed again and sent again. The response's `ETag` is not needed.
+4. **Resume.** `GET .../parts` answers `{ part_size, part_count, uploaded: [...], missing: [...] }` from R2's own list (a
+   part of the wrong size counts as missing). Send only `missing`.
+5. **Finalize.** `POST .../finalize` as before. If parts are missing it answers `422 { code: "parts_incomplete",
+   missing: [...] }` and the upload stays open: send those parts and finalize again.
+
+Answers on the two part calls: `422` bad part numbers or an upload not opened in parts, `409` the upload is not open,
+its 6-hour window has closed, or R2 no longer knows it (it may have been completed: try finalize, else start again),
+`503` R2 cannot be reached (retry). The 2 GiB cap and every check after finalize are unchanged. An unfinished upload is
+aborted in R2 by the sweeper after the window closes.
+
+**The console** (`direct_upload_controller.js`) does all of this itself: 3 parts at once, 4 signed per request, each part
+tried up to 5 times with a new signature, and a refresh resumes (the session id is kept in `localStorage`, keyed by the
+console URL, the file's name, size and last-modified time, and the form options; choose the same file again and press
+the button).
+
+**An API client or CI step** needs the same loop. The script below does it with `bash`, `curl`, `jq` and `dd` (no part is
+held in memory; each is cut from the file into a temp file). It was run against a local stand-in for both Zealot and R2
+(a single PUT with a listed `Content-Type`; 22 MB in 5 parts; a part failing twice then passing; a part failing every
+time; a finalize answering `parts_incomplete` once; a resume with parts 1 to 3 already held, sending only 4 and 5). It was **not**
+run against a real Zealot or R2.
+
+```bash
+#!/usr/bin/env bash
+# Uploads one file through a Zealot upload session. Small files: one PUT. Large files (the session answers
+# "multipart": true): parts, resumable. Needs bash 4+, curl, jq, dd.
+#   ZEALOT_URL=https://zealot.example ZEALOT_APP_TOKEN=zpa_... CHANNEL_KEY=abc ./upload.sh app-release.aab
+#   RESUME_ID=123 ... ./upload.sh app-release.aab     # carry on an upload that stopped half way
+set -eu
+FILE=$1
+SIZE=$(wc -c < "$FILE")
+API="$ZEALOT_URL/api/apps/upload_sessions"
+AUTH="Authorization: Bearer $ZEALOT_APP_TOKEN"
+PART=$(mktemp); OUT=$(mktemp); trap 'rm -f "$PART" "$OUT"' EXIT
+
+# PUT file $2 to the signed object $1 (a session answer has "upload_url", a part has "url"); the headers it
+# lists (none for a part) are sent exactly. `-T` sends the bytes with a Content-Length and no Content-Type of its own.
+put_signed() {
+  local H=(); mapfile -t H < <(echo "$1" | jq -r '(.headers // {}) | to_entries[] | "-H", "\(.key): \(.value)"')
+  curl -fsS -T "$2" "$(echo "$1" | jq -r '.upload_url // .url')" -o /dev/null ${H[@]+"${H[@]}"}
+}
+sign() { curl -fsS -X POST "$API/$ID/parts" -H "$AUTH" -d "parts=$1"; }   # "1,2,3,4": at most 10 numbers
+
+send_part() {   # $1 part number, $2 its signed JSON; cuts the part out of the file, retries with a fresh signature
+  local n=$1 signed=$2 attempt=1
+  dd if="$FILE" of="$PART" bs="$PART_SIZE" skip=$((n - 1)) count=1 iflag=fullblock 2>/dev/null
+  until put_signed "$signed" "$PART"; do
+    [ "$attempt" -lt 5 ] || { echo "part $n failed after 5 attempts" >&2; return 1; }
+    sleep "$attempt"; attempt=$((attempt + 1))
+    signed=$(sign "$n" | jq -c '.parts[0]')
+  done
+}
+
+if [ -n "${RESUME_ID:-}" ]; then
+  ID=$RESUME_ID
+  LIST=$(curl -fsS "$API/$ID/parts" -H "$AUTH")            # R2's own word on what it holds
+  PART_SIZE=$(echo "$LIST" | jq -r .part_size)
+  MISSING=$(echo "$LIST" | jq -r '.missing | join(" ")')
+else
+  SESSION=$(curl -fsS -X POST "$API" -H "$AUTH" -d "channel_key=$CHANNEL_KEY" \
+    -d "filename=$(basename "$FILE")" -d "size=$SIZE")
+  ID=$(echo "$SESSION" | jq -r .id)
+  echo "upload id $ID (RESUME_ID=$ID to carry on if this stops)" >&2
+  if [ "$(echo "$SESSION" | jq -r '.multipart // false')" != true ]; then
+    put_signed "$SESSION" "$FILE"                          # single PUT: the answer has url, headers
+    MISSING=""
+  else
+    PART_SIZE=$(echo "$SESSION" | jq -r .part_size)
+    MISSING=$(seq 1 "$(echo "$SESSION" | jq -r .part_count)" | tr '\n' ' ')
+  fi
+fi
+
+for round in 1 2 3; do
+  set -- $MISSING
+  while [ $# -gt 0 ]; do                                   # 4 parts per signing request, sent one by one
+    NUMS=""; k=0
+    while [ $# -gt 0 ] && [ "$k" -lt 4 ]; do NUMS="$NUMS,$1"; shift; k=$((k + 1)); done
+    NUMS=${NUMS#,}; SIGNED=$(sign "$NUMS")
+    for n in ${NUMS//,/ }; do
+      send_part "$n" "$(echo "$SIGNED" | jq -c --argjson n "$n" '.parts[] | select(.part_number == $n)')"
+    done
+  done
+  CODE=$(curl -sS -o "$OUT" -w '%{http_code}' -X POST "$API/$ID/finalize" -H "$AUTH")
+  [ "$CODE" = 200 ] && { cat "$OUT"; echo; exit 0; }
+  # 422 parts_incomplete names the parts R2 does not hold: send those again, then finalize again
+  [ "$CODE" = 422 ] && [ "$(jq -r .code "$OUT")" = parts_incomplete ] || { cat "$OUT" >&2; exit 1; }
+  MISSING=$(jq -r '.missing | join(" ")' "$OUT")
+done
+echo "still incomplete after 3 rounds; RESUME_ID=$ID to try again" >&2; exit 1
+```
+
+**Storeapp.** `release-aab.yml`'s direct-upload path (`ZEALOT_DIRECT_UPLOAD`, 40h-c-2) PUTs once to `upload_url`; with
+multipart on, a bundle at or over the threshold gets no `upload_url` and that step fails. Until that workflow runs the loop
+above, leave `ZEALOT_DIRECT_UPLOAD` off there, or set `RELEASE_UPLOAD_MULTIPART_THRESHOLD_MIB` above the largest bundle
+Storeapp builds. Turn-on order and checks: runbook section 14.
 
 ## Console
 
