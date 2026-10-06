@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_06_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_06_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -450,6 +450,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_120000) do
     t.jsonb "form_options", default: {}, null: false
     t.jsonb "metadata", default: {}, null: false
     t.string "multipart_upload_id"
+    t.bigint "part_size"
     t.bigint "release_id"
     t.datetime "stage1_at"
     t.string "staging_key"
@@ -464,6 +465,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_120000) do
     t.index ["state", "expires_at"], name: "index_release_uploads_on_state_and_expires_at"
     t.index ["user_id"], name: "index_release_uploads_on_user_id"
     t.check_constraint "declared_size > 0", name: "release_uploads_declared_size_positive"
+    t.check_constraint "part_size IS NULL OR part_size > 0", name: "release_uploads_part_size_positive"
   end
 
   create_table "releases", force: :cascade do |t|
