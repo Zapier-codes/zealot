@@ -43,6 +43,26 @@ class Api::ReleasesController < Api::BaseController
     render json: @release
   end
 
+  # Task 40q: POST /api/releases/:id/retry_compile -- send a release to CI again (platform admin only).
+  # The API twin of `CiCompileDispatchJob.enqueue_for(release)` from a Rails console, which a Render Free
+  # service cannot offer (the Jobs API answers "new paid services not allowed", and the web Shell is a
+  # browser path). It adds no behaviour of its own: `enqueue_for` still decides, so a release is only
+  # re-sent when CI is on, it is an AAB and its state is NULL or `failed`; anything else is a 422 that
+  # names the current state, and nothing changes. Never compiles, signs or touches a file here.
+  #
+  # @param id [Integer] required release id
+  # @return [JSON] 202 with the new `ci_compile_state` (`queued`), or 422 with the current state and error
+  def retry_compile
+    if CiCompileDispatchJob.enqueue_for(@release)
+      render json: { id: @release.id, ci_compile_state: @release.reload.ci_compile_state }, status: :accepted
+    else
+      @release.reload
+      render json: { error: t('api.ci_compile_retry_refused', state: @release.ci_compile_state.inspect),
+                     ci_compile_state: @release.ci_compile_state, ci_compile_error: @release.ci_compile_error },
+             status: :unprocessable_entity
+    end
+  end
+
   protected
 
   # Task 23: this controller never authorized anything, so any token holder

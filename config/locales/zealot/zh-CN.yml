@@ -1202,6 +1202,7 @@ zh-CN:
     channel_track_invalid: "未知的发布轨道。请使用以下之一：%{tracks}"
     release_app_archived: 该应用已归档，无法更改其版本
     release_not_held: 只有已暂缓的版本才能通过此方式发布（当前版本状态为 %{status}）
+    ci_compile_retry_refused: "未发送到 CI：CI_COMPILE_ENABLED 必须为 true，版本必须是 AAB，且其 CI 状态必须为空或 failed（当前为 %{state}）"
     api_token_params_invalid: "令牌需要名称（文本）和有效期，有效期为以下之一：%{choices}"
     signing_key_already_configured: 已配置签名密钥。请先（凭其校验和）移除，再添加新的
     signing_key_checksum_mismatch: 校验和与当前签名密钥不一致，未移除任何内容

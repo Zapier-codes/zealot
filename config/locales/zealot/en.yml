@@ -1226,6 +1226,7 @@ en:
     channel_track_invalid: "Unknown track. Use one of: %{tracks}"
     release_app_archived: This app is archived, so its releases cannot be changed
     release_not_held: Only a held release can be released this way (this release is %{status})
+    ci_compile_retry_refused: "Not sent to CI: CI_COMPILE_ENABLED must be true, the release must be an AAB, and its CI state must be empty or failed (it is %{state})"
     api_token_params_invalid: "A token needs a name (text) and an expiry of one of: %{choices}"
     signing_key_already_configured: A signing key is already configured. Remove it (with its checksum) before adding another
     signing_key_checksum_mismatch: The checksum does not match the current signing key, so nothing was removed

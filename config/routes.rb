@@ -392,7 +392,11 @@ Rails.application.routes.draw do
     end
     resources :releases, only: %i[update destroy] do
       # Task 34a-6: POST /api/releases/:id/release (held -> available; user token or per-app token).
-      member { post :release }
+      member do
+        post :release
+        # Task 40q: POST /api/releases/:id/retry_compile (platform admin, user token only).
+        post :retry_compile
+      end
     end
 
     # Task #7: token-authenticated, admin-only mirror of the admin-namespace

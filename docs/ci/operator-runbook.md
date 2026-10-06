@@ -361,3 +361,39 @@ set, the release should show `signed: true` (40l-b). Report the final `show` JSO
 - A run exists and fails: save its log (section 8) and upload it to the session. Callback 401/403 from the run points at the OIDC audience
   (`ZEALOT_URL` vs `CI_OIDC_AUDIENCE`) or `CI_COMPILE_CALLBACK_TOKEN`; 422 with a certificate message points at `CI_COMPILE_EXPECT_CERT_SHA256` vs `RELEASE_CERT_SHA256`.
 - Stuck with a green run: the 40g-2 sweeper fails the upload after 90 minutes; do not wait, read the run and the `show` JSON now.
+
+## 12. Render Free has no one-off jobs and no console: re-sending a release to CI (Task 40q, 2026-10-06)
+
+**Found, do not retry.** `POST https://api.render.com/v1/services/$SVC/jobs` (the Jobs API, for `bin/rails runner ...`) answers
+`400 {"message":"new paid services not allowed: srv-dalsvf942hec73dk2vg0"}`. One-off jobs need a paid Render plan; this service is
+on the free tier. It is a plan limit, not a request mistake: no change of body, header or key will make it work. The same limit
+rules out a `rails console` from the API. The only other way to run `rails runner` is the dashboard's web Shell (browser).
+
+**Other ways considered and why they were not taken**
+- Bump the app version and re-run the Storeapp workflow: the plan job's `version_exist` check runs regardless of `force`, so an unchanged
+  app is blocked before upload. Only works with an artificial version bump.
+- Render web Shell: works, but it is the browser path the operator wants to avoid.
+
+**What replaced it: `POST /api/releases/:id/retry_compile`** (Task 40q). Platform admin only, user token only (a `zpa_` per-app token
+is refused). It calls `CiCompileDispatchJob.enqueue_for(release)` and nothing else, so the 40b rules still decide:
+
+| Answer | Meaning |
+|---|---|
+| `202` `{"id":3,"ci_compile_state":"queued"}` | queued; the job dispatches the storage-repo workflow |
+| `422` with `ci_compile_state` / `ci_compile_error` | refused and nothing changed: `CI_COMPILE_ENABLED` is not `true`, the release is not an AAB, or its state is not empty/`failed` (already `queued`, `dispatched` or `done`) |
+| `401` / `403` / `404` | no or wrong token / not an admin / no such release |
+
+```
+. ~/.zealot.env
+Z=https://zealot-deploy-latest.onrender.com
+curl -sS -X POST -H "Authorization: Bearer $(zealot-token)" "$Z/api/releases/3/retry_compile" | jq .
+# then read what CI did (outcome is NOT readable from the API yet, see below):
+gh run list -R Zapier-codes/zealot-storage -L 3
+```
+
+**Do not use `retry_compile` to poll.** On a `failed` release every call re-queues it. Read the outcome from the storage-repo run and the
+release page in the console. A read-only `ci_compile_state` field on the release API is an open follow-up (40q-b), not built.
+
+**Not verified:** the action, route, policy predicate and spec were written without a Ruby runtime or database (`ruby -c` not run
+either: no Ruby in this sandbox). The endpoint exists only after this patch is pushed and the Render deploy is `live`
+(it touches `.rb`, so the push does start `Anthropic - Build & Deploy develop`).

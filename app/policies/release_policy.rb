@@ -39,6 +39,12 @@ class ReleasePolicy < ApplicationPolicy
     tenant_access? && in_request_tenant?(app) && any_manage?
   end
 
+  # Task 40q: re-send a release to CI (POST /api/releases/:id/retry_compile). Platform admin only, plus the
+  # tenant rule: an org-level pipeline action, not something an app's own collaborators may trigger.
+  def retry_compile?
+    admin? && tenant_access? && in_request_tenant?(app)
+  end
+
   def auth?
     true
   end
