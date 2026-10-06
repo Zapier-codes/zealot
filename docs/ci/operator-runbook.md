@@ -34,6 +34,21 @@ Render), `~/close-gaps.sh` (**now `docs/ci/close-gaps.sh` in this repo**, copy i
 - The only copy of the keystore file outside Zealot/GitHub was the phone. GitHub secrets cannot be read
   back and Zealot never exports the key, so **a backup off the phone is the operator's job** (encrypted
   copy plus the passwords in a password manager). Whether it was done is not recorded.
+- R2 staging bucket lifecycle, read back by the operator 2026-10-06 (the account id is the first part of the
+  endpoint; `CF_API_TOKEN` is a Cloudflare API token with R2 access, not the `R2_STAGING_*` storage keys, which
+  cannot read bucket settings). The rule is what removes abandoned staged files and half-sent multipart uploads,
+  so it backs the multipart window of Task 40s (6 hours, well under the 1-day abort):
+  ```
+  A=3a46f47127565b4cd6c0c937dd15d2e4
+  curl -sS "https://api.cloudflare.com/client/v4/accounts/$A/r2/buckets/zealot-staging/lifecycle" \
+    -H "Authorization: Bearer $CF_API_TOKEN" \
+    | jq -r 'if .success then (.result.rules[] | "\(.id)  enabled=\(.enabled)  prefix=\(.conditions.prefix)  delete_after_s=\(.deleteObjectsTransition.condition.maxAge)  abort_multipart_after_s=\(.abortMultipartUploadsTransition.condition.maxAge)") else .errors end'
+  ```
+  Result: `expire-staging  enabled=true  prefix=staging/  delete_after_s=172800  abort_multipart_after_s=86400`.
+  If the rule is ever missing, re-apply step 3 of "R2 staging bucket: terminal commands" in `handover.md` (Task 40).
+- R2 multipart behaviour of the same bucket, checked by the operator 2026-10-06 with presigned `UploadPart` URLs:
+  they work; every part but the last must have the same length (`InvalidPart` otherwise); a 1 MiB non-last part is
+  refused (`EntityTooSmall`); 6, 6 and 1 MiB complete. Details in the Task 40s-a session entry in `handover.md`.
 
 ## 3. State of the setup (as last reported by the operator, 2026-10-05)
 
