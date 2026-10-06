@@ -466,11 +466,17 @@ jobs:
             stored_icon="${ARTIFACT_BASE}.${icon_ext}"
             stored_universal="${ARTIFACT_BASE}.apk"
             stored_compressed="${ARTIFACT_BASE}.apks.br"
+            # Task 41e: a named file is uploaded under its bare name, so the browser saves `<base>.apk` and not
+            # `pipeline__<base>.apk` (GitHub's download name is the asset name). Zealot's adapter finds either.
+            asset_universal="$stored_universal"
+            asset_compressed="$stored_compressed"
           else
             stored_file="$FILENAME"
             stored_icon="icon.${icon_ext}"
             stored_universal="universal.apk"
             stored_compressed="release.apks.br"
+            asset_universal="pipeline__universal.apk"
+            asset_compressed="pipeline__release.apks.br"
           fi
           {
             echo "WORK=${RUNNER_TEMP}/build-${UPLOAD_ID}"
@@ -481,6 +487,8 @@ jobs:
             echo "STORED_ICON=${stored_icon}"
             echo "STORED_UNIVERSAL=${stored_universal}"
             echo "STORED_COMPRESSED=${stored_compressed}"
+            echo "ASSET_UNIVERSAL=${asset_universal}"
+            echo "ASSET_COMPRESSED=${asset_compressed}"
           } >> "$GITHUB_ENV"
 
       - name: Set up Java
@@ -802,7 +810,8 @@ jobs:
 
       # Asset names follow the storage adapter's own mapping (GithubAdapter.location_for): key
       # `.../binary/<name>.aab` becomes asset `<name>.aab`, `.../icons/<name>.png` becomes `icons__<name>.png`,
-      # `.../pipeline/<name>.apk` becomes `pipeline__<name>.apk`, all in the release tagged `a<app>-r<release>`.
+      # `.../pipeline/<name>.apk` becomes `<name>.apk` (Task 41e; the old fixed names keep `pipeline__universal.apk`
+      # and `pipeline__release.apks.br`), all in the release tagged `a<app>-r<release>`.
       # `<name>` is Zealot's artifact_base (Task 41b), or the old fixed names when Zealot sends none.
       # The release is created the way the adapter creates it (a prerelease; its notes say it is managed).
       - name: Upload the files to the storage release
@@ -828,9 +837,9 @@ jobs:
             upload+=("$assets/icons__${STORED_ICON}")
           fi
           if [[ $KIND == aab ]]; then
-            cp "$WORK/universal.apk" "$assets/pipeline__${STORED_UNIVERSAL}"
-            cp "$WORK/release.apks.br" "$assets/pipeline__${STORED_COMPRESSED}"
-            upload+=("$assets/pipeline__${STORED_UNIVERSAL}" "$assets/pipeline__${STORED_COMPRESSED}")
+            cp "$WORK/universal.apk" "$assets/$ASSET_UNIVERSAL"
+            cp "$WORK/release.apks.br" "$assets/$ASSET_COMPRESSED"
+            upload+=("$assets/$ASSET_UNIVERSAL" "$assets/$ASSET_COMPRESSED")
           fi
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber "${upload[@]}"
 

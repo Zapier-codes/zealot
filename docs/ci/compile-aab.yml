@@ -8,7 +8,11 @@
 #   2. builds the device-split APK set with bundletool (`--mode=default`, as Zealot did) and a signed
 #      universal APK (`--mode=universal`), both signed with the organisation key;
 #   3. Brotli-compresses the split set (quality 11, as BrotliService did);
-#   4. uploads `pipeline__universal.apk` and `pipeline__release.apks.br` to the SAME release (same tag);
+#   4. uploads the universal APK and the Brotli set to the SAME release (same tag), named after the app when
+#      Zealot sends `artifact_base` (Task 41c): `Storeapp-1.1.4-218.apk` and `Storeapp-1.1.4-218.apks.br`, the
+#      same names stage 2 of the upload workflow uses. Without the input (a Zealot older than 41c) the old
+#      names `pipeline__universal.apk` and `pipeline__release.apks.br` are used, which Zealot still accepts;
+#      the two repos can be updated in either order;
 #   5. calls Zealot back once (POST /api/ci_compile/<release_id>/callback, Task 40a) with the keys, the
 #      universal APK's SHA-256 and size, the compressed size and the signing certificate's SHA-256.
 # If any step fails, the last step calls back with `state: failed` and a reason, so a broken run shows up on
@@ -52,6 +56,11 @@ on:
         description: "AAB asset name inside that release, e.g. app.aab"
         required: true
         type: string
+      artifact_base:
+        description: "Base name the compiled files are stored under, e.g. Storeapp-1.1.4-218 (optional)"
+        required: false
+        default: ""
+        type: string
 
 # One run per release at a time; a second dispatch for the same release waits instead of racing the upload.
 concurrency:
@@ -77,6 +86,7 @@ jobs:
           RELEASE_ID: ${{ inputs.release_id }}
           TAG: ${{ inputs.tag }}
           ASSET: ${{ inputs.asset }}
+          ARTIFACT_BASE: ${{ inputs.artifact_base }}
           ZEALOT_URL: ${{ vars.ZEALOT_URL }}
           CALLBACK_TOKEN: ${{ secrets.CI_COMPILE_CALLBACK_TOKEN }}
           KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
@@ -95,9 +105,29 @@ jobs:
           [[ -n ${KEYSTORE_PASS:-} ]] || fail "the secret RELEASE_KEYSTORE_PASSWORD is not set"
           [[ -n ${KEY_ALIAS:-} ]] || fail "the secret RELEASE_KEY_ALIAS is not set"
           app="${TAG%%-*}"; rel="${TAG##*-}"
+          # Task 41c: what the compiled files are called. Zealot sends the base name (the app's name, version and
+          # build, cleaned); without it the old fixed names are used. STORED_* are the storage-key names reported
+          # back to Zealot; ASSET_* are the release-asset names (Task 41e: a named file is uploaded bare, so the
+          # browser saves `<base>.apk`, not `pipeline__<base>.apk`; the old names keep their `pipeline__`).
+          if [[ -n ${ARTIFACT_BASE:-} ]]; then
+            [[ $ARTIFACT_BASE =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || fail "artifact_base has an unexpected shape"
+            stored_universal="${ARTIFACT_BASE}.apk"
+            stored_compressed="${ARTIFACT_BASE}.apks.br"
+            asset_universal="$stored_universal"
+            asset_compressed="$stored_compressed"
+          else
+            stored_universal="universal.apk"
+            stored_compressed="release.apks.br"
+            asset_universal="pipeline__universal.apk"
+            asset_compressed="pipeline__release.apks.br"
+          fi
           {
             echo "PIPELINE_PREFIX=uploads/apps/${app}/${rel}/pipeline"
             echo "WORK=${RUNNER_TEMP}/compile-${RELEASE_ID}"
+            echo "STORED_UNIVERSAL=${stored_universal}"
+            echo "STORED_COMPRESSED=${stored_compressed}"
+            echo "ASSET_UNIVERSAL=${asset_universal}"
+            echo "ASSET_COMPRESSED=${asset_compressed}"
           } >> "$GITHUB_ENV"
 
       - name: Set up Java
@@ -220,17 +250,20 @@ jobs:
           [[ -s "$WORK/release.apks.br" ]] || { echo "::error::brotli produced no output"; exit 1; }
 
       # Asset names follow the storage adapter's own mapping (GithubAdapter.location_for): key
-      # `.../pipeline/universal.apk` becomes asset `pipeline__universal.apk` in the same release tag.
+      # `.../pipeline/<base>.apk` becomes asset `<base>.apk`, and the old `.../pipeline/universal.apk` becomes
+      # `pipeline__universal.apk`, in the same release tag. The copies go to their own directory so a name can
+      # never collide with a working file.
       - name: Upload both files to the storage release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          cp "$WORK/universal.apk" "$WORK/pipeline__universal.apk"
-          cp "$WORK/release.apks.br" "$WORK/pipeline__release.apks.br"
+          assets="$WORK/assets"; mkdir -p "$assets"
+          cp "$WORK/universal.apk" "$assets/$ASSET_UNIVERSAL"
+          cp "$WORK/release.apks.br" "$assets/$ASSET_COMPRESSED"
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
-            "$WORK/pipeline__universal.apk" "$WORK/pipeline__release.apks.br"
+            "$assets/$ASSET_UNIVERSAL" "$assets/$ASSET_COMPRESSED"
 
       - name: Tell Zealot it is done
         env:
@@ -242,10 +275,10 @@ jobs:
           sha="$(sha256sum "$WORK/universal.apk" | cut -d' ' -f1)"
           body="$(jq -n \
             --arg state done \
-            --arg ukey "$PIPELINE_PREFIX/universal.apk" \
+            --arg ukey "$PIPELINE_PREFIX/$STORED_UNIVERSAL" \
             --arg usha "$sha" \
             --argjson usize "$(stat -c %s "$WORK/universal.apk")" \
-            --arg ckey "$PIPELINE_PREFIX/release.apks.br" \
+            --arg ckey "$PIPELINE_PREFIX/$STORED_COMPRESSED" \
             --argjson csize "$(stat -c %s "$WORK/release.apks.br")" \
             --arg cert "$CERT_SHA256" \
             '{state: $state, universal_apk_key: $ukey, universal_apk_sha256: $usha, universal_apk_size: $usize,

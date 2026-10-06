@@ -65,6 +65,36 @@ RSpec.describe Release, 'universal APK (Task 40e)' do
       expect(release.reload.download_filename).to eq(release.send(:default_filename))
       expect(release.download_filename).to end_with('.apk')
     end
+
+    # Task 41d: with the channel set to the original file name, a download is called what it was stored as.
+    describe 'a channel that offers the original file name (Task 41d)' do
+      before { channel.update_columns(download_filename_type: 'original_filename') }
+
+      it 'offers the stored name of a compiled release' do
+        compiled!(universal_apk_storage_key: 'uploads/apps/a1/r1/pipeline/Storeapp-1.0.1-1.apk')
+
+        expect(release.download_filename).to eq('Storeapp-1.0.1-1.apk')
+      end
+
+      it 'offers the stored name of a release held only in storage' do
+        release.update_columns(file_storage_key: 'uploads/apps/a1/r1/binary/Storeapp-1.0.1-1.apk')
+
+        expect(release.reload.download_filename).to eq('Storeapp-1.0.1-1.apk')
+      end
+
+      it 'does not offer an old generic name' do
+        release.update_columns(file_storage_key: 'uploads/apps/a1/r1/binary/universal.apk')
+
+        expect(release.reload.download_filename).to eq(release.send(:default_filename))
+      end
+
+      it 'leaves the other filename type alone' do
+        channel.update_columns(download_filename_type: 'version_datetime')
+        compiled!(universal_apk_storage_key: 'uploads/apps/a1/r1/pipeline/Storeapp-1.0.1-1.apk')
+
+        expect(release.download_filename).to eq(release.send(:version_datetime_filename))
+      end
+    end
   end
 
   describe '#file?' do

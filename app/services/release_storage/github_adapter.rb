@@ -28,6 +28,11 @@ require 'fileutils'
 # cannot contain "/"). The uploaded file itself, key .../binary/app.apk, drops
 # the "binary/" prefix and becomes asset "app.apk", because the download's file
 # name is the asset name and users should get "app.apk", not "binary__app.apk".
+# Task 41e: a file Zealot named after the app (.../pipeline/Storeapp-1.1.4-218.apk) drops "pipeline/" the same
+# way and becomes asset "Storeapp-1.1.4-218.apk"; the old fixed names (universal.apk, release.apks.br) keep
+# "pipeline__". Looking an asset up also tries the old "pipeline__<name>" so a release stored before 41e resolves.
+# GitHub's signed download URL carries `response-content-disposition: attachment; filename=<asset name>`
+# (seen on a real redirect, 2026-10-06), which is why the asset name is the name a browser saves.
 # An app's store-listing graphics (Task 27d-d2-b), key uploads/apps/a12/graphics/g7/graphic.png,
 # live in one GitHub release per app tagged "a12-graphics" (asset "g7__graphic.png").
 # Keys that don't follow the uploads/apps/a<id>/r<id>/... or
@@ -56,6 +61,9 @@ class ReleaseStorage::GithubAdapter
   KEY_PATTERN = %r{\A(?:uploads/)?apps/(a\d+)/(r\d+|graphics)/(.+)\z}
   REPO_PATTERN = %r{\A[\w.-]+/[\w.-]+\z}
   VERIFY_TTL = 600
+  # Task 41e: the generic names a workflow older than Task 41 stored its compiled files under. They keep the
+  # `pipeline__` asset name; any other `pipeline/<name>` file (named after the app) is stored as `<name>`.
+  LEGACY_PIPELINE_NAMES = %w[universal.apk release.apks.br].freeze
 
   Response = Struct.new(:status, :headers, :body, keyword_init: true) do
     def success?
@@ -114,21 +122,30 @@ class ReleaseStorage::GithubAdapter
   end
 
   class << self
-    # Task 40b: the storage tag and asset name a key is stored under (`a12-r345`, `pipeline__release.apks.br`).
+    # Task 40b: the storage tag and asset name a key is stored under (`a12-r345`, `Storeapp-1.1.4-218.apk`).
     # Public so the CI dispatch can tell the compile workflow which release asset to download, from the one
     # mapping this adapter itself uses, instead of a second copy of it.
     #
     # @return [Array(String, String)] tag, asset name
     # @raise [ReleaseStorage::StorageError] the key does not follow the storage convention
     def location_for(key)
-      match = KEY_PATTERN.match(key.to_s)
-      unless match
-        raise ReleaseStorage::StorageError,
-              "GitHub storage cannot store key #{key.inspect}: expected uploads/apps/a<id>/r<id>/<file> " \
-              'or uploads/apps/a<id>/graphics/<file>'
-      end
+      tag, path = split_key(key)
+      [tag, sanitize_asset_name(flatten_path(path, strip_pipeline: named_pipeline_file?(path)))]
+    end
 
-      ["#{match[1]}-#{match[2]}", sanitize_asset_name(match[3].delete_prefix('binary/').gsub('/', '__'))]
+    # Task 41e: every asset name a key may be found under, current name first. A release stored before 41e has
+    # its named compiled files as `pipeline__<name>`, while the key recorded for them is `pipeline/<name>`, so
+    # a lookup tries both. One name for every other key.
+    #
+    # @return [Array(String, Array<String>)] tag, asset names
+    def locations_for(key)
+      tag, path = split_key(key)
+      names = [true, false].map do |strip|
+        next if strip && !named_pipeline_file?(path)
+
+        sanitize_asset_name(flatten_path(path, strip_pipeline: strip))
+      end
+      [tag, names.compact.uniq]
     end
 
     # GitHub rewrites unusual characters in asset names on upload, which would
@@ -153,6 +170,29 @@ class ReleaseStorage::GithubAdapter
     end
 
     private
+
+    def split_key(key)
+      match = KEY_PATTERN.match(key.to_s)
+      unless match
+        raise ReleaseStorage::StorageError,
+              "GitHub storage cannot store key #{key.inspect}: expected uploads/apps/a<id>/r<id>/<file> " \
+              'or uploads/apps/a<id>/graphics/<file>'
+      end
+
+      ["#{match[1]}-#{match[2]}", match[3]]
+    end
+
+    # `pipeline/<name>` where <name> is one file named after the app (not an old generic name).
+    def named_pipeline_file?(path)
+      name = path.delete_prefix('pipeline/')
+      path.start_with?('pipeline/') && !name.include?('/') && !LEGACY_PIPELINE_NAMES.include?(name)
+    end
+
+    def flatten_path(path, strip_pipeline:)
+      path = path.delete_prefix('binary/')
+      path = path.delete_prefix('pipeline/') if strip_pipeline
+      path.gsub('/', '__')
+    end
 
     def verified_repos
       @verified_repos ||= {}
@@ -184,8 +224,10 @@ class ReleaseStorage::GithubAdapter
     end
 
     release = find_or_create_release(tag)
-    existing = list_assets(release['id']).find { |asset| asset['name'] == name }
-    delete_asset(existing['id']) if existing
+    # Task 41e: also replaces the same file stored under its pre-41e name, so one key is never two assets.
+    names = self.class.locations_for(key).last
+    stale = list_assets(release['id']).select { |asset| names.include?(asset['name']) }
+    stale.each { |asset| delete_asset(asset['id']) }
     upload_asset(release, name, local_path, size, content_type || 'application/octet-stream')
     key
   end
@@ -302,11 +344,12 @@ class ReleaseStorage::GithubAdapter
   # --- GitHub API helpers --------------------------------------------------
 
   def locate_asset(key)
-    tag, name = locate(key)
+    tag, names = self.class.locations_for(key)
     release = find_release(tag)
     return [nil, nil] unless release
 
-    [release, list_assets(release['id']).find { |asset| asset['name'] == name }]
+    assets = list_assets(release['id'])
+    [release, names.filter_map { |name| assets.find { |asset| asset['name'] == name } }.first]
   end
 
   def find_release(tag)

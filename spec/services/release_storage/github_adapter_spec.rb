@@ -29,6 +29,11 @@ module GithubAdapterSpecSupport
       @releases.keys
     end
 
+    # Task 41e: re-creates a release as an older layout left it (an asset under another name).
+    def rename_asset(tag, from, to)
+      @releases.fetch(tag)[:assets].find { |a| a[:name] == from }[:name] = to
+    end
+
     def call(method, url, headers: {}, body: nil, upload_path: nil, stream_to: nil)
       @requests << { method: method, url: url, headers: headers }
       return json(@failures.shift, message: 'boom') unless @failures.empty?
@@ -170,6 +175,71 @@ RSpec.describe ReleaseStorage::GithubAdapter do
       adapter.exist?(key)
 
       expect(github.requests.count { |r| r[:url] == 'https://api.github.test/repos/org/store' }).to eq(1)
+    end
+  end
+
+  # Task 41e: GitHub saves a download under the asset name, so a file named after the app must not carry the
+  # `pipeline__` prefix; the old generic names keep it, and a release stored before 41e must still resolve.
+  describe 'asset names (Task 41e)' do
+    let(:named_key) { 'uploads/apps/a12/r345/pipeline/Storeapp-1.1.4-218.apk' }
+    let(:old_name) { 'pipeline__Storeapp-1.1.4-218.apk' }
+
+    it 'drops pipeline/ for a file named after the app' do
+      expect(described_class.location_for(named_key)).to eq(%w[a12-r345 Storeapp-1.1.4-218.apk])
+      expect(described_class.location_for('uploads/apps/a12/r345/pipeline/Storeapp-1.1.4-218.apks.br').last)
+        .to eq('Storeapp-1.1.4-218.apks.br')
+    end
+
+    it 'keeps pipeline__ for the old generic names' do
+      expect(described_class.location_for('uploads/apps/a12/r345/pipeline/universal.apk').last)
+        .to eq('pipeline__universal.apk')
+      expect(described_class.location_for(key).last).to eq('pipeline__release.apks.br')
+    end
+
+    it 'leaves binary/, icons/ and nested pipeline paths as they were' do
+      expect(described_class.location_for('uploads/apps/a12/r345/binary/app.aab').last).to eq('app.aab')
+      expect(described_class.location_for('uploads/apps/a12/r345/icons/app.png').last).to eq('icons__app.png')
+      expect(described_class.location_for('uploads/apps/a12/r345/pipeline/sub/x.apk').last)
+        .to eq('pipeline__sub__x.apk')
+    end
+
+    it 'lists the pre-41e name as a second candidate only for a named pipeline file' do
+      expect(described_class.locations_for(named_key)).to eq(['a12-r345', ['Storeapp-1.1.4-218.apk', old_name]])
+      expect(described_class.locations_for(key)).to eq(['a12-r345', ['pipeline__release.apks.br']])
+    end
+
+    it 'stores a new file under the bare name' do
+      adapter.put(named_key, source)
+
+      expect(github.assets_of('a12-r345')).to eq(['Storeapp-1.1.4-218.apk'])
+    end
+
+    context 'when the release was stored before 41e (asset named pipeline__...)' do
+      before do
+        # What the 41b workflow left behind: the asset is `pipeline__<name>`, the recorded key `pipeline/<name>`.
+        adapter.put('uploads/apps/a12/r345/pipeline/universal.apk', source)
+        github.rename_asset('a12-r345', 'pipeline__universal.apk', old_name)
+      end
+
+      it 'still finds, fetches and reports it' do
+        dest = File.join(tmp, 'old.bin')
+
+        expect(adapter.exist?(named_key)).to be(true)
+        expect(adapter.get(named_key, dest)).to eq(dest)
+        expect(File.binread(dest)).to eq('apk-bytes')
+      end
+
+      it 'replaces it with one asset under the new name on put' do
+        adapter.put(named_key, source)
+
+        expect(github.assets_of('a12-r345')).to eq(['Storeapp-1.1.4-218.apk'])
+      end
+
+      it 'deletes it' do
+        adapter.delete(named_key)
+
+        expect(adapter.exist?(named_key)).to be(false)
+      end
     end
   end
 

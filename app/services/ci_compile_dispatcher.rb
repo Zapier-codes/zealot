@@ -11,6 +11,11 @@ require 'json'
 # no secret: only the release id and where the AAB is (tag and asset name, from the same mapping the storage
 # adapter uses, `GithubAdapter.location_for`).
 #
+# Task 41c: the call also carries `artifact_base` (`ReleaseArtifactName.for(release)`, e.g. `Storeapp-1.1.4-218`),
+# the name the workflow stores its APK and APK set under, the same as stage 2 does. A storage-repo copy of the
+# workflow that does not declare that input makes GitHub answer 422 "Unexpected inputs provided"; that one case is
+# repeated once without the input, so a Zealot deployed ahead of the workflow copy still compiles (to the old names).
+#
 # Configuration (all read when the call is made; none is logged):
 #   CI_COMPILE_ENABLED         "true" turns the CI path on. Read by `CiCompileDispatchJob`, not here.
 #   CI_COMPILE_DISPATCH_TOKEN  fine-grained token for the storage repo with "Actions: read and write".
@@ -21,9 +26,9 @@ require 'json'
 #   CI_COMPILE_REF             branch or tag the workflow runs from, default main.
 #   GITHUB_API_URL             as for the storage adapter (default https://api.github.com).
 #
-# One attempt, no retry: a failure raises DispatchError with a reason that is safe to show an operator, and
-# the job records it on the release as `failed`. Not verified against the live GitHub API from the sandbox
-# this was written in; the spec runs against a fake transport.
+# One attempt (plus the single 41c repeat above): a failure raises DispatchError with a reason that is safe to
+# show an operator, and the job records it on the release as `failed`. Not verified against the live GitHub API
+# from the sandbox this was written in; the spec runs against a fake transport.
 class CiCompileDispatcher
   class DispatchError < StandardError; end
 
@@ -50,6 +55,7 @@ class CiCompileDispatcher
     tag, asset = storage_location
 
     response = post(url_for(repo), token, payload(tag, asset))
+    response = post(url_for(repo), token, payload(tag, asset, with_base: false)) if refused_artifact_base?(response)
     return true if response.status == 204
 
     raise DispatchError, refusal(response, repo)
@@ -113,8 +119,21 @@ class CiCompileDispatcher
 
   # Inputs are strings (workflow_dispatch inputs always are). No secret and no callback URL: the workflow
   # has the callback URL and token in its own variables and secrets (see Task 40).
-  def payload(tag, asset)
-    { ref: ref, inputs: { release_id: release.id.to_s, tag: tag, asset: asset } }
+  def payload(tag, asset, with_base: true)
+    inputs = { release_id: release.id.to_s, tag: tag, asset: asset }
+    inputs[:artifact_base] = ReleaseArtifactName.for(release) if with_base
+    { ref: ref, inputs: inputs }
+  end
+
+  # Task 41c: GitHub's 422 for an input the workflow does not declare ("Unexpected inputs provided:
+  # [\"artifact_base\"]"). Only that case is repeated; any other refusal is final.
+  def refused_artifact_base?(response)
+    return false unless response.status == 422
+
+    message = JSON.parse(response.body.to_s)['message'].to_s
+    message.match?(/unexpected input/i) && message.include?('artifact_base')
+  rescue JSON::ParserError, TypeError
+    false
   end
 
   def post(url, token, body)

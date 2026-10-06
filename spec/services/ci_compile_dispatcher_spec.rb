@@ -5,7 +5,11 @@ require 'rails_helper'
 # Task 40b: the workflow_dispatch call to the storage repo. No network: a fake transport records the request.
 # NOT run (the operator said no testing); look here first if CI is red for this slice.
 RSpec.describe CiCompileDispatcher do
-  let(:release) { instance_double(Release, id: 345, file_storage_key: 'uploads/apps/a12/r345/binary/app.aab') }
+  let(:app) { instance_double(App, name: 'Storeapp') }
+  let(:release) do
+    instance_double(Release, id: 345, file_storage_key: 'uploads/apps/a12/r345/binary/app.aab', app: app,
+                             release_version: '1.1.4', build_version: '218')
+  end
   let(:response) { ReleaseStorage::GithubAdapter::Response.new(status: 204, headers: {}, body: '') }
   let(:calls) { [] }
   let(:transport) do
@@ -26,7 +30,7 @@ RSpec.describe CiCompileDispatcher do
 
   before { allow(ReleaseStorage).to receive(:adapter_name).and_return('github') }
 
-  it 'posts one workflow_dispatch with the release id, tag and asset, and no secret in the body' do
+  it 'posts one workflow_dispatch with the release id, tag, asset and artifact base, and no secret in the body' do
     expect(dispatcher.call).to be(true)
 
     expect(calls.size).to eq(1)
@@ -37,7 +41,9 @@ RSpec.describe CiCompileDispatcher do
     )
     expect(call[:headers]['Authorization']).to eq('Bearer dispatch-secret')
     expect(JSON.parse(call[:body])).to eq(
-      'ref' => 'main', 'inputs' => { 'release_id' => '345', 'tag' => 'a12-r345', 'asset' => 'app.aab' }
+      'ref' => 'main',
+      'inputs' => { 'release_id' => '345', 'tag' => 'a12-r345', 'asset' => 'app.aab',
+                    'artifact_base' => 'Storeapp-1.1.4-218' }
     )
     expect(call[:body]).not_to include('dispatch-secret')
   end
@@ -108,6 +114,49 @@ RSpec.describe CiCompileDispatcher do
 
         pattern = /HTTP #{status}: nope.*#{hint.source}/m
         expect { dispatcher.call }.to raise_error(described_class::DispatchError, pattern)
+      end
+    end
+
+    # Task 41c: a workflow copy older than 41c does not declare the input and GitHub refuses the whole dispatch.
+    describe 'a workflow that does not declare artifact_base (Task 41c)' do
+      let(:unexpected) do
+        ReleaseStorage::GithubAdapter::Response.new(
+          status: 422, headers: {}, body: '{"message":"Unexpected inputs provided: [\\"artifact_base\\"]"}'
+        )
+      end
+
+      def replies(*list)
+        queue = list.dup
+        recorded = calls
+        allow(transport).to receive(:call) do |method, url, headers: {}, body: nil, **|
+          recorded << { method: method, url: url, headers: headers, body: body }
+          queue.shift
+        end
+      end
+
+      it 'repeats the dispatch once without the input' do
+        replies(unexpected, response)
+
+        expect(dispatcher.call).to be(true)
+        expect(calls.size).to eq(2)
+        expect(JSON.parse(calls.first[:body])['inputs']).to include('artifact_base' => 'Storeapp-1.1.4-218')
+        expect(JSON.parse(calls.last[:body])['inputs'])
+          .to eq('release_id' => '345', 'tag' => 'a12-r345', 'asset' => 'app.aab')
+      end
+
+      it 'does not repeat it more than once' do
+        replies(unexpected, unexpected)
+
+        expect { dispatcher.call }.to raise_error(described_class::DispatchError, /HTTP 422/)
+        expect(calls.size).to eq(2)
+      end
+
+      it 'does not repeat a 422 about something else' do
+        replies(ReleaseStorage::GithubAdapter::Response.new(status: 422, headers: {},
+                                                            body: '{"message":"No ref found for: nope"}'))
+
+        expect { dispatcher.call }.to raise_error(described_class::DispatchError, /No ref found/)
+        expect(calls.size).to eq(1)
       end
     end
 

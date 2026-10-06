@@ -94,13 +94,14 @@ RSpec.describe ReleaseStorage do
         )
     end
 
+    # Task 41e: a named compiled file drops `pipeline/`, so the browser saves `<name>.apk`.
     it 'maps the named keys to GitHub asset names' do
       keys = storage.staged_keys(filename: 'x.aab', icon_extension: '.png', base: 'Storeapp-1.1.4-218')
       assets = keys.transform_values { |key| ReleaseStorage::GithubAdapter.location_for(key).last }
 
       expect(assets).to eq(
-        file: 'Storeapp-1.1.4-218.aab', universal: 'pipeline__Storeapp-1.1.4-218.apk',
-        compressed: 'pipeline__Storeapp-1.1.4-218.apks.br', icon: 'icons__Storeapp-1.1.4-218.png'
+        file: 'Storeapp-1.1.4-218.aab', universal: 'Storeapp-1.1.4-218.apk',
+        compressed: 'Storeapp-1.1.4-218.apks.br', icon: 'icons__Storeapp-1.1.4-218.png'
       )
     end
 

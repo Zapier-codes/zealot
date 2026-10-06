@@ -819,12 +819,28 @@ class Release < ApplicationRecord
     AnthropicPlayPreflightJob.perform_later(app.id) if app.play_package_name.present? && !adopted
   end
 
+  # Task 41d: the generic names a workflow older than Task 41 stored files under. They say nothing about the app,
+  # so they are never offered as a download name.
+  LEGACY_FIXED_STORED_NAMES = %w[universal.apk release.apks.br].freeze
+
   def original_filename
     # `file?` is also true for a release held only in storage, where there is no uploader identifier (and
-    # for a CI-built release the served file is the universal APK, not the uploaded bundle's name).
-    return default_filename if serves_universal_apk? || file.blank?
+    # for a CI-built release the served file is the universal APK, not the uploaded bundle's name). In both
+    # cases the name the file was stored under is the name to offer (`Storeapp-1.1.4-218.apk`, Task 41).
+    return stored_file_name || default_filename if serves_universal_apk? || file.blank?
 
     file? ? file.identifier : default_filename
+  end
+
+  # Task 41d: the last segment of the storage key the download is served from, as CI reported it: the universal
+  # APK's key for a compiled release, else the primary file's. Nil when there is none or it is one of the old
+  # generic names.
+  def stored_file_name
+    key = serves_universal_apk? ? universal_apk_storage_key : file_storage_key
+    name = File.basename(key.to_s)
+    return nil if name.blank? || name == '.' || LEGACY_FIXED_STORED_NAMES.include?(name)
+
+    name
   end
   
   def version_datetime_filename
