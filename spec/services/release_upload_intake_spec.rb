@@ -35,7 +35,8 @@ RSpec.describe ReleaseUploadIntake do
     expect(@result.http).to eq(200)
     expect(@result.payload).to include(upload_id: upload.id, state: 'processing', stage: 1, release_id: release.id,
                                        package_name: 'com.example.app',
-                                       storage_tag: "a#{app.id}-r#{release.id}")
+                                       storage_tag: "a#{app.id}-r#{release.id}",
+                                       artifact_base: ReleaseArtifactName.for(release))
     expect(release.status).to eq('held')
     upload.reload
     expect(upload.state).to eq('processing')

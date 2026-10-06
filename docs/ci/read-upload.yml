@@ -139,6 +139,7 @@ jobs:
     outputs:
       release_id: ${{ steps.callback.outputs.release_id }}
       storage_tag: ${{ steps.callback.outputs.storage_tag }}
+      artifact_base: ${{ steps.callback.outputs.artifact_base }}
       file_sha256: ${{ steps.callback.outputs.file_sha256 }}
       icon_key: ${{ steps.callback.outputs.icon_key }}
       icon_sha256: ${{ steps.callback.outputs.icon_sha256 }}
@@ -350,6 +351,7 @@ jobs:
           {
             echo "release_id=$(jq -r '.release_id // empty' "$WORK/callback.out")"
             echo "storage_tag=$(jq -r '.storage_tag // empty' "$WORK/callback.out")"
+            echo "artifact_base=$(jq -r '.artifact_base // empty' "$WORK/callback.out")"
             echo "file_sha256=$(jq -r '.file_sha256 // empty' "$WORK/body.json")"
             echo "icon_key=$(jq -r '.icon_key // empty' "$WORK/body.json")"
             echo "icon_sha256=$(jq -r '.icon_sha256 // empty' "$WORK/body.json")"
@@ -400,6 +402,7 @@ jobs:
           FILENAME: ${{ inputs.filename }}
           RELEASE_ID: ${{ needs.read.outputs.release_id }}
           TAG: ${{ needs.read.outputs.storage_tag }}
+          ARTIFACT_BASE: ${{ needs.read.outputs.artifact_base }}
           FILE_SHA256: ${{ needs.read.outputs.file_sha256 }}
           ICON_KEY: ${{ needs.read.outputs.icon_key }}
           ICON_SHA256: ${{ needs.read.outputs.icon_sha256 }}
@@ -452,11 +455,32 @@ jobs:
             [[ -n ${KEY_ALIAS:-} ]] || fail "the secret RELEASE_KEY_ALIAS is not set"
           fi
           prefix="uploads/apps/a${staged_app}/r${RELEASE_ID}"
+          # Task 41b: what the stored files are called. Zealot sends the base name (the app's name, version and
+          # build, cleaned); without it (a Zealot older than 41b) the old fixed names are used, which Zealot
+          # still accepts. Zealot derives the same names itself and refuses a report that differs.
+          ext="${FILENAME##*.}"
+          icon_ext="${ICON_KEY##*.}"
+          if [[ -n ${ARTIFACT_BASE:-} ]]; then
+            [[ $ARTIFACT_BASE =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || fail "artifact_base has an unexpected shape"
+            stored_file="${ARTIFACT_BASE}.${ext}"
+            stored_icon="${ARTIFACT_BASE}.${icon_ext}"
+            stored_universal="${ARTIFACT_BASE}.apk"
+            stored_compressed="${ARTIFACT_BASE}.apks.br"
+          else
+            stored_file="$FILENAME"
+            stored_icon="icon.${icon_ext}"
+            stored_universal="universal.apk"
+            stored_compressed="release.apks.br"
+          fi
           {
             echo "WORK=${RUNNER_TEMP}/build-${UPLOAD_ID}"
-            echo "KIND=${FILENAME##*.}"
+            echo "KIND=${ext}"
             echo "STORAGE_PREFIX=${prefix}"
-            echo "ICON_EXT=${ICON_KEY##*.}"
+            echo "ICON_EXT=${icon_ext}"
+            echo "STORED_FILE=${stored_file}"
+            echo "STORED_ICON=${stored_icon}"
+            echo "STORED_UNIVERSAL=${stored_universal}"
+            echo "STORED_COMPRESSED=${stored_compressed}"
           } >> "$GITHUB_ENV"
 
       - name: Set up Java
@@ -777,8 +801,9 @@ jobs:
           [[ -s "$WORK/release.apks.br" ]] || { echo "::error::brotli produced no output"; exit 1; }
 
       # Asset names follow the storage adapter's own mapping (GithubAdapter.location_for): key
-      # `.../binary/app.aab` becomes asset `app.aab`, `.../icons/icon.png` becomes `icons__icon.png`,
-      # `.../pipeline/universal.apk` becomes `pipeline__universal.apk`, all in the release tagged `a<app>-r<release>`.
+      # `.../binary/<name>.aab` becomes asset `<name>.aab`, `.../icons/<name>.png` becomes `icons__<name>.png`,
+      # `.../pipeline/<name>.apk` becomes `pipeline__<name>.apk`, all in the release tagged `a<app>-r<release>`.
+      # `<name>` is Zealot's artifact_base (Task 41b), or the old fixed names when Zealot sends none.
       # The release is created the way the adapter creates it (a prerelease; its notes say it is managed).
       - name: Upload the files to the storage release
         env:
@@ -793,15 +818,19 @@ jobs:
               --notes "Zealot release storage. Managed automatically; do not edit." \
               || gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
           fi
-          upload=("$WORK/$FILENAME")
+          # Task 41b: every asset is copied to the name Zealot expects (STORED_*, set in `Check the inputs`) in its
+          # own directory, so the names cannot collide with the working files.
+          assets="$WORK/assets"; mkdir -p "$assets"
+          cp "$WORK/$FILENAME" "$assets/$STORED_FILE"
+          upload=("$assets/$STORED_FILE")
           if [[ -n $ICON_KEY ]]; then
-            cp "$WORK/icon.${ICON_EXT}" "$WORK/icons__icon.${ICON_EXT}"
-            upload+=("$WORK/icons__icon.${ICON_EXT}")
+            cp "$WORK/icon.${ICON_EXT}" "$assets/icons__${STORED_ICON}"
+            upload+=("$assets/icons__${STORED_ICON}")
           fi
           if [[ $KIND == aab ]]; then
-            cp "$WORK/universal.apk" "$WORK/pipeline__universal.apk"
-            cp "$WORK/release.apks.br" "$WORK/pipeline__release.apks.br"
-            upload+=("$WORK/pipeline__universal.apk" "$WORK/pipeline__release.apks.br")
+            cp "$WORK/universal.apk" "$assets/pipeline__${STORED_UNIVERSAL}"
+            cp "$WORK/release.apks.br" "$assets/pipeline__${STORED_COMPRESSED}"
+            upload+=("$assets/pipeline__${STORED_UNIVERSAL}" "$assets/pipeline__${STORED_COMPRESSED}")
           fi
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber "${upload[@]}"
 
@@ -815,10 +844,10 @@ jobs:
           ICON_SHA256: ${{ needs.read.outputs.icon_sha256 }}
         run: |
           set -euo pipefail
-          body="$(jq -n --arg state ok --arg fkey "$STORAGE_PREFIX/binary/$FILENAME" --arg fsha "$FILE_SHA256" \
+          body="$(jq -n --arg state ok --arg fkey "$STORAGE_PREFIX/binary/$STORED_FILE" --arg fsha "$FILE_SHA256" \
             '{state: $state, file_key: $fkey, file_sha256: $fsha}')"
           if [[ -n $ICON_KEY ]]; then
-            body="$(jq --arg ikey "$STORAGE_PREFIX/icons/icon.${ICON_EXT}" --arg isha "$ICON_SHA256" \
+            body="$(jq --arg ikey "$STORAGE_PREFIX/icons/$STORED_ICON" --arg isha "$ICON_SHA256" \
               '. + {icon_key: $ikey, icon_sha256: $isha}' <<<"$body")"
           fi
           # Task 40p: a fact, not a decision -- Zealot's finisher rejects, this step only reports what the
@@ -841,10 +870,10 @@ jobs:
             body="$(jq '. + {apk_verified: false}' <<<"$body")"
           fi
           if [[ $KIND == aab ]]; then
-            body="$(jq --arg ukey "$STORAGE_PREFIX/pipeline/universal.apk" \
+            body="$(jq --arg ukey "$STORAGE_PREFIX/pipeline/$STORED_UNIVERSAL" \
               --arg usha "$(sha256sum "$WORK/universal.apk" | cut -d' ' -f1)" \
               --argjson usize "$(stat -c %s "$WORK/universal.apk")" \
-              --arg ckey "$STORAGE_PREFIX/pipeline/release.apks.br" \
+              --arg ckey "$STORAGE_PREFIX/pipeline/$STORED_COMPRESSED" \
               --argjson csize "$(stat -c %s "$WORK/release.apks.br")" --arg cert "$CERT_SHA256" \
               '. + {universal_apk_key: $ukey, universal_apk_sha256: $usha, universal_apk_size: $usize,
                     compressed_apks_key: $ckey, compressed_size: $csize, cert_sha256: $cert}' <<<"$body")"

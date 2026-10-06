@@ -150,13 +150,25 @@ class ReleaseStorage
   # these, so a mismatch between CI's asset naming and the adapter's mapping fails loudly instead of leaving a
   # key that points at nothing. `universal` and `compressed` exist only for a bundle (an APK is served as is).
   #
-  # @param filename [String] the uploaded file's (sanitised) name, e.g. `app.aab`
+  # Task 41b: with a `base` (`ReleaseArtifactName.for(release)`) every file is named after the app and release
+  # (`binary/<base>.aab`, `pipeline/<base>.apk`, `pipeline/<base>.apks.br`, `icons/<base>.png`); without one the
+  # old names are returned (`binary/<uploaded name>`, `pipeline/universal.apk`, `pipeline/release.apks.br`,
+  # `icons/icon.png`), which is what a workflow older than 41b still uploads.
+  #
+  # @param filename [String] the uploaded file's (sanitised) name, e.g. `app.aab`; only its extension is used
+  #   when a `base` is given
   # @param icon_extension [String, nil] `.png` or `.webp` when stage 1 found an icon
+  # @param base [String, nil] the release's artifact base name
   # @return [Hash{Symbol=>String}]
-  def staged_keys(filename:, icon_extension: nil)
-    keys = { file: binary_key(filename), universal: artifact_key('universal.apk'),
-             compressed: artifact_key('release.apks.br') }
-    keys[:icon] = icon_key("icon#{icon_extension}") if icon_extension.present?
+  def staged_keys(filename:, icon_extension: nil, base: nil)
+    keys = if base.present?
+             { file: binary_key("#{base}#{File.extname(filename)}"), universal: artifact_key("#{base}.apk"),
+               compressed: artifact_key("#{base}.apks.br") }
+           else
+             { file: binary_key(filename), universal: artifact_key('universal.apk'),
+               compressed: artifact_key('release.apks.br') }
+           end
+    keys[:icon] = icon_key("#{base.presence || 'icon'}#{icon_extension}") if icon_extension.present?
     keys
   end
 

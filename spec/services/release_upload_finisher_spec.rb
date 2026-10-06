@@ -139,6 +139,39 @@ RSpec.describe ReleaseUploadFinisher do
     end
   end
 
+  # Task 41b: a workflow that names the files after the app is accepted, and so is one that still uses the old names.
+  describe 'file names' do
+    let(:filename) { 'app-default-release.aab' }
+    let(:kind) { 'aab' }
+    let(:named_keys) do
+      ReleaseStorage.new(release, adapter: nil)
+                    .staged_keys(filename: filename, icon_extension: '.png', base: ReleaseArtifactName.for(release))
+    end
+    let(:named_report) do
+      aab_report.merge('file_key' => named_keys[:file], 'icon_key' => named_keys[:icon],
+                       'universal_apk_key' => named_keys[:universal], 'compressed_apks_key' => named_keys[:compressed])
+    end
+
+    it 'records the app-named keys when the workflow reports them' do
+      expect(finish(named_report)).to have_attributes(code: :finished, http: 200)
+
+      expect(release.reload.file_storage_key).to end_with("/binary/#{ReleaseArtifactName.for(release)}.aab")
+      expect(release.universal_apk_storage_key).to end_with("/pipeline/#{ReleaseArtifactName.for(release)}.apk")
+    end
+
+    it 'still accepts the old names from a workflow that predates the naming' do
+      expect(finish(aab_report)).to have_attributes(code: :finished, http: 200)
+
+      expect(release.reload.file_storage_key).to end_with('/binary/app-default-release.aab')
+    end
+
+    it 'refuses a mixture of the two' do
+      mixed = named_report.merge('universal_apk_key' => keys[:universal])
+
+      expect(finish(mixed)).to have_attributes(code: :malformed, http: 422)
+    end
+  end
+
   describe 'a bundle report that checks out' do
     let(:filename) { 'app.aab' }
     let(:kind) { 'aab' }

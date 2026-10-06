@@ -83,6 +83,27 @@ RSpec.describe ReleaseStorage do
       expect(storage.staged_keys(filename: 'app.apk')).not_to have_key(:icon)
     end
 
+    # Task 41b
+    it 'names every file after the base when one is given, keeping only the uploaded file\'s extension' do
+      expect(storage.staged_keys(filename: 'app-default-release.aab', icon_extension: '.png', base: 'Storeapp-1.1.4-218'))
+        .to eq(
+          file: 'uploads/apps/a3/r9/binary/Storeapp-1.1.4-218.aab',
+          universal: 'uploads/apps/a3/r9/pipeline/Storeapp-1.1.4-218.apk',
+          compressed: 'uploads/apps/a3/r9/pipeline/Storeapp-1.1.4-218.apks.br',
+          icon: 'uploads/apps/a3/r9/icons/Storeapp-1.1.4-218.png'
+        )
+    end
+
+    it 'maps the named keys to GitHub asset names' do
+      keys = storage.staged_keys(filename: 'x.aab', icon_extension: '.png', base: 'Storeapp-1.1.4-218')
+      assets = keys.transform_values { |key| ReleaseStorage::GithubAdapter.location_for(key).last }
+
+      expect(assets).to eq(
+        file: 'Storeapp-1.1.4-218.aab', universal: 'pipeline__Storeapp-1.1.4-218.apk',
+        compressed: 'pipeline__Storeapp-1.1.4-218.apks.br', icon: 'icons__Storeapp-1.1.4-218.png'
+      )
+    end
+
     it 'maps to the same GitHub tag and asset names the workflow uploads' do
       keys = storage.staged_keys(filename: 'app.aab', icon_extension: '.webp')
       located = keys.transform_values { |key| ReleaseStorage::GithubAdapter.location_for(key) }

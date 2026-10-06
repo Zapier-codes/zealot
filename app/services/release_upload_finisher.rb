@@ -147,9 +147,19 @@ class ReleaseUploadFinisher
   end
 
   # Built without an adapter on purpose (like `#tag`): the keys are names, and answering needs no storage.
+  #
+  # Task 41b: the files are named after the app (`ReleaseArtifactName`). A workflow that predates 41b still
+  # uploads the old names, so when CI's reported `file_key` is not the named one the old names are expected
+  # instead; either way the keys are derived here and CI's report must equal them, so a half-updated pair
+  # still fails loudly rather than recording a key that points at nothing.
   def expected_keys(release)
     icon_extension = metadata['icon_key'].present? ? File.extname(metadata['icon_key']) : nil
-    ReleaseStorage.new(release, adapter: nil).staged_keys(filename: upload.filename, icon_extension: icon_extension)
+    storage = ReleaseStorage.new(release, adapter: nil)
+    named = storage.staged_keys(filename: upload.filename, icon_extension: icon_extension,
+                                base: ReleaseArtifactName.for(release))
+    return named if body['file_key'].to_s == named[:file]
+
+    storage.staged_keys(filename: upload.filename, icon_extension: icon_extension)
   end
 
   def storage(release)

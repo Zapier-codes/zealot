@@ -100,11 +100,15 @@ class ReleaseUploadIntake
     { upload_id: upload.id, state: upload.state, error: reason }
   end
 
-  # What stage 2 needs: the release id and the storage tag its files go under.
+  # What stage 2 needs: the release id, the storage tag its files go under and (Task 41b) the base name its
+  # files are stored as.
   def answer(release)
     payload = { upload_id: upload.id, state: upload.state, stage: 1, release_id: release&.id,
                 package_name: upload.metadata['package_name'] }
-    payload[:storage_tag] = ReleaseStorage.new(release, adapter: nil).tag if release
+    if release
+      payload[:storage_tag] = ReleaseStorage.new(release, adapter: nil).tag
+      payload[:artifact_base] = ReleaseArtifactName.for(release)
+    end
     payload
   end
 
