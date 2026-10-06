@@ -10,8 +10,11 @@
 # `Location`, which is returned. The token is sent when GITHUB_STORAGE_TOKEN is set (required for a
 # private repo, optional for a public one).
 class TenantBuildDownload
-  def initialize(build_id)
+  # `adapter` is only for specs: an array such as [:test, stubs] handed to Faraday's `adapter`, so the
+  # request code (headers, token handling) runs for real without a network or the webmock gem.
+  def initialize(build_id, adapter: nil)
     @build_id = build_id.to_s
+    @adapter = adapter
   end
 
   def call
@@ -51,7 +54,9 @@ class TenantBuildDownload
     token = ENV['GITHUB_STORAGE_TOKEN'].to_s
     headers['Authorization'] = "Bearer #{token}" if token.present?
 
-    Faraday.new(url: 'https://api.github.com', headers: headers, request: { open_timeout: 5, timeout: 15 })
+    Faraday.new(url: 'https://api.github.com', headers: headers, request: { open_timeout: 5, timeout: 15 }) do |f|
+      f.adapter(*@adapter) if @adapter
+    end
   end
 
   def storage_repo

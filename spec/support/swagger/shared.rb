@@ -69,6 +69,7 @@ end
 shared_examples :unauthorized_response do
   response 401, I18n.t('api.responses.unauthorized.description') do
     schema '$ref':  '#/components/responses/Unauthorized'
+    let(:token) { 'not-a-valid-token' }
     run_test!
   end
 end

@@ -295,7 +295,10 @@ Devise.setup do |config|
   # :time  = Re-enables login after a certain amount of time (see :unlock_in below)
   # :both  = Enables both strategies
   # :none  = No unlock strategy. You should handle unlocking by yourself.
-  # config.unlock_strategy = :both
+  # Task 42c: :time only. routes.rb skips Devise's `unlocks` routes, so the default :both would email an unlock
+  # link built with `user_unlock_url`, which does not exist: the fifth failed sign-in raised instead of locking.
+  # A locked user is re-enabled after `unlock_in` (below) or by an admin (Admin::UsersController#unlock).
+  config.unlock_strategy = :time
 
   # Number of authentication tries before locking an account if lock_strategy
   # is failed attempts.

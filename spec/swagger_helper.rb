@@ -430,6 +430,14 @@ RSpec.configure do |config|
     }
   }
 
+  # Task 42c: the request-body schemas above sit under a top-level `definitions` (Swagger 2 style). rswag-specs
+  # sees that key, validates against `definitions` ONLY and drops `components`, so every response `$ref` to
+  # '#/components/...' failed with "The fragment '/components' does not exist". OpenAPI 3.1 keeps them in
+  # components.schemas, so they are folded in here and the specs reference '#/components/schemas/<Name>'.
+  config.openapi_specs.each_value do |doc|
+    doc[:components][:schemas].merge!(doc.delete(:definitions)) if doc.key?(:definitions)
+  end
+
   config.openapi_format = :json
 
   config.after do |example|

@@ -11,17 +11,22 @@ require 'rails_helper'
 # don't load outside the full Rails app); the method under test there is the
 # 8-line callback shown in the comment above it. See handover.md Task 19 for
 # what this does and doesn't cover.
+#
+# Task 42c: the harness tables now live in the suite's own PostgreSQL database and are dropped afterwards. The
+# first version called ActiveRecord::Base.establish_connection(adapter: 'sqlite3', ...) and never restored it:
+# the gem was not in the bundle (so the spec failed) and, had it been, every spec running after it would have
+# talked to an empty in-memory SQLite database.
 RSpec.describe 'Release storage-cleanup callback (harness)' do
   before(:all) do
-    ActiveRecord::Base.establish_connection(adapter: 'sqlite3', database: ':memory:')
-    ActiveRecord::Schema.define do
-      create_table :cleanup_spec_channels
-      create_table :cleanup_spec_releases do |t|
-        t.integer :cleanup_spec_channel_id
-        t.string :file_storage_key
-        t.string :patched_file_storage_key
-        t.string :compressed_apks_storage_key
-      end
+    connection = ActiveRecord::Base.connection
+    connection.drop_table :cleanup_spec_releases, if_exists: true
+    connection.drop_table :cleanup_spec_channels, if_exists: true
+    connection.create_table :cleanup_spec_channels
+    connection.create_table :cleanup_spec_releases do |t|
+      t.integer :cleanup_spec_channel_id
+      t.string :file_storage_key
+      t.string :patched_file_storage_key
+      t.string :compressed_apks_storage_key
     end
 
     cleanup_job = Class.new(ApplicationJob) do
@@ -56,6 +61,9 @@ RSpec.describe 'Release storage-cleanup callback (harness)' do
   end
 
   after(:all) do
+    connection = ActiveRecord::Base.connection
+    connection.drop_table :cleanup_spec_releases, if_exists: true
+    connection.drop_table :cleanup_spec_channels, if_exists: true
     %i[CleanupSpecRelease CleanupSpecChannel CleanupSpecStorageCleanupJob].each do |name|
       Object.send(:remove_const, name) if Object.const_defined?(name)
     end

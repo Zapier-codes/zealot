@@ -123,11 +123,14 @@ RSpec.describe GithubOidcVerifier do
     let(:body) { JSON.generate('keys' => keys) }
     let(:transport) do
       calls = []
+      # Read the let into a local first: inside define_singleton_method `self` is the fake object, so a bare
+      # `body` raised "undefined local variable or method 'body'" (CI run 37525170638).
+      jwks_body = body
       fake = Object.new
       fake.define_singleton_method(:calls) { calls }
       fake.define_singleton_method(:call) do |*args, **kw|
         calls << [args, kw]
-        Struct.new(:status, :body).new(200, body)
+        Struct.new(:status, :body).new(200, jwks_body)
       end
       fake
     end

@@ -403,6 +403,29 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_130000) do
     t.index ["user_id"], name: "index_metadata_on_user_id"
   end
 
+  create_table "payments", force: :cascade do |t|
+    t.integer "amount_cents", null: false
+    t.bigint "app_id", null: false
+    t.string "billing_period"
+    t.datetime "created_at", null: false
+    t.string "currency", default: "usd", null: false
+    t.string "hyperswitch_mandate_id"
+    t.string "hyperswitch_payment_id"
+    t.text "hyperswitch_raw_response"
+    t.datetime "next_charge_at"
+    t.datetime "paid_at"
+    t.string "purpose", default: "listing_fee", null: false
+    t.string "status", default: "pending", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["app_id", "purpose"], name: "index_payments_on_app_id_and_purpose"
+    t.index ["app_id"], name: "index_payments_on_app_id"
+    t.index ["hyperswitch_mandate_id"], name: "index_payments_on_hyperswitch_mandate_id"
+    t.index ["hyperswitch_payment_id"], name: "index_payments_on_hyperswitch_payment_id", unique: true
+    t.index ["next_charge_at"], name: "index_payments_on_next_charge_at"
+    t.index ["user_id"], name: "index_payments_on_user_id"
+  end
+
   create_table "play_credentials", force: :cascade do |t|
     t.string "checksum", null: false
     t.datetime "created_at", null: false
@@ -731,6 +754,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_130000) do
   add_foreign_key "listing_graphics", "apps", on_delete: :cascade
   add_foreign_key "metadata", "releases", on_delete: :cascade
   add_foreign_key "metadata", "users", on_delete: :cascade
+  add_foreign_key "payments", "apps"
+  add_foreign_key "payments", "users"
   add_foreign_key "publisher_profiles", "users", on_delete: :cascade
   add_foreign_key "release_uploads", "channels", on_delete: :cascade
   add_foreign_key "release_uploads", "releases", on_delete: :nullify
