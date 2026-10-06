@@ -43,8 +43,9 @@ module ReleaseUploadParts
   # two hours). It must stay under the bucket's one-day rule that aborts half-sent multipart uploads.
   WINDOW = 6 * 60 * 60
 
-  # One part as R2 reports it: its number and its size in bytes.
-  Held = Struct.new(:part_number, :size, keyword_init: true)
+  # One part as R2 reports it: its number, its size in bytes and (from ListParts) its ETag, quotes removed. The
+  # plan only compares number and size; the ETag is what completing the upload needs.
+  Held = Struct.new(:part_number, :size, :etag, keyword_init: true)
 
   module_function
 

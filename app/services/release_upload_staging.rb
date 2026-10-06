@@ -31,8 +31,15 @@ require 'aws-sdk-s3'
 #   staging.delete(upload)
 #
 # Multipart (for large files and resumable browsers): `start_multipart` returns the upload id (the caller
-# stores it in `ReleaseUpload#multipart_upload_id`), `presign_part` signs one part, `complete_multipart`
-# joins them, `abort_multipart` throws them away.
+# stores it in `ReleaseUpload#multipart_upload_id`), `presign_part` signs one part, `list_parts` asks R2 which
+# parts it holds (number, size, ETag), `complete_multipart` joins them, `abort_multipart` throws them away.
+# The client never reports ETags: finalize lists the parts and hands that list to `complete_multipart`.
+#
+# R2 facts the operator verified against the zealot-staging bucket on 2026-10-06 (see the Task 40s entry in
+# handover.md): presigned UploadPart URLs work; every part but the last must have the same length; a non-last
+# part of 1 MiB is refused (EntityTooSmall), 6 MiB works, 5 MiB (S3's floor) is used as the minimum. The
+# operator's boto3 run only passed with the SDK's default checksums off, so `build_client` sets
+# `request_checksum_calculation` and `response_checksum_validation` to `when_required`.
 #
 # Not verified: nothing was run against R2 and no Ruby ran beyond `ruby -c`. Cloudflare's presigned-URL page
 # lists GET, HEAD, PUT and DELETE; presigning an individual UploadPart (a PUT with `partNumber` and
@@ -141,16 +148,48 @@ class ReleaseUploadStaging
     raise ReleaseStorage::StorageError, "R2 part presign failed for #{upload.staging_key}: #{e.message}"
   end
 
-  # @param parts [Array<Hash>] `{ part_number:, etag: }` for every part, in any order (the ETag as the part's
-  #   PUT response gave it, quotes included)
+  # What R2 holds for the record's multipart upload, every page of it (ListParts answers at most 1,000 parts).
+  #
+  # @return [Array<ReleaseUploadParts::Held>, nil] the parts sorted by number (number, size, ETag without the
+  #   quotes); nil when R2 no longer knows the upload id (completed, aborted or swept) or none was started
+  def list_parts(upload, upload_id: upload.multipart_upload_id)
+    return nil if upload_id.blank?
+
+    held = []
+    marker = nil
+    loop do
+      params = { bucket: @bucket, key: key_for(upload), upload_id: upload_id }
+      params[:part_number_marker] = marker if marker
+      page = @client.list_parts(**params)
+      held.concat(page.parts.map do |part|
+        ReleaseUploadParts::Held.new(part_number: part.part_number, size: part.size,
+                                     etag: part.etag.to_s.delete('"'))
+      end)
+      break unless page.is_truncated && page.next_part_number_marker
+
+      marker = page.next_part_number_marker
+    end
+    held.sort_by(&:part_number)
+  rescue Aws::S3::Errors::NoSuchUpload
+    nil
+  rescue Aws::Errors::ServiceError => e
+    raise ReleaseStorage::StorageError, "R2 list parts failed for #{upload.staging_key}: #{e.message}"
+  end
+
+  # @param parts [Array<Hash>] `{ part_number:, etag: }` for every part, in any order (the ETag as R2 lists it,
+  #   with or without the quotes: the quotes are added when missing)
+  # @return [Boolean] false when R2 no longer knows the upload id (already completed or aborted: the caller
+  #   HEADs the object to find out which)
   def complete_multipart(upload, parts:, upload_id: upload.multipart_upload_id)
     raise ArgumentError, 'no multipart upload has been started for this upload' if upload_id.blank?
 
-    listed = parts.map { |part| { part_number: Integer(part[:part_number]), etag: part[:etag].to_s } }
+    listed = parts.map { |part| { part_number: Integer(part[:part_number]), etag: quoted(part[:etag]) } }
                   .sort_by { |part| part[:part_number] }
     @client.complete_multipart_upload(bucket: @bucket, key: key_for(upload), upload_id: upload_id,
                                       multipart_upload: { parts: listed })
     true
+  rescue Aws::S3::Errors::NoSuchUpload
+    false
   rescue Aws::Errors::ServiceError => e
     raise ReleaseStorage::StorageError, "R2 multipart complete failed for #{upload.staging_key}: #{e.message}"
   end
@@ -176,6 +215,12 @@ class ReleaseUploadStaging
     key
   end
 
+  # An ETag as CompleteMultipartUpload wants it: wrapped in double quotes (added only when missing).
+  def quoted(etag)
+    text = etag.to_s
+    text.start_with?('"') ? text : %("#{text}")
+  end
+
   def presigner
     @presigner ||= Aws::S3::Presigner.new(client: @client)
   end
@@ -193,7 +238,11 @@ class ReleaseUploadStaging
       secret_access_key: ENV.fetch('R2_STAGING_SECRET_ACCESS_KEY'),
       endpoint: ENV.fetch('R2_STAGING_ENDPOINT'),
       region: ENV.fetch('R2_STAGING_REGION', 'auto'),
-      force_path_style: true
+      force_path_style: true,
+      # aws-sdk-s3 1.232.1 adds checksums by default (`when_supported`); R2's multipart run only passed with
+      # them off (operator, 2026-10-06). `when_required` also applies to the single-PUT presign.
+      request_checksum_calculation: 'when_required',
+      response_checksum_validation: 'when_required'
     )
   end
 end

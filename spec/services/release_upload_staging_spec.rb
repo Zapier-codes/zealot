@@ -182,6 +182,37 @@ RSpec.describe ReleaseUploadStaging do
                                                       { part_number: 2, etag: '"b"' }])
     end
 
+    it 'adds the quotes to an ETag that has none, and leaves quoted ones alone' do
+      staging.complete_multipart(upload, upload_id: 'mp-1',
+                                         parts: [{ part_number: 1, etag: 'a' }, { part_number: 2, etag: '"b"' }])
+
+      expect(client.api_requests.last[:params][:multipart_upload][:parts])
+        .to eq([{ part_number: 1, etag: '"a"' }, { part_number: 2, etag: '"b"' }])
+    end
+
+    it 'answers true when R2 completes the upload' do
+      expect(staging.complete_multipart(upload, upload_id: 'mp-1', parts: [{ part_number: 1, etag: '"a"' }]))
+        .to be(true)
+    end
+
+    it 'answers false, not an error, when R2 no longer knows the upload (completed or aborted already)' do
+      client.stub_responses(:complete_multipart_upload, 'NoSuchUpload')
+
+      expect(staging.complete_multipart(upload, upload_id: 'mp-1', parts: [{ part_number: 1, etag: '"a"' }]))
+        .to be(false)
+    end
+
+    it 'raises a storage error when R2 refuses to complete for another reason' do
+      client.stub_responses(:complete_multipart_upload, 'InvalidPart')
+
+      expect { staging.complete_multipart(upload, upload_id: 'mp-1', parts: [{ part_number: 1, etag: '"a"' }]) }
+        .to raise_error(ReleaseStorage::StorageError, /R2 multipart complete failed/)
+    end
+
+    it 'refuses to complete without an upload id' do
+      expect { staging.complete_multipart(upload, parts: []) }.to raise_error(ArgumentError, /no multipart/)
+    end
+
     it 'aborts an upload, and says false when R2 no longer knows it' do
       expect(staging.abort_multipart(upload, upload_id: 'mp-1')).to be(true)
 
@@ -191,6 +222,106 @@ RSpec.describe ReleaseUploadStaging do
 
     it 'does nothing when no multipart upload was started' do
       expect(staging.abort_multipart(upload)).to be(false)
+    end
+  end
+
+  # Task 40s-b: what R2 holds for a multipart upload, so finalize and resume never depend on the client's word.
+  describe '#list_parts' do
+    let(:held_class) { ReleaseUploadParts::Held }
+
+    it 'returns number, size and ETag (without the quotes) for every part, sorted by number' do
+      client.stub_responses(:list_parts, parts: [{ part_number: 2, size: 7, etag: '"b"' },
+                                                 { part_number: 1, size: 16, etag: '"a"' }],
+                                         is_truncated: false)
+
+      held = staging.list_parts(upload, upload_id: 'mp-1')
+
+      expect(held).to eq([held_class.new(part_number: 1, size: 16, etag: 'a'),
+                          held_class.new(part_number: 2, size: 7, etag: 'b')])
+    end
+
+    it 'asks for the upload\'s staging key and upload id in the staging bucket' do
+      client.stub_responses(:list_parts, parts: [], is_truncated: false)
+
+      staging.list_parts(upload, upload_id: 'mp-1')
+
+      expect(client.api_requests.last[:params])
+        .to include(bucket: 'zealot-staging', key: upload.staging_key, upload_id: 'mp-1')
+    end
+
+    it 'reads the upload id from the record by default' do
+      client.stub_responses(:list_parts, parts: [], is_truncated: false)
+      upload.update_columns(multipart_upload_id: 'mp-record')
+
+      staging.list_parts(upload)
+
+      expect(client.api_requests.last[:params]).to include(upload_id: 'mp-record')
+    end
+
+    it 'follows the part number marker until R2 says the listing is complete' do
+      client.stub_responses(:list_parts, [
+                              { parts: [{ part_number: 1, size: 16, etag: '"a"' }],
+                                is_truncated: true, next_part_number_marker: 1 },
+                              { parts: [{ part_number: 2, size: 7, etag: '"b"' }], is_truncated: false }
+                            ])
+
+      held = staging.list_parts(upload, upload_id: 'mp-1')
+
+      expect(held.map(&:part_number)).to eq([1, 2])
+      list_calls = client.api_requests.select { |request| request[:operation_name] == :list_parts }
+      expect(list_calls.size).to eq(2)
+      expect(list_calls.first[:params]).not_to have_key(:part_number_marker)
+      expect(list_calls.last[:params]).to include(part_number_marker: 1)
+    end
+
+    it 'answers an empty list when R2 holds no parts yet' do
+      client.stub_responses(:list_parts, parts: [], is_truncated: false)
+
+      expect(staging.list_parts(upload, upload_id: 'mp-1')).to eq([])
+    end
+
+    it 'answers nil, not an error, when R2 no longer knows the upload' do
+      client.stub_responses(:list_parts, 'NoSuchUpload')
+
+      expect(staging.list_parts(upload, upload_id: 'mp-1')).to be_nil
+    end
+
+    it 'answers nil without calling R2 when no multipart upload was started' do
+      expect(staging.list_parts(upload)).to be_nil
+      expect(client.api_requests).to be_empty
+    end
+
+    it 'raises a storage error for any other R2 failure' do
+      client.stub_responses(:list_parts, 'AccessDenied')
+
+      expect { staging.list_parts(upload, upload_id: 'mp-1') }
+        .to raise_error(ReleaseStorage::StorageError, /R2 list parts failed/)
+    end
+  end
+
+  # Task 40s-b: the operator's boto3 run only passed with the SDK's default checksums off.
+  describe 'the client it builds' do
+    let(:env) do
+      ENV.to_hash.merge('R2_STAGING_BUCKET' => 'zealot-staging',
+                        'R2_STAGING_ENDPOINT' => 'https://acct.r2.cloudflarestorage.com',
+                        'R2_STAGING_ACCESS_KEY_ID' => 'AKIAEXAMPLE', 'R2_STAGING_SECRET_ACCESS_KEY' => 'secret')
+    end
+
+    it 'only adds and validates checksums when an operation requires them' do
+      stub_const('ENV', env)
+
+      config = described_class.new.instance_variable_get(:@client).config
+
+      expect(config.request_checksum_calculation).to eq('when_required')
+      expect(config.response_checksum_validation).to eq('when_required')
+    end
+
+    it 'presigns a single PUT without a checksum parameter' do
+      stub_const('ENV', env)
+
+      url = described_class.new.presign_put(upload).url
+
+      expect(url).not_to match(/x-amz-checksum|x-amz-sdk-checksum/i)
     end
   end
 end
