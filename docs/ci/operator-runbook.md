@@ -547,23 +547,43 @@ gh run view $RID -R Zapier-codes/zealot-storage --log > ~/storage/downloads/run-
 gh run view $RID -R Zapier-codes/zealot-storage --log-failed | tail -40
 ```
 
-**Put the fix in the storage repo.** Run this right after `git am` (so the fix is `HEAD`). It applies the commit's own change to each
-storage copy as a patch instead of overwriting the file, because the storage repo's `read-upload.yml` already differs from this repo's
-(APK org-signing, 40o); a `patch` that does not apply cleanly stops that file and changes nothing.
+**Put the fix in the storage repo.** It applies one commit's own change to each storage copy as a patch instead of overwriting the
+file, because the storage repo's workflows already differ from this repo's (APK org-signing, 40o). The commit is chosen by a word from
+its subject (`SUBJECT`), never by `HEAD`, so it still works after other commits land. The script runs under `bash -e` and refuses to
+upload an empty or unchanged file: on 2026-10-07 an unguarded version of this block wrote an EMPTY `read-upload.yml` to the storage
+repo (a redirect to a path that did not exist, then `base64` of nothing), and the repo copy had to be restored from git history.
 
 ```
 cd ~/zealot
-for F in compile-aab read-upload; do
-  W=$(mktemp -d)   # uses $TMPDIR, which Termux sets (it has no /tmp)
-  git diff HEAD~1 HEAD -- docs/ci/$F.yml > $W/$F.diff
-  gh api repos/Zapier-codes/zealot-storage/contents/.github/workflows/$F.yml --jq .content | base64 -d > $W/$F.storage.yml
-  patch $W/$F.storage.yml < $W/$F.diff || { echo "$F: did not apply, stop and report"; continue; }
-  SHA=$(gh api repos/Zapier-codes/zealot-storage/contents/.github/workflows/$F.yml --jq .sha)
-  gh api -X PUT repos/Zapier-codes/zealot-storage/contents/.github/workflows/$F.yml \
-    -f message="task 40t: read the signing certificate by hashing the exported cert" \
-    -f content="$(base64 -w0 $W/$F.storage.yml)" -f sha="$SHA" --jq .commit.sha
+W=$(mktemp -d)   # uses $TMPDIR, which Termux sets (it has no /tmp)
+cat > $W/put-fix.sh <<'EOF'
+set -euo pipefail
+R=Zapier-codes/zealot-storage
+SUBJECT='task-43c-0, 43c-1'       # a phrase from the commit's subject line
+MSG='task 43c-1: bundle icon read'  # the commit message for the storage repo
+FILES='read-upload'                 # space-separated: compile-aab read-upload
+C=$(git log --grep="$SUBJECT" -1 --format=%H); [ -n "$C" ] || { echo "no commit matches"; exit 1; }
+git log -1 --format='commit: %s' $C | cut -c1-90
+for F in $FILES; do
+  P=.github/workflows/$F.yml
+  git diff $C~1 $C -- docs/ci/$F.yml > $W/$F.diff
+  [ -s $W/$F.diff ] || { echo "$F: this commit does not change it, skipped"; continue; }
+  gh api "repos/$R/contents/$P" --jq .content | base64 -d > $W/$F.new.yml
+  [ "$(wc -l < $W/$F.new.yml)" -gt 100 ] || { echo "$F: storage copy is empty or short, stop"; exit 1; }
+  cp $W/$F.new.yml $W/$F.old.yml
+  patch --dry-run $W/$F.new.yml < $W/$F.diff
+  patch $W/$F.new.yml < $W/$F.diff
+  [ "$(wc -l < $W/$F.new.yml)" -gt "$(wc -l < $W/$F.old.yml)" ] || { echo "$F: patched copy is not longer, stop"; exit 1; }
+  SHA=$(gh api "repos/$R/contents/$P" --jq .sha)
+  gh api -X PUT "repos/$R/contents/$P" -f message="$MSG" \
+    -f content="$(base64 -w0 $W/$F.new.yml)" -f sha="$SHA" --jq .commit.sha
+  gh api "repos/$R/contents/$P" --jq .size
 done
+EOF
+W=$W bash $W/put-fix.sh
 ```
+
+A failed `patch` stops the script before any upload. The last number printed per file is the stored size in bytes: it must not be `0`.
 
 Then re-send the release (it is `failed`, so it is sendable) and read the new run:
 

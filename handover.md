@@ -8540,3 +8540,9 @@ If the GitHub Action fails, fetch the error log and save it under `~/storage/dow
 ### Fix — runbook commands no longer use `/tmp` (operator-directed, docs only)
 - **Found:** the operator's phone (Termux) has no `/tmp`, so the storage-copy patch commands (runbook, "Put the fix in the storage repo") and the bundletool check (section 10) failed there. **Fixed:** both blocks now start with `W=$(mktemp -d)`, which uses `$TMPDIR` (Termux sets it). Docs only; nothing run. Rule for every future operator command: scratch files come from `mktemp -d`, never a hard-coded `/tmp` (the sandbox has `/tmp`, the phone does not).
 
+
+
+### Incident 2026-10-07 — an empty `read-upload.yml` was written to the storage repo, and restored (operator-directed; docs only)
+- **What happened:** the runbook's "Put the fix in the storage repo" block, adapted for one file and run on a phone without `/tmp`, redirected the downloaded copy to a path that did not exist, so `base64 -w0` read nothing and the PUT stored an empty file (storage commit `f9ba630e`, 08:56Z; blob `e69de29`, size 0). A second run did not stop on a failed `patch` (`|| { …; false; }` does not stop an interactive shell) and wrote the empty file again. No upload was dispatched in that window.
+- **Restored:** from storage commit `65ed0579` (blob `d48dae8f`, 928 lines), checked by hash, then the 43c-1 icon patch applied cleanly on top (storage commit `c74789dc`; `grep -c "Task 43c-1"` = 1). The storage repo's copy therefore differs from `docs/ci/read-upload.yml` by the 40o signing changes, as before.
+- **Fixed in the runbook:** the block is now a `bash -e` script that picks the commit by subject, refuses an empty, short or unchanged result, dry-runs the patch first, and prints the stored size. Rule for every operator command that writes through the contents API: check the file is non-empty before the PUT.
