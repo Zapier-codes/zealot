@@ -69,6 +69,53 @@ RSpec.describe ListingGraphicFit do
 
   it 'does nothing for an unknown kind or a missing file' do
     expect(described_class.call(path: nil, kind: 'screenshot').path).to be_nil
-    expect(described_class.call(path: make('g.png', '800x800'), kind: 'icon')).not_to be_changed
+    expect(described_class.call(path: make('g.png', '800x800'), kind: 'banner')).not_to be_changed
+  end
+
+  # Task 43f-1 (NOT run). The icon keeps its transparency (D43-5) and is always a 512 x 512 PNG.
+  describe "kind: 'icon'" do
+    def alpha?(path)
+      ListingGraphicInspector.facts_from_file(path).alpha
+    end
+
+    it 'scales a 432 x 432 WebP up to a 512 x 512 PNG' do
+      result = described_class.call(path: make('i1.webp', '432x432'), kind: 'icon')
+
+      expect(result).to be_changed
+      expect(dims(result.path)).to eq([ 512, 512 ])
+      expect(ListingGraphicInspector.facts_from_file(result.path).content_type).to eq('image/png')
+      result.cleanup
+    end
+
+    it 'centre-crops a non-square picture to a square first and says so' do
+      result = described_class.call(path: make('i2.png', '600x400'), kind: 'icon')
+
+      expect(dims(result.path)).to eq([ 512, 512 ])
+      expect(result.notes.join).to include('cropped 600x400 to 400x400')
+      result.cleanup
+    end
+
+    it 'keeps transparency' do
+      result = described_class.call(path: make('i3.png', '300x300', color: 'none'), kind: 'icon')
+
+      expect(alpha?(result.path)).to be(true)
+      result.cleanup
+    end
+
+    it 'scales a larger square down to 512 x 512' do
+      result = described_class.call(path: make('i4.png', '1024x1024'), kind: 'icon')
+
+      expect(dims(result.path)).to eq([ 512, 512 ])
+      result.cleanup
+    end
+
+    it 'returns the original for a file it cannot read' do
+      path = File.join(dir, 'bad.png')
+      File.write(path, 'not an image')
+      result = described_class.call(path: path, kind: 'icon')
+
+      expect(result).not_to be_changed
+      expect(result.path).to eq(path)
+    end
   end
 end

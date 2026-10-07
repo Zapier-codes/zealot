@@ -19,10 +19,16 @@ require 'securerandom'
 # side under 320 px up, and writes a PNG (a JPEG stays a JPEG). A file still over 8 MB is written again as a
 # JPEG. For a feature graphic: scaled to cover 1024 x 500, cropped around the centre, flattened, written as PNG.
 #
+# Task 43f-1: `kind: 'icon'` makes the app icon: any readable image (WebP, JPEG, PNG, GIF first frame) becomes a
+# square 512 x 512 PNG, centre-cropped to a square first and scaled up or down to 512. Unlike a screenshot the
+# icon KEEPS its transparency (decision D43-5: Play accepts alpha on the icon and draws its own mask).
+#
 # It never judges: it does not refuse and does not check the slot count. A file ImageMagick cannot read, or
 # any failure while fitting, returns the ORIGINAL path with a note, and the ingest then gives its own refusal
 # (the real reason). The ingest stays strict, so the rules live in one place (`ListingGraphicRules`).
 class ListingGraphicFit
+  ICON_SIDE = 512
+
   Result = Struct.new(:path, :changed, :notes, :tempfile, keyword_init: true) do
     def changed?
       changed
@@ -44,12 +50,16 @@ class ListingGraphicFit
 
   def call
     return unchanged unless @path && File.file?(@path)
-    return unchanged unless %w[screenshot feature_graphic].include?(@kind)
+    return unchanged unless %w[screenshot feature_graphic icon].include?(@kind)
 
     require 'mini_magick'
     image = MiniMagick::Image.open(@path)
     @notes = []
-    @kind == 'screenshot' ? fit_screenshot(image) : fit_feature_graphic(image)
+    case @kind
+    when 'screenshot' then fit_screenshot(image)
+    when 'icon' then fit_icon(image)
+    else fit_feature_graphic(image)
+    end
     write(image)
   rescue StandardError => e
     Rails.logger.warn("[ListingGraphicFit] #{@kind} left as it came in: #{e.class}: #{e.message}")
@@ -103,6 +113,24 @@ class ListingGraphicFit
     @notes << "scaled and cropped to #{width}x#{height}"
   end
 
+  # Task 43f-1: a square ICON_SIDE x ICON_SIDE PNG, alpha kept. Always re-encoded as PNG (a JPEG or WebP in
+  # becomes a PNG out), so the file is a plain PNG whatever came in.
+  def fit_icon(image)
+    image.format('png')
+    width = image.width
+    height = image.height
+    if width != height
+      side = [ width, height ].min
+      image.crop("#{side}x#{side}+#{(width - side) / 2}+#{(height - side) / 2}")
+      @notes << "cropped #{width}x#{height} to #{side}x#{side}"
+    end
+    image << '+repage'
+    return if image.width == ICON_SIDE && image.height == ICON_SIDE
+
+    image.resize("#{ICON_SIDE}x#{ICON_SIDE}!")
+    @notes << "scaled to #{ICON_SIDE}x#{ICON_SIDE}"
+  end
+
   # Transparency is refused by Play, so lay the picture on white (the first frame only, for an animation).
   def flatten(image)
     image.format('png') unless image.type.to_s.casecmp('jpeg').zero?
@@ -117,7 +145,7 @@ class ListingGraphicFit
     image.strip
     image.write(target)
 
-    if File.size(target) > ListingGraphicRules::MAX_BYTES
+    if @kind != 'icon' && File.size(target) > ListingGraphicRules::MAX_BYTES
       image = MiniMagick::Image.open(target)
       image.format('jpg')
       image.quality('88')

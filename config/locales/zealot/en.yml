@@ -1226,6 +1226,7 @@ en:
     listing_edit_refused: "Listing edit refused: %{reasons}"
     listing_graphic_no_file: "Send the image as a multipart field named file"
     listing_graphic_refused: "Graphic refused: %{reasons}"
+    listing_icon_refused: "Icon refused: %{reasons}"
     listing_graphic_storage_failed: "The image could not be stored right now; nothing was kept. Try again"
     channel_track_invalid: "Unknown track. Use one of: %{tracks}"
     release_app_archived: This app is archived, so its releases cannot be changed

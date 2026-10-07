@@ -16,6 +16,11 @@ class ListingGraphicPolicy < ApplicationPolicy
     manage_listing?
   end
 
+  # Task 43f-3: replacing the app's icon (a release column, set through the listing API) is the same right.
+  def replace_icon?
+    manage_listing?
+  end
+
   def destroy?
     manage_listing?
   end

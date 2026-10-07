@@ -405,6 +405,9 @@ Rails.application.routes.draw do
       # Task 43a: the store-listing graphics over the API (list, add, remove); user token or per-app token.
       resources :listing_graphics, only: %i[index create destroy], controller: 'apps/listing_graphics'
 
+      # Task 43f-3: the app's store icon over the API (PUT replaces it on the newest catalog release).
+      resource :listing_icon, only: :update, controller: 'apps/listing_icons'
+
       # Task 34d-2: create, list and revoke the app's per-app API tokens. User token in the Authorization
       # header ONLY; a per-app token can never open this (decision 34-4). See Api::Apps::ApiTokensController.
       resources :api_tokens, only: %i[index create destroy], controller: 'apps/api_tokens'
