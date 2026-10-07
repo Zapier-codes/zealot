@@ -8537,3 +8537,6 @@ If the GitHub Action fails, fetch the error log and save it under `~/storage/dow
 - **Checks run:** YAML parse and `compile()` of the Python block only. The new branch was never executed.
 - **Take next:** the operator's icon upload (Storeapp `listing-graphics.yml` run, then check `listing.icon` in the index); then Zealot leaf 29 against the `upload_sessions` path (see D-Store's leaf text, which still names the multipart controller).
 
+### Fix — runbook commands no longer use `/tmp` (operator-directed, docs only)
+- **Found:** the operator's phone (Termux) has no `/tmp`, so the storage-copy patch commands (runbook, "Put the fix in the storage repo") and the bundletool check (section 10) failed there. **Fixed:** both blocks now start with `W=$(mktemp -d)`, which uses `$TMPDIR` (Termux sets it). Docs only; nothing run. Rule for every future operator command: scratch files come from `mktemp -d`, never a hard-coded `/tmp` (the sandbox has `/tmp`, the phone does not).
+

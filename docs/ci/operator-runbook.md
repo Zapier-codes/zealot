@@ -318,9 +318,10 @@ CHANNEL_KEY=<its channel key, from: curl -sG "$Z/api/apps" -d token="$(zealot-to
 bash ~/upload-test.sh "$FILE" "$CHANNEL_KEY"   # the script from the session that asked for this; recreate it from section 10 if deleted
 
 # 2. in parallel (or after), the AAB manifest proof 40n-a needs, on the SAME file, independent of Zealot:
-bundletool build-apks --bundle="$FILE" --output=/tmp/check.apks --mode=universal
-unzip -p /tmp/check.apks universal.apk > /tmp/universal.apk
-aapt2 dump xmltree /tmp/universal.apk --file AndroidManifest.xml | head -40
+W=$(mktemp -d)   # uses $TMPDIR, which Termux sets (it has no /tmp)
+bundletool build-apks --bundle="$FILE" --output=$W/check.apks --mode=universal
+unzip -p $W/check.apks universal.apk > $W/universal.apk
+aapt2 dump xmltree $W/universal.apk --file AndroidManifest.xml | head -40
 # confirms bundletool can round-trip this bundle at all, before any patcher touches its manifest
 ```
 
@@ -553,13 +554,14 @@ storage copy as a patch instead of overwriting the file, because the storage rep
 ```
 cd ~/zealot
 for F in compile-aab read-upload; do
-  git diff HEAD~1 HEAD -- docs/ci/$F.yml > /tmp/$F.diff
-  gh api repos/Zapier-codes/zealot-storage/contents/.github/workflows/$F.yml --jq .content | base64 -d > /tmp/$F.storage.yml
-  patch /tmp/$F.storage.yml < /tmp/$F.diff || { echo "$F: did not apply, stop and report"; continue; }
+  W=$(mktemp -d)   # uses $TMPDIR, which Termux sets (it has no /tmp)
+  git diff HEAD~1 HEAD -- docs/ci/$F.yml > $W/$F.diff
+  gh api repos/Zapier-codes/zealot-storage/contents/.github/workflows/$F.yml --jq .content | base64 -d > $W/$F.storage.yml
+  patch $W/$F.storage.yml < $W/$F.diff || { echo "$F: did not apply, stop and report"; continue; }
   SHA=$(gh api repos/Zapier-codes/zealot-storage/contents/.github/workflows/$F.yml --jq .sha)
   gh api -X PUT repos/Zapier-codes/zealot-storage/contents/.github/workflows/$F.yml \
     -f message="task 40t: read the signing certificate by hashing the exported cert" \
-    -f content="$(base64 -w0 /tmp/$F.storage.yml)" -f sha="$SHA" --jq .commit.sha
+    -f content="$(base64 -w0 $W/$F.storage.yml)" -f sha="$SHA" --jq .commit.sha
 done
 ```
 
