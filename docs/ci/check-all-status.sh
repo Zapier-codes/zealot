@@ -132,18 +132,27 @@ else
   row "Storeapp build-tenant-apk.yml" "does NOT send the dispatch (40n-e not applied on main?)"; problem
 fi
 
-echo "-- Zealot's download door (Task 40n-f; it has no auth yet) --"
+echo "-- Zealot's download door (Task 40n-f; signed, expiring links) --"
 zurl="$(gh variable get ZEALOT_URL -R "$STORAGE" 2>/dev/null)"
 if [ -z "$zurl" ]; then
   row "door" "skipped: the storage repo has no ZEALOT_URL variable"; problem
 else
   resp="$(curl -sS -m 20 -w '\n%{http_code}' "$zurl/api/tenant_builds/none/download" 2>&1)"
   code="$(printf '%s' "$resp" | tail -n 1)"
-  if [ "$code" = "404" ] && printf '%s' "$resp" | grep -q 'This build has expired'; then
-    row "door $zurl" "deployed (404 with the expired-build message for an unknown id)"
-  else
-    row "door $zurl" "NOT as expected: HTTP $code -- is the latest deploy live?"; problem
-  fi
+  # The probe sends no signature on purpose. The door with auth answers 401 (503 when DISTR_LINK_SECRET is unset on
+  # Render). The pre-auth door answered 404 with the expired-build message for an unknown id; any other 404 means
+  # the route is not served at all, i.e. the live deploy is older than the door.
+  case "$code" in
+    401) row "door $zurl" "deployed, refuses an unsigned request (401)" ;;
+    503) row "door $zurl" "deployed but CLOSED: DISTR_LINK_SECRET is not set on Render (503)"; problem ;;
+    404)
+      if printf '%s' "$resp" | grep -q 'This build has expired'; then
+        row "door $zurl" "OLD door without auth (404 expired-build message): the 40n-f auth deploy is not live"; problem
+      else
+        row "door $zurl" "route NOT served (404, no expired-build message): the live deploy predates the door"; problem
+      fi ;;
+    *) row "door $zurl" "NOT as expected: HTTP $code -- is the latest deploy live?"; problem ;;
+  esac
 fi
 
 echo "-- Harvest runs (none until the first Storeapp tenant build dispatches, or a manual dispatch) --"
