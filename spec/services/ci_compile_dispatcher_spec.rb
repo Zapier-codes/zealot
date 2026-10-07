@@ -43,7 +43,7 @@ RSpec.describe CiCompileDispatcher do
     expect(JSON.parse(call[:body])).to eq(
       'ref' => 'main',
       'inputs' => { 'release_id' => '345', 'tag' => 'a12-r345', 'asset' => 'app.aab',
-                    'artifact_base' => 'Storeapp-1.1.4-218' }
+                    'artifact_base' => 'storeapp-1.1.4' }
     )
     expect(call[:body]).not_to include('dispatch-secret')
   end
@@ -139,7 +139,7 @@ RSpec.describe CiCompileDispatcher do
 
         expect(dispatcher.call).to be(true)
         expect(calls.size).to eq(2)
-        expect(JSON.parse(calls.first[:body])['inputs']).to include('artifact_base' => 'Storeapp-1.1.4-218')
+        expect(JSON.parse(calls.first[:body])['inputs']).to include('artifact_base' => 'storeapp-1.1.4')
         expect(JSON.parse(calls.last[:body])['inputs'])
           .to eq('release_id' => '345', 'tag' => 'a12-r345', 'asset' => 'app.aab')
       end

@@ -11,7 +11,7 @@ require 'json'
 # no secret: only the release id and where the AAB is (tag and asset name, from the same mapping the storage
 # adapter uses, `GithubAdapter.location_for`).
 #
-# Task 41c: the call also carries `artifact_base` (`ReleaseArtifactName.for(release)`, e.g. `Storeapp-1.1.4-218`),
+# Task 41c: the call also carries `artifact_base` (`ReleaseArtifactName.for(release)`, e.g. `storeapp-1.1.4` since Task 44b),
 # the name the workflow stores its APK and APK set under, the same as stage 2 does. A storage-repo copy of the
 # workflow that does not declare that input makes GitHub answer 422 "Unexpected inputs provided"; that one case is
 # repeated once without the input, so a Zealot deployed ahead of the workflow copy still compiles (to the old names).

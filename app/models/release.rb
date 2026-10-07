@@ -413,10 +413,13 @@ class Release < ApplicationRecord
     File.extname(file.path)
   end
 
+  # The cosmetic last segment of `/download/releases/:id/<name>`. Task 44c: `version_datetime` (the stored value
+  # of the channel's `download_filename_type`, kept because it lives in a column and in the API) now means "name
+  # and version": `appstore-1.1.4.apk`, no build number and no timestamp.
   def download_filename
     case channel.download_filename_type&.downcase&.to_sym
     when :version_datetime
-      version_datetime_filename
+      name_version_filename
     when :original_filename
       original_filename
     else
@@ -843,14 +846,14 @@ class Release < ApplicationRecord
     name
   end
   
-  def version_datetime_filename
-    [
-      channel.slug, release_version, build_version, created_at.strftime('%Y%m%d%H%M')
-    ].join('_') + file_extname
+  # Task 44c: the app's name and the version (`ReleaseArtifactName.for`), the same base the stored files carry,
+  # then the extension. It used to be `<channel slug>_<version>_<build>_<YYYYMMDDHHMM>`.
+  def name_version_filename
+    ReleaseArtifactName.for(self) + file_extname
   end
 
   def default_filename
-    version_datetime_filename
+    name_version_filename
   end
 
   def recently_release_app_id

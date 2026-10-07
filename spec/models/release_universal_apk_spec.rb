@@ -59,6 +59,11 @@ RSpec.describe Release, 'universal APK (Task 40e)' do
       expect(release.download_filename).to end_with('.apk')
     end
 
+    # Task 44c: the app's name and the version, nothing else.
+    it 'names the download <app slug>-<version>.apk, with no build number and no time' do
+      expect(release.download_filename).to eq('live-app-1.0.1.apk')
+    end
+
     it 'names the download from the release, not from an uploader identifier that is not there' do
       channel.update_columns(download_filename_type: 'original_filename')
 
@@ -92,7 +97,7 @@ RSpec.describe Release, 'universal APK (Task 40e)' do
         channel.update_columns(download_filename_type: 'version_datetime')
         compiled!(universal_apk_storage_key: 'uploads/apps/a1/r1/pipeline/Storeapp-1.0.1-1.apk')
 
-        expect(release.download_filename).to eq(release.send(:version_datetime_filename))
+        expect(release.download_filename).to eq(release.send(:name_version_filename))
       end
     end
   end

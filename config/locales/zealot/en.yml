@@ -689,7 +689,7 @@ en:
       git_url: Git URL
       download_filename_type: Download filename rule
       download_filename_type_item:
-        version_datetime: "{channel_slug}_{release_version}_{build_version}_{datetime}.{ext}"
+        version_datetime: "{app_name}-{release_version}.{ext}"
         original_filename: Use the original file name of the uploaded file
       match_rule: Match Rule %{value}
       wildmatch: (wild match)

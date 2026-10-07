@@ -159,6 +159,21 @@ RSpec.describe ReleaseUploadFinisher do
       expect(release.universal_apk_storage_key).to end_with("/pipeline/#{ReleaseArtifactName.for(release)}.apk")
     end
 
+    # Task 44b: stage 1 ran before the deploy that dropped the build number from the base, so CI reports the
+    # earlier `<Name>-<version>-<build>` names and stage 3 (after the deploy) must still accept them.
+    it 'still accepts the base an upload got before Task 44' do
+      previous = ReleaseStorage.new(release, adapter: nil)
+                               .staged_keys(filename: filename, icon_extension: '.png',
+                                            base: ReleaseArtifactName.previous_for(release))
+      report = aab_report.merge('file_key' => previous[:file], 'icon_key' => previous[:icon],
+                                'universal_apk_key' => previous[:universal],
+                                'compressed_apks_key' => previous[:compressed])
+
+      expect(finish(report)).to have_attributes(code: :finished, http: 200)
+
+      expect(release.reload.file_storage_key).to end_with("/binary/#{ReleaseArtifactName.previous_for(release)}.aab")
+    end
+
     it 'still accepts the old names from a workflow that predates the naming' do
       expect(finish(aab_report)).to have_attributes(code: :finished, http: 200)
 

@@ -889,3 +889,56 @@ command; `gh run view <id> -R ... --log` needs the real run id (the `<id>` is a 
 
 **Not verified.** The live D-Store home page in a browser (the Claude sandbox cannot reach `*.vercel.app`); that the hero
 actually shows Storeapp; the cause of the anomaly above; anything under Rails or RSpec.
+
+---
+## 23. Names are `<name>-<version>` everywhere, and renaming the live channel `48Mhr` (Task 44, 2026-10-07; written, NOT run)
+
+**What changed (Zealot only; nothing to copy to the storage repo).** Zealot now names every file it makes from the app's name and
+the version, never the build number and never a time: stored files `appstore-1.1.4.aab`, `.apk`, `.apks.br` and the icon; the
+cosmetic download path segment `/download/releases/<id>/appstore-1.1.4.apk`; and a NEW channel's slug (`appstore`, then
+`appstore-2` if taken) instead of random text. The two workflows only use the `artifact_base` Zealot sends (and check its shape),
+so they need no change and no copy; deploy Zealot and that is all. An upload whose stage 1 ran just before the deploy still
+finishes (stage 3 also accepts the earlier `Appstore-1.1.4-218` names). Releases already stored keep the names recorded on them.
+
+**What a browser SAVES.** The saved name is GitHub's asset name from the last `Content-Disposition`. It follows the stored name, so:
+- release 6 (Appstore 1.1.4, stored before Task 41b) keeps saving `pipeline__universal.apk`, whatever the path segment says;
+- a NEW release (the next Storeapp version) saves `appstore-1.1.4`-style names, e.g. `appstore-1.1.5.apk`;
+- a re-send of an old release gets the new names only through the steps in section 12 and the 2026-10-06 entry "PRIORITIES after
+  Task 41a + 41b" in `handover.md` (a release already `done` is refused by `retry_compile`).
+
+Check (Termux), after the deploy is `live` and a new release exists:
+```
+. ~/.zealot.env; Z=https://zealot-deploy-latest.onrender.com
+curl -sIL "$Z/download/releases/<id>" | grep -i -E "^HTTP|^location|content-disposition"
+# the last location path and the content-disposition filename must read <name>-<version>.apk
+```
+
+**Rename the live channel `48Mhr` to `appstore` (explicit, one time; nothing renames by itself).** Render Free has no console
+(section 12), so use the API that already exists. A platform admin or the app's owner may do it (`ChannelPolicy#update?` is `any_manage?`, read in code, not run). Read first, then change:
+```
+. ~/.zealot.env; Z=https://zealot-deploy-latest.onrender.com; T=$(zealot-token)
+curl -sS "$Z/api/channels/2" -d token="$T" -G | jq '{id, name, slug}'    # expect Appstore's Android channel, slug 48Mhr
+curl -sS -X PATCH "$Z/api/channels/2" -d token="$T" -d slug=appstore | jq '{id, name, slug}'
+```
+- `200` and `"slug": "appstore"`: done. `422` says why: the slug is taken, or not well-formed (lowercase letters, digits and single
+  hyphens only; `Appstore` or `my app` are refused, not rewritten).
+- **Old links stop working.** Every URL with `/48Mhr/` (the channel page, `/48Mhr/overview`, `/48Mhr/versions`, shared or printed
+  install links and QR codes) answers 404 after the change; new install links use `appstore` by themselves. The signed index and
+  D-Store are NOT affected: the index's `download_url` is `/download/releases/<id>`, which carries no channel slug.
+- **There is no going back to `48Mhr` through the API:** a changed slug is checked, and `48Mhr` (capital letters) is not well-formed, so it would be refused. Choose the new slug with care; any other well-formed slug can be set the same way.
+
+**Not verified.** Nothing here ran: no Rails, no RSpec, no real upload under the new names, no real rename. The cards and the
+reasons are in `handover.md`, Task 44.
+
+---
+## 24. `https://localhost` in the index: `ZEALOT_DOMAIN` was unset (2026-10-07; fixed by the operator, recorded here afterwards)
+
+**Symptom.** The signed index's icon, screenshot and download URLs began with `https://localhost`. **Cause.** `ZEALOT_DOMAIN` was not
+set on the Render service, so `Setting.site_domain` fell back to `localhost`, and every absolute URL Zealot builds used it. **Fix (ran,
+operator's Termux).** Set `ZEALOT_DOMAIN=zealot-deploy-latest.onrender.com` on service `srv-dalsvf942hec73dk2vg0`, then redeploy **the same
+image** (`deploy-2c50dff`) with its `imageUrl` (a redeploy without `imageUrl` rolls back to a stored old image; the proven Render calls are
+in D-Store's `HANDOVER.md`, "CI and deploy debugging", item 6), then republish the index by re-running Storeapp's `listing-graphics.yml`.
+**After it:** the live index (`generated_at` 2026-10-07T10:05:15Z, read from the sandbox) lists the icon as
+`https://zealot-deploy-latest.onrender.com/download/releases/6/icon` and 4 screenshots at `.../download/graphics/1` to `4`.
+`CI_OIDC_AUDIENCE` was already set, so the OIDC audience (which falls back to `https://$ZEALOT_DOMAIN`) was never affected.
+**Check any time:** `curl -s https://raw.githubusercontent.com/Zapier-codes/dstore-catalog/gh-pages/index.json | grep -c localhost` must print `0`.

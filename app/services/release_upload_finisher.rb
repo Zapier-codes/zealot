@@ -149,15 +149,20 @@ class ReleaseUploadFinisher
   # Built without an adapter on purpose (like `#tag`): the keys are names, and answering needs no storage.
   #
   # Task 41b: the files are named after the app (`ReleaseArtifactName`). A workflow that predates 41b still
-  # uploads the old names, so when CI's reported `file_key` is not the named one the old names are expected
+  # uploads the old names, so when CI's reported `file_key` is not a named one the old names are expected
   # instead; either way the keys are derived here and CI's report must equal them, so a half-updated pair
   # still fails loudly rather than recording a key that points at nothing.
+  #
+  # Task 44b: the base is now `<app>-<version>`. An upload whose stage 1 ran before that was deployed got the
+  # earlier base (`Storeapp-1.1.4-218`, `.previous_for`) from CI, so the candidates are, in order: the current
+  # base, the previous one, then the pre-41 fixed names. The first whose `file` key equals CI's report wins.
   def expected_keys(release)
     icon_extension = metadata['icon_key'].present? ? File.extname(metadata['icon_key']) : nil
     storage = ReleaseStorage.new(release, adapter: nil)
-    named = storage.staged_keys(filename: upload.filename, icon_extension: icon_extension,
-                                base: ReleaseArtifactName.for(release))
-    return named if body['file_key'].to_s == named[:file]
+    [ReleaseArtifactName.for(release), ReleaseArtifactName.previous_for(release)].uniq.each do |base|
+      named = storage.staged_keys(filename: upload.filename, icon_extension: icon_extension, base: base)
+      return named if body['file_key'].to_s == named[:file]
+    end
 
     storage.staged_keys(filename: upload.filename, icon_extension: icon_extension)
   end

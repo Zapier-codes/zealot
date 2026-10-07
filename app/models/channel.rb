@@ -57,6 +57,11 @@ class Channel < ApplicationRecord
 
   validates :name, presence: true
   validates :slug, uniqueness: true
+  # Task 44d: a slug the caller gives (upload option, `PATCH /api/channels/:id`, the console) must be well-formed.
+  # Checked only when it changes, so a slug that predates this rule (`48Mhr`) never makes another edit fail.
+  validates :slug, format: { with: NameSlug::FORMAT,
+                             message: 'may only contain lowercase letters, digits and single hyphens (for example "appstore")' },
+                   allow_blank: true, if: :slug_changed?
   validates :device_type, presence: true, inclusion: { in: self.device_types.keys }
   validates :track, presence: true, inclusion: { in: self.tracks.keys }
   validates :download_filename_type, presence: true, inclusion: { in: self.download_filename_types.keys }
@@ -181,7 +186,17 @@ class Channel < ApplicationRecord
 
   def generate_default_values
     self.key = Digest::MD5.hexdigest(File.join(SecureRandom.uuid, name))
-    self.slug = Digest::SHA1.base64digest(key).gsub(%r{[+\/=]}, '')[0..4] if slug.blank?
+    self.slug = default_slug if slug.blank?
+  end
+
+  # Task 44d: the app's name cleaned (`appstore`), numbered when another channel already has it (`appstore-2`).
+  # The old random 5 characters are only the fallback for an app whose name has no usable character. The slug is a
+  # top-level URL path, so it is never changed here for a channel that already has one.
+  def default_slug
+    base = NameSlug.base(scheme&.app&.name)
+    return Digest::SHA1.base64digest(key).gsub(%r{[+\/=]}, '')[0..4] if base.blank?
+
+    NameSlug.unique(base) { |candidate| self.class.unscoped.exists?(slug: candidate) }
   end
 
   def recently_release_cache_key
