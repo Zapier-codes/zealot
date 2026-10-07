@@ -688,7 +688,7 @@ Full state and the order of next steps are in `handover.md`, newest entry. Termu
 - **Database:** Supabase **Session pooler** (port 5432), not the transaction pooler (6543); distr migrates on boot and takes advisory locks. Free Supabase projects pause when idle.
 
 
-## 19. Putting an app in D-Store over the API (Task 42e, 2026-10-07; written, NOT run)
+## 19. Putting an app in D-Store over the API (Task 42e, 2026-10-07; RAN for real on app 2 the same day, see section 22; the pay/checkout parts were not run)
 
 Everything section 17 did by clicking can now be done with `curl`. All routes take the **user token in the `token`
 parameter** (never a Bearer header, never a per-app token) and change nothing on a refusal. The console pages stay;
@@ -784,7 +784,7 @@ lapse suspension only ever act on an app that has a billing row, and a row is ma
 succeeds through B-PAY. So an app already published and put in D-Store by hand (the section 19 commands above) is never
 charged, never suspended for non-payment, and its releases are shown for as long as it stays `live`.
 
-## 21. Everything over the API: any account's token and the publisher profile (Task 42j, 2026-10-07; written, NOT run)
+## 21. Everything over the API: any account's token and the publisher profile (Task 42j, 2026-10-07; RAN for real the same day, see section 22)
 
 A platform admin can now do, with the admin's token alone, what used to need the console or the developer's own login.
 
@@ -811,3 +811,59 @@ curl -sS -X POST "$Z/api/releases/<release id>/release" -d token="$T" | jq '{id,
 curl -sS -X PATCH "$Z/api/apps/$A/store_listing/mark_paid" -d token="$T" | jq '{listing_status, blockers}' # live, no payment
 ```
 
+## 22. Storeapp (app 2) live and featured in D-Store, no payment: what ran, and what to check (2026-10-07)
+
+Everything below was run from Termux against `https://zealot-deploy-latest.onrender.com` and the outputs were read back
+by the operator. Sections 19 and 21 therefore work on the deployed build, except the pay and checkout paths (42f, 42i),
+which were not run.
+
+**Helpers now on the phone (no secrets in this repo).**
+- `~/.zealot.env` now also exports `Z` (the Zealot URL) and `ZA=2` (the Storeapp app id). Start any session with
+  `. ~/.zealot.env; T=$(zealot-token); DEV=$(zealot-dev-token); A=$ZA`.
+- `zealot-dev-token [email]` (in `$PREFIX/bin`): prints the developer account's API token, default
+  `claudeone7492@gmail.com`, by calling `GET /api/users/search` and `GET /api/users/:id/token` with the admin token.
+  Nothing is cached on disk, so a rotated token is never stale. Each read is logged by the server (id, never the token).
+- `VERCEL_TOKEN` is exported from `~/.bashrc`.
+
+**State read back.** App 2 (Storeapp): owner user 3 (`claudeone7492@gmail.com`), `tenant: null`. Release 6, version 1.1.4,
+build 218: `status: available`, `ci_compile_state: done`, `signed: true`. Publisher profile id 1 for user 3, `kind:
+individual`, created over the API with `PUT /api/users/3/publisher_profile` (`kind` locks once the account has a live app).
+
+**What ran, in order.**
+1. `GET .../store_listing` (admin): `draft`, blocker "listing_status is draft; only live apps are indexed".
+2. `POST .../store_listing` (owner token) first answered `422 publisher_profile_required`; after the profile was created it
+   answered `awaiting_payment`.
+3. `POST /api/releases/6/release` was refused: the release was **already `available`**, so this step is not needed for it.
+   The refusal text comes in Chinese on this deployment (the locale), which is why a `jq` filter on `{id, status}` printed
+   nulls. Read such answers raw.
+4. `PATCH .../store_listing/mark_paid` (admin): `live`, `blockers: []`. No Payment, no billing row, so the 42h job never
+   charges or suspends it.
+5. `GET .../store_listing` again: `available_release` is release 6, `eligible_for_catalog_index: true`.
+6. The published index (`dstore-catalog/contents/index.json`) carries version 1.1.4, code 218, commit 517394f, and it is the
+   app's `suggested_version_code`.
+7. `PUT .../editorial -d featured=true` (admin): `featured: true`, `blockers: []`. After it the index had exactly one app with
+   `featured: true`.
+
+**Anomaly, not explained.** The block above was run twice. On the second run `POST .../store_listing` answered
+`awaiting_payment` (no `code`) for an app that was already `live`, and `mark_paid` put it back to `live`. The repo's own
+code (`App#request_store_listing!` returns false unless `listing_draft?`, so a repeat should be `422 listing_not_available`)
+says it should have been refused, so either the deployed build differs from `develop` or something else changed the status
+in between. The end state was correct, but D-Store may have dropped the app until the next republish. Do not repeat the
+request step on a live app; to find the cause, compare the deployed commit with `develop` and read `listing_status` between calls.
+
+**D-Store (Vercel, not Render).** The Render account holds only `zealot-web`. D-Store is the Vercel project `d-store`
+(repo `D-Store`), domains `d-store-edges2.vercel.app` and `d-store-git-master-edges2.vercel.app`. Its home hero is the first
+featured first-party app in the index (`lib/catalog.ts` `getFeaturedApps`, `app/page.tsx` hero rule), so with Storeapp the
+only featured app it is the top card once D-Store's cache refreshes. Listing the Vercel projects:
+```
+curl -s -H "Authorization: Bearer $VERCEL_TOKEN" "https://api.vercel.com/v9/projects?limit=50" \
+  | jq -r '.projects[] | [.name, (.targets.production.alias // [] | join(",")), (.link.repo // "")] | @tsv'
+```
+
+**CI.** The latest run of `zealot-storage` on `main` is green. Three earlier runs failed (two `read-upload`-type runs and one
+compile run of 36 s; the runbook's section 15 records run `37427410330`, `Compile release 3`, failing after 36 s). Their logs
+were not saved, and the Claude sandbox has no `gh`, so nothing was read from them. Save a failed run's log with section 8's
+command; `gh run view <id> -R ... --log` needs the real run id (the `<id>` is a placeholder, not literal text).
+
+**Not verified.** The live D-Store home page in a browser (the Claude sandbox cannot reach `*.vercel.app`); that the hero
+actually shows Storeapp; the cause of the anomaly above; anything under Rails or RSpec.
