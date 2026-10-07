@@ -674,3 +674,16 @@ Do these in order (the app is Storeapp, owned by the developer account `claudeon
 5. **Featured.** Admin: `/admin/apps`, toggle Featured on the app. Since 42a this republishes the index by itself;
    before 42a it did not, and any listing edit was needed to force it.
 6. **Check.** The Pages index carries `"featured": true` for the app, and D-Store's home shows it in the hero after its cache refreshes.
+
+## 18. distr on its own Render account: the commands that worked (2026-10-07)
+
+Full state and the order of next steps are in `handover.md`, newest entry. Termux, operator device. Keys live in `~/.render-distr.env`
+(`RENDER_API_KEY_DISTR`, `RENDER_SERVICE_ID_DISTR`); never put the distr key into `~/.render.env` or name it `RENDER_API_KEY` there.
+
+- **Check the key and find the service:** `curl -s -H "Authorization: Bearer $RENDER_API_KEY_DISTR" "https://api.render.com/v1/services?limit=20" | jq -r '.[].service | "\(.id)  \(.name)  \(.type)  \(.suspended)"'`. A `404` on a service call means a wrong service id (a placeholder); a bad key is `401`.
+- **A distr CI run failed:** `bash ~/D-Store/scripts/fetch-ci-log.sh gh Zapier-codes/distr [run id]` grabs the latest *failed run of any workflow*; the first one it picked was `Release Please`, not the build. Find the build run with `gh run list -R Zapier-codes/distr -w "Publish to GHCR" -L 5`.
+- **Green build, nothing deployed:** `gh run view <id> -R Zapier-codes/distr --log | grep "hook answered" | grep -v 'code}'` must show `Render deploy hook answered 200`. A `RENDER_DEPLOY_HOOK_URL is not set` notice means the image was published and Render was never told. Set it silently: `read -rsp "hook: " H; echo; printf %s "$H" | gh secret set RENDER_DEPLOY_HOOK_URL -R Zapier-codes/distr; unset H`. The log of a run that is still going is empty; wait for the `✓`.
+- **A distr deploy is `update_failed`:** `RENDER_API_KEY="$RENDER_API_KEY_DISTR" bash ~/D-Store/scripts/fetch-ci-log.sh render srv-db2n44jncjis73bn1hvg`, then `unset RENDER_API_KEY`. The first two failed with `panic: missing required environment variable: DATABASE_URL` (exit 2): the service was created without the variables in `render.yaml`. Required to boot: `DATABASE_URL`, `DATABASE_ENCRYPTION_KEY`, `JWT_SECRET`, `DISTR_HOST`, `PORT=8080`, `LOKI_URL`, `REGISTRY_ENABLED=false`.
+- **Set an env var on a service without opening the dashboard:** `curl -s -X PUT -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d "{\"value\":$(printf %s "$VALUE" | jq -Rs .)}" "https://api.render.com/v1/services/<srv id>/env-vars/<NAME>" | jq -r .key` prints the name back on success. Then start a deploy: `curl -s -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{}' "https://api.render.com/v1/services/<srv id>/deploys"`.
+- **Database:** Supabase **Session pooler** (port 5432), not the transaction pooler (6543); distr migrates on boot and takes advisory locks. Free Supabase projects pause when idle.
+

@@ -5936,6 +5936,34 @@ them is already modernized.
 
 ## Session log
 
+### 2026-10-07 (newest of all, distr on its own Render) -- Door auth landed; distr built, published and being brought up on a separate Render account (operator-run commands, nothing run by the session)
+
+This session cloned `Zapier-codes/distr`, read its workflows and `render.yaml`, and walked the operator through each command. The session's sandbox cannot reach `api.render.com` and has no GitHub token, so **everything below that touches Render or GitHub Actions was run by the operator in Termux and read from what was pasted back**. No secret value is written here; only names and file locations.
+
+**Zealot (this repo)**
+- **40n-f door auth landed:** `16da2826` is the tip of `develop`; operator reports `CI - RSpec` green. The door needs `expires` and `signature` (section 16 of the runbook has the format).
+- **`DISTR_LINK_SECRET` set on `zealot-web`** (`srv-dalsvf942hec73dk2vg0`) with a Render API `PUT` on the env-var; the same value is in `~/.distr-link-secret` on the operator's device (mode 600). distr must use that exact value.
+- **NOT confirmed:** that the follow-up manual deploy went `live` and that the door check answered `401` (unsigned) and `404` (signed, unknown build). The output was not pasted. Believed, not verified: an env-var change through the Render API does not redeploy by itself, so a deploy has to be triggered (`POST /v1/services/<id>/deploys`).
+
+**distr (`Zapier-codes/distr`)**
+- **Separate Render account, own service:** `srv-db2n44jncjis73bn1hvg`, named `distr:deploy-latest`, web service, public address `https://distr-deploy-latest.onrender.com`. It pulls `ghcr.io/zapier-codes/distr` (the package is readable: the pull worked).
+- **Operator-side secret files (all mode 600, none in any repo):** `~/.render-distr.env` (`RENDER_API_KEY_DISTR`; `RENDER_SERVICE_ID_DISTR` was suggested for it, check it is there), `~/.distr-secrets.env` (`DATABASE_ENCRYPTION_KEY`, `JWT_SECRET`, generated once; **back it up, losing the encryption key makes encrypted rows unreadable**), `~/.distr-db.env` (`DISTR_DATABASE_URL`). **Never name the distr Render key `RENDER_API_KEY` in `~/.render.env`:** every script in `docs/ci` sources that file and would then act on the wrong account. For one command: `RENDER_API_KEY="$RENDER_API_KEY_DISTR" <script>`, then `unset RENDER_API_KEY`.
+- **Workflows:** `Publish to GHCR` (`publish-ghcr.yaml`) builds `linux/amd64` and pushes `deploy-<sha>` and `deploy-latest`, then POSTs the repo secret `RENDER_DEPLOY_HOOK_URL` with an `imgURL`. Its last step passes with only a notice when that secret is unset, so a green run does not prove a deploy: that is exactly what happened until the hook was set this session (run `37541085394` was the first with it set). `Release Please` is the upstream project's bot and failed on every push (`Input required and not supplied: token`, it reads `secrets.GLASSKUBE_BOT_SECRET`, which this repo does not have). It was **disabled with `gh workflow disable "Release Please"`**; no file was changed. The first red run seen was that one, not the build.
+- **First two Render deploys failed (`update_failed`, exit 2):** the container started and panicked `missing required environment variable: DATABASE_URL`. Cause: the service was created by hand without the variables `render.yaml` defines.
+- **Required to boot** (from `internal/env/env.go` and `render.yaml`): `DATABASE_URL`, `DATABASE_ENCRYPTION_KEY`, `JWT_SECRET`, `DISTR_HOST`, plus `PORT=8080`, `LOKI_URL=http://localhost:3100`, `REGISTRY_ENABLED=false`; health check path `/ready`. The request-flow variables (`STOREAPP_BUILD_*`, `DEVICE_FINGERPRINT_SALT`, `BPAY_*`, `TURNSTILE_*`, `NOVU_*`) are not needed to start and are not set yet. Mailer variables were not checked.
+- **Database decision (operator):** Supabase instead of the paid Render Postgres in `render.yaml`. Use the **Session pooler** (port 5432, `pooler.supabase.com`): Render is IPv4 and Supabase's direct address is IPv6-only; do not use the transaction pooler (6543) because distr takes `pg_advisory_xact_lock` and migrates on boot. `sslmode=require`. A free Supabase project pauses after about a week idle, which would take the public front door down. The project is in `eu-west-1` while `render.yaml` assumes Singapore: works, but every query crosses regions; check the Render service's region.
+- **The database password was pasted into the chat** (operator chose to proceed and rotate it afterwards). **Rotate it, then update `~/.distr-db.env` and the Render `DATABASE_URL`, then redeploy.** Open until done.
+- **State when the session ended:** all seven variables were saved on the service and deploy `dep-db2r8oh42hec73fkbfag` was `update_in_progress`. The result was not seen. Nothing has been confirmed about whether distr boots, migrates, or answers `/ready`.
+
+**Next, in order**
+1. Read the deploy status (`GET /v1/services/$RENDER_SERVICE_ID_DISTR/deploys?limit=2`). `live`: `curl` `/ready` (expect 200) and open the address. `update_failed`: save the log (`RENDER_API_KEY="$RENDER_API_KEY_DISTR" bash ~/D-Store/scripts/fetch-ci-log.sh render srv-db2n44jncjis73bn1hvg`) and upload it; the next error replaces the `DATABASE_URL` one.
+2. Rotate the Supabase password (see above).
+3. Set `DISTR_LINK_SECRET` on the distr service to the value in `~/.distr-link-secret`, and write **40n-g in the distr repo**: sign links in the format of runbook section 16 and mint a fresh link when the email button is pressed. Setting the variable alone signs nothing.
+4. Re-run the Zealot door check (unsigned 401, signed 404 for an unknown build).
+5. Then back to Zealot: the first manual harvest run (runbook 16), re-send release `a2-r6` and make it Featured (runbook 12 and 17), and 40o-r.
+
+**Things this session assumed and did not verify:** the Render env-var and deploy API routes beyond the ones the operator ran successfully; that distr works against Supabase (no special extensions were found in its migrations, nothing was run); that `/ready` touches the database; D-Store's `fetch-ci-log.sh render` log route (its header says it was written from memory; it did return both deploy logs this time).
+
 ### 2026-10-06 (newest of all, door auth) -- Task 40n-f door auth: signed, expiring links (operator chose the signed link over a Bearer token; "no testing, patch file only")
 
 - **Base:** `develop` @ `9c4d1c7a` (Task 42d is on the remote; this patch sits on top of it).
