@@ -136,6 +136,13 @@ class ReleaseStorage
     adapter.exist?(key)
   end
 
+  # Task 44f: renames a stored file in place (no download, no re-upload where the adapter can avoid it).
+  #
+  # @return [Symbol] `:renamed`, `:already`, `:same` or `:missing` (see the adapters)
+  def rename(from_key, to_key)
+    adapter.rename(from_key, to_key)
+  end
+
   # Task 40i-b: the storage tag this release's files are kept under (`a12-r345`), which the stage-2 workflow
   # needs to upload to. It comes from the GitHub adapter's own key mapping, not a second copy of it, and builds
   # no adapter (`ReleaseStorage.new(release, adapter: nil).tag`), so it answers even where storage is unset.

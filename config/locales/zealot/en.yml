@@ -1232,6 +1232,10 @@ en:
     release_app_archived: This app is archived, so its releases cannot be changed
     release_not_held: Only a held release can be released this way (this release is %{status})
     ci_compile_retry_refused: "Not sent to CI: CI_COMPILE_ENABLED must be true, the release must be an AAB, and its CI state must be empty or failed (it is %{state})"
+    rename_stored_refused:
+      ci_busy: "Not renamed: CI is still working on this release. Wait for it to finish, then try again"
+      nothing_stored: "Not renamed: no stored file is recorded for this release"
+    rename_stored_storage_failed: "Storage refused the rename (%{reason}). Files already renamed keep their new names; run it again after fixing the cause"
     direct_upload_required: "Android files must be uploaded through POST /api/apps/upload_sessions (then PUT to the URL it returns, then finalize). See docs/direct_upload.md."
     new_app_session_default_host_only: "The first upload of an app is only available on the default host. Upload to an existing channel, or use the console."
     new_app_session_refused: "Your account may not create apps, so the first upload of an app was refused. Send channel_key to upload to an existing app."

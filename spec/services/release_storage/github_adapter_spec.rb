@@ -60,6 +60,8 @@ module GithubAdapterSpecSupport
         upload(by_id(Regexp.last_match(1).to_i), uri, upload_path)
       in [:get, %r{\A/repos/org/store/releases/assets/(\d+)\z}]
         redirect_for(Regexp.last_match(1).to_i)
+      in [:patch, %r{\A/repos/org/store/releases/assets/(\d+)\z}]
+        rename_via_api(Regexp.last_match(1).to_i, JSON.parse(body))
       in [:delete, %r{\A/repos/org/store/releases/assets/(\d+)\z}]
         @releases.each_value { |r| r[:assets].reject! { |a| a[:id] == Regexp.last_match(1).to_i } }
         Response.new(status: 204, headers: {}, body: '')
@@ -96,6 +98,19 @@ module GithubAdapterSpecSupport
       asset = { id: (@next_id += 1), name: name, data: File.binread(upload_path) }
       release[:assets] << asset
       json(201, id: asset[:id], name: name)
+    end
+
+    # Task 44f: GitHub's asset rename (PATCH). A name already taken in the same storage release is a 422.
+    def rename_via_api(asset_id, payload)
+      release = @releases.values.find { |r| r[:assets].any? { |a| a[:id] == asset_id } }
+      return json(404, message: 'Not Found') unless release
+
+      name = payload.fetch('name')
+      return json(422, message: 'already_exists') if release[:assets].any? { |a| a[:name] == name }
+
+      asset = release[:assets].find { |a| a[:id] == asset_id }
+      asset[:name] = name
+      json(200, id: asset_id, name: name)
     end
 
     def redirect_for(asset_id)
@@ -403,6 +418,87 @@ RSpec.describe ReleaseStorage::GithubAdapter do
       expect { adapter.get(key, File.join(tmp, 'x.bin')) }.to raise_error(ReleaseStorage::StorageError) { |error|
         expect(error.message).to include('Errno::ECONNRESET')
         expect(error.message).not_to include('SECRET')
+      }
+    end
+  end
+
+  # Task 44f: renaming a stored file in place. Written, NOT run (no Ruby in the sandbox that wrote it).
+  describe '#rename' do
+    let(:old_key) { 'uploads/apps/a12/r345/pipeline/universal.apk' }
+    let(:new_key) { 'uploads/apps/a12/r345/pipeline/appstore-1.1.4.apk' }
+
+    it 'renames the asset with one PATCH: no upload, no delete, the bytes stay readable under the new key' do
+      adapter.put(old_key, source)
+      github.requests.clear
+
+      expect(adapter.rename(old_key, new_key)).to eq(:renamed)
+
+      expect(github.assets_of('a12-r345')).to eq(['appstore-1.1.4.apk'])
+      expect(github.requests.map { |r| r[:method] }).to include(:patch)
+      expect(github.requests.map { |r| r[:method] }).not_to include(:delete)
+      expect(github.requests.select { |r| r[:method] == :post }).to be_empty
+      target = File.join(tmp, 'out.bin')
+      expect(adapter.get(new_key, target)).to eq(target)
+      expect(File.binread(target)).to eq('apk-bytes')
+    end
+
+    it 'finds a file stored under the pre-41e name and renames that' do
+      adapter.put(old_key, source)
+      expect(github.assets_of('a12-r345')).to eq(['pipeline__universal.apk'])
+
+      expect(adapter.rename(old_key, new_key)).to eq(:renamed)
+      expect(github.assets_of('a12-r345')).to eq(['appstore-1.1.4.apk'])
+    end
+
+    it 'renames an uploaded file in the binary folder' do
+      adapter.put('uploads/apps/a12/r345/binary/app-release.aab', source)
+
+      expect(adapter.rename('uploads/apps/a12/r345/binary/app-release.aab',
+                            'uploads/apps/a12/r345/binary/appstore-1.1.4.aab')).to eq(:renamed)
+      expect(github.assets_of('a12-r345')).to eq(['appstore-1.1.4.aab'])
+    end
+
+    it 'is safe to repeat: the second call answers :already and changes nothing' do
+      adapter.put(old_key, source)
+      adapter.rename(old_key, new_key)
+      github.requests.clear
+
+      expect(adapter.rename(old_key, new_key)).to eq(:already)
+      expect(github.requests.map { |r| r[:method] }).not_to include(:patch)
+    end
+
+    it 'answers :same when both keys name one asset and :missing when neither exists' do
+      adapter.put(old_key, source)
+      expect(adapter.rename(old_key, old_key)).to eq(:same)
+      expect(adapter.rename('uploads/apps/a12/r345/pipeline/none.apk', 'uploads/apps/a12/r345/pipeline/other.apk'))
+        .to eq(:missing)
+      expect(adapter.rename('uploads/apps/a12/r999/pipeline/a.apk', 'uploads/apps/a12/r999/pipeline/b.apk'))
+        .to eq(:missing)
+    end
+
+    it 'refuses to overwrite: when both names exist nothing changes' do
+      adapter.put(old_key, source)
+      adapter.put(new_key, source)
+
+      expect { adapter.rename(old_key, new_key) }.to raise_error(ReleaseStorage::StorageError, /already exists/)
+      expect(github.assets_of('a12-r345')).to contain_exactly('pipeline__universal.apk', 'appstore-1.1.4.apk')
+    end
+
+    it 'refuses to move a file into another storage release' do
+      adapter.put(old_key, source)
+
+      expect { adapter.rename(old_key, 'uploads/apps/a12/r346/pipeline/appstore-1.1.4.apk') }
+        .to raise_error(ReleaseStorage::StorageError, /different storage releases/)
+    end
+
+    it 'names GitHub\'s answer when the rename call fails, without the token' do
+      adapter.put(old_key, source)
+      adapter.exist?(old_key)
+      github.failures = [422]
+
+      expect { adapter.rename(old_key, new_key) }.to raise_error(ReleaseStorage::StorageError) { |error|
+        expect(error.message).to include('HTTP 422')
+        expect(error.message).not_to include('ghp_SECRET_TOKEN')
       }
     end
   end

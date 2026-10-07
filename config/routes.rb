@@ -429,6 +429,8 @@ Rails.application.routes.draw do
         post :release
         # Task 40q: POST /api/releases/:id/retry_compile (platform admin, user token only).
         post :retry_compile
+        # Task 44f: POST /api/releases/:id/rename_stored (platform admin, user token only).
+        post :rename_stored
       end
     end
 

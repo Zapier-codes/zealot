@@ -45,6 +45,12 @@ class ReleasePolicy < ApplicationPolicy
     admin? && tenant_access? && in_request_tenant?(app)
   end
 
+  # Task 44f: rename a release's stored files to today's names (POST /api/releases/:id/rename_stored). Platform
+  # admin only, plus the tenant rule, like retry_compile: it touches the shared storage repo.
+  def rename_stored?
+    admin? && tenant_access? && in_request_tenant?(app)
+  end
+
   def auth?
     true
   end

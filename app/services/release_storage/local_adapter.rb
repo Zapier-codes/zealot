@@ -39,6 +39,23 @@ class ReleaseStorage::LocalAdapter
     File.exist?(path_for(key))
   end
 
+  # Task 44f: same contract as the GitHub adapter's `rename` (`:renamed`, `:already`, `:same`, `:missing`).
+  def rename(from_key, to_key)
+    return :same if from_key == to_key
+
+    source = path_for(from_key)
+    target = path_for(to_key)
+    return(File.exist?(target) ? :already : :missing) unless File.exist?(source)
+
+    if File.exist?(target)
+      raise ReleaseStorage::StorageError, "rename failed: #{to_key} already exists next to #{from_key}; nothing was changed"
+    end
+
+    FileUtils.mkdir_p(File.dirname(target))
+    File.rename(source, target)
+    :renamed
+  end
+
   private
 
   def default_root

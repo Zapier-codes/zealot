@@ -62,6 +62,26 @@ class ReleaseStorage::R2Adapter
     false
   end
 
+  # Task 44f: same contract as the GitHub adapter's `rename` (`:renamed`, `:already`, `:same`, `:missing`).
+  # R2 (like S3) has no rename: it copies the object to the new key, then deletes the old one. Storage keys
+  # only contain `[A-Za-z0-9._/-]` (the adapters' own convention), so `copy_source` needs no URL encoding.
+  def rename(from_key, to_key)
+    return :same if from_key == to_key
+
+    unless exist?(from_key)
+      return exist?(to_key) ? :already : :missing
+    end
+    if exist?(to_key)
+      raise ReleaseStorage::StorageError, "R2 rename failed: #{to_key} already exists next to #{from_key}; nothing was changed"
+    end
+
+    @client.copy_object(bucket: @bucket, key: to_key, copy_source: "#{@bucket}/#{from_key}")
+    @client.delete_object(bucket: @bucket, key: from_key)
+    :renamed
+  rescue Aws::Errors::ServiceError => e
+    raise ReleaseStorage::StorageError, "R2 rename failed for #{from_key}: #{e.message}"
+  end
+
   private
 
   def ensure_configured!

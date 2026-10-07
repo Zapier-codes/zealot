@@ -276,6 +276,43 @@ class ReleaseStorage::GithubAdapter
     !asset.nil?
   end
 
+  # Task 44f: renames one stored file in place with GitHub's asset-rename call (PATCH
+  # /repos/:repo/releases/assets/:id). Nothing is downloaded or uploaded, so a release already being served
+  # keeps its file for the whole operation. Both keys must live in the same storage release (same tag).
+  # Safe to repeat: when the file is already under the new name the answer is `:already`.
+  #
+  # @return [Symbol] `:renamed`; `:already` (only the new name exists); `:same` (both keys name one asset);
+  #   `:missing` (neither name exists)
+  # @raise [ReleaseStorage::StorageError] the keys are in different storage releases, or both the old and the
+  #   new asset exist (nothing is overwritten), or GitHub refuses
+  def rename(from_key, to_key)
+    ensure_repo_usable!
+    from_tag, from_names = self.class.locations_for(from_key)
+    to_tag, new_name = locate(to_key)
+    unless from_tag == to_tag
+      raise ReleaseStorage::StorageError, "GitHub rename failed: #{from_key} and #{to_key} are in different storage releases"
+    end
+
+    release = find_release(from_tag)
+    return :missing unless release
+
+    assets = list_assets(release['id'])
+    source = from_names.filter_map { |name| assets.find { |asset| asset['name'] == name } }.first
+    target = assets.find { |asset| asset['name'] == new_name }
+    return :same if source && source['name'] == new_name
+    return(target ? :already : :missing) unless source
+
+    if target
+      raise ReleaseStorage::StorageError,
+            "GitHub rename failed: #{new_name} already exists next to #{source['name']}; nothing was changed"
+    end
+
+    response = request(:patch, "#{repo_url}/releases/assets/#{source['id']}",
+                       headers: { 'Content-Type' => 'application/json' }, body: JSON.generate(name: new_name))
+    fail_for(response, "rename #{source['name']} to #{new_name}") unless response.status == 200
+    :renamed
+  end
+
   private
 
   # --- key mapping ---------------------------------------------------------

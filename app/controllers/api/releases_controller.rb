@@ -63,6 +63,24 @@ class Api::ReleasesController < Api::BaseController
     end
   end
 
+  # Task 44f: POST /api/releases/:id/rename_stored -- give the release's stored files today's names, in place
+  # (platform admin only). A release stored before Task 44 keeps names like `pipeline__universal.apk`, which is
+  # what a browser saves; this renames each stored file to `<app name>-<version><ext>` with the storage
+  # adapter's own rename and records the new keys, so the release is never deleted or taken out of the index.
+  # Safe to repeat. A release CI is still working on (`queued`, `dispatched`) is refused (422); a storage
+  # failure is a 502 and names what GitHub said, and the keys of files not yet renamed stay as they were.
+  #
+  # @param id [Integer] required release id
+  # @return [JSON] 200 with `changes` (column, from, to, status per file), or 422 / 502 with an error
+  def rename_stored
+    changes = ReleaseStoredRenamer.new(@release).call
+    render json: { id: @release.id, changes: changes.map(&:to_h) }
+  rescue ReleaseStoredRenamer::Refused => e
+    render json: { error: t("api.rename_stored_refused.#{e.message}") }, status: :unprocessable_entity
+  rescue ReleaseStorage::StorageError, ReleaseStorage::ConfigurationError => e
+    render json: { error: t('api.rename_stored_storage_failed', reason: e.message) }, status: :bad_gateway
+  end
+
   protected
 
   # Task 23: this controller never authorized anything, so any token holder

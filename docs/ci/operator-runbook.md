@@ -942,3 +942,14 @@ in D-Store's `HANDOVER.md`, "CI and deploy debugging", item 6), then republish t
 `https://zealot-deploy-latest.onrender.com/download/releases/6/icon` and 4 screenshots at `.../download/graphics/1` to `4`.
 `CI_OIDC_AUDIENCE` was already set, so the OIDC audience (which falls back to `https://$ZEALOT_DOMAIN`) was never affected.
 **Check any time:** `curl -s https://raw.githubusercontent.com/Zapier-codes/dstore-catalog/gh-pages/index.json | grep -c localhost` must print `0`.
+
+## 25. Renaming a release's stored files in place: release 6 (Task 44f, 2026-10-07; written, NOT run)
+
+Release 6 was stored before Task 41b, so its APK is the asset `pipeline__universal.apk` and a browser saves that name. Deleting and re-sending it takes it out of the index meanwhile. This renames the stored files instead, with GitHub's asset-rename call (no download, no re-upload), and records the new keys. Platform admin only; `$Z` and `$T` as in section 23. Deploy Zealot first (a push to `develop`).
+
+```
+curl -sS -X POST "$Z/api/releases/6/rename_stored" -d token="$T" | jq .
+curl -sIL "$Z/download/releases/6" | grep -i -E "^HTTP|^location|content-disposition"
+```
+
+The first command answers `changes`: one row per stored file (`file_storage_key`, `universal_apk_storage_key`, `compressed_apks_storage_key`, `icon_storage_key`) with `from`, `to` and `status` (`renamed`, `already`, `same`). The last `content-disposition` should say `filename=appstore-1.1.4.apk`. Running it again is safe (every row says `same`). A 422 `CI is still working` means wait; a 502 names what storage said, files already renamed keep their new names, and a second run finishes the rest. If both the old and the new name exist, nothing is overwritten and it is a 502.

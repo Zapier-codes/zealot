@@ -1208,6 +1208,10 @@ zh-CN:
     release_app_archived: 该应用已归档，无法更改其版本
     release_not_held: 只有已暂缓的版本才能通过此方式发布（当前版本状态为 %{status}）
     ci_compile_retry_refused: "未发送到 CI：CI_COMPILE_ENABLED 必须为 true，版本必须是 AAB，且其 CI 状态必须为空或 failed（当前为 %{state}）"
+    rename_stored_refused:
+      ci_busy: "未重命名：CI 仍在处理此版本。请等待完成后再试"
+      nothing_stored: "未重命名：此版本没有已记录的存储文件"
+    rename_stored_storage_failed: "存储拒绝了重命名（%{reason}）。已重命名的文件保留新名称；排除原因后请再运行一次"
     direct_upload_required: "Android 文件必须通过 POST /api/apps/upload_sessions 上传（再 PUT 到返回的地址，然后完成）。参见 docs/direct_upload.md。"
     new_app_session_default_host_only: "应用的首次上传仅在默认主机上可用。请上传到已有频道，或使用控制台。"
     new_app_session_refused: "您的账号不能创建应用，因此首次上传被拒绝。请发送 channel_key 以上传到已有应用。"
