@@ -168,6 +168,19 @@ class App < ApplicationRecord
 
   validates :category, inclusion: { in: CATEGORY_VALUES }, allow_nil: true
 
+  # Task 45a: downloads and ratings earned before the app was listed here (an admin enters them, see
+  # Api::Apps::MigratedStatsController). Real history only, so figures need a note saying where they come from.
+  MIGRATED_DOWNLOADS_MAX = 999_999_999_999_999
+  validates :migrated_downloads, numericality: { only_integer: true, greater_than_or_equal_to: 0,
+                                                 less_than_or_equal_to: MIGRATED_DOWNLOADS_MAX }
+  validates :migrated_rating_count, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
+  validates :migrated_rating_average, numericality: { greater_than_or_equal_to: 1, less_than_or_equal_to: 5 },
+                                      allow_nil: true
+  validates :migrated_rating_average, presence: true, if: -> { migrated_rating_count.to_i.positive? }
+  validates :migrated_rating_average, absence: true, unless: -> { migrated_rating_count.to_i.positive? }
+  validates :migrated_source_note, presence: true, length: { maximum: 500 },
+                                   if: -> { migrated_downloads.to_i.positive? || migrated_rating_count.to_i.positive? }
+
   # Task 25: is the app on our own stores? draft -> awaiting_payment (owner
   # asked to publish, under their PublisherProfile) -> live (paid) ->
   # suspended (later slice: unverified company past its deadline).
@@ -603,6 +616,9 @@ class App < ApplicationRecord
     # reads them from the signed index only. They are kept out of CATALOG_INDEX_LISTING_FIELDS on purpose: that
     # list also decides what ListingEdit may stage, and an owner must never be able to stage an editorial flag.
     editorial_flag_changed = saved_change_to_featured? || saved_change_to_editors_pick?
+    # Task 45a: the index carries `base_stats` (downloads and ratings carried over), so a change republishes.
+    editorial_flag_changed ||= saved_change_to_migrated_downloads? || saved_change_to_migrated_rating_count? ||
+                               saved_change_to_migrated_rating_average?
     return unless saved_change_to_listing_status? || watched_field_changed || editorial_flag_changed ||
                   saved_change_to_tenant_id?
 

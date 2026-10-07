@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_07_140000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_07_150000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -122,6 +122,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_140000) do
     t.boolean "featured", default: false, null: false
     t.datetime "listed_at"
     t.string "listing_status", default: "draft", null: false
+    t.bigint "migrated_downloads", default: 0, null: false
+    t.decimal "migrated_rating_average", precision: 3, scale: 2
+    t.integer "migrated_rating_count", default: 0, null: false
+    t.datetime "migrated_recorded_at"
+    t.bigint "migrated_recorded_by_id"
+    t.text "migrated_source_note"
     t.string "name", null: false
     t.string "play_package_name"
     t.string "play_publish_track", default: "internal", null: false

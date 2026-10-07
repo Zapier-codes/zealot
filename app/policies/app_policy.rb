@@ -73,6 +73,12 @@ class AppPolicy < ApplicationPolicy
     admin?
   end
 
+  # Task 45a: carried-over downloads and ratings are store-owned data an owner must not set on their own app,
+  # admin-only like the editorial flags.
+  def set_migrated_stats?
+    admin?
+  end
+
   # Task 25: putting an app on our own store is the owner's call (the person
   # who uploaded it); admins can see the listing and record the payment.
   def list_on_store?

@@ -167,6 +167,7 @@ module CatalogIndex
         created_at: iso(app.created_at),
         updated_at: iso(app.updated_at),
         editorial: editorial_for(app),
+        base_stats: base_stats_for(app),         # Task 45a: downloads and ratings D-Store adds its own counts to
         sponsored_slots: @editorial ? sponsored_slots_for(app) : [],
         collections: @editorial ? collection_slugs_for(app) : [],
         suggested_version_code: suggested_version_code_for(releases), # Task 27f-c
@@ -223,6 +224,20 @@ module CatalogIndex
         featured: app.respond_to?(:featured) ? !!app.featured : false,
         editors_pick: app.respond_to?(:editors_pick) ? !!app.editors_pick : false,
       }
+    end
+
+    # Task 45a: the downloads and ratings an app has from before it was listed here, under a neutral name: a
+    # reader adds its own counters to these and shows one total. `nil` when the app has none, so most entries
+    # are unchanged. Where they came from stays in the backend (`apps.migrated_*`).
+    def base_stats_for(app)
+      return nil unless app.respond_to?(:migrated_downloads)
+
+      downloads = app.migrated_downloads.to_i
+      count = app.migrated_rating_count.to_i
+      return nil if downloads.zero? && count.zero?
+
+      { downloads: downloads,
+        rating: count.zero? ? nil : { average: app.migrated_rating_average.to_f.round(2), count: count } }
     end
 
     # Task 31a: real `SponsoredSlot` rows once an app has any. Only
