@@ -177,6 +177,11 @@ zh-CN:
         publish: 发布到商店
         pay: 支付 $14.99 以发布
         mark_paid: 标记为已付款
+        incomplete:
+          title: 请先添加商店图片
+          body: "发布需要图标和至少 2 张截图。缺少：%{missing}。"
+          graphics_link: 打开商店图片面板
+          icon_hint: 图标来自你的最新版本。如果没有，请用 PUT /api/apps/<id>/listing_icon 设置（512 x 512 的 PNG），然后刷新本页。
         mark_paid_hint: 支付功能尚未接入。在接入之前，管理员可以手动记录付款，应用随即上架。
         draft:
           body: 此应用尚未上架。发布后，商店访客将看到以你的发布者信息展示的应用。
@@ -187,10 +192,14 @@ zh-CN:
           shown_as: "访客看到的发布者为 %{name}。"
         suspended:
           body: 此应用已被暂停，不再在商店展示。
+      missing:
+        icon: "没有图标"
+        screenshots: "%{count}/%{target} 张截图"
       create:
         need_profile: 请先告诉我们你以个人还是企业身份发布。
         requested: 已提交发布请求。收到付款后应用立即上架。
         not_available: 此应用目前无法进入付款。
+        incomplete: "发布前请先为应用添加图标和至少 2 张截图。缺少：%{missing}。"
       pay:
         title: 正在发起付款
         pay_button: 支付 $14.99
@@ -198,6 +207,7 @@ zh-CN:
         not_finished: B-PAY 确认付款后应用会自动上架——付款完成后可能需要几秒钟。
         back: 返回商店上架页面
         not_available: 此应用当前不在等待付款状态。
+        incomplete: "付款前请先为应用添加图标和至少 2 张截图。缺少：%{missing}。"
         payment_start_failed: 暂时无法发起付款，请稍后重试。
         status:
           succeeded: 付款成功！应用上架后本页会自动更新。

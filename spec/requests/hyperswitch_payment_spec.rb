@@ -22,6 +22,9 @@ RSpec.describe 'B-PAY payment (Task 32)', type: :request do
     end
   end
 
+  # Task 43b: the publish gate is off here; these examples are about the payment (the gate has its own specs).
+  before { allow(ListingRequirements).to receive(:call).and_return([]) }
+
   describe 'POST /apps/:app_id/store_listing/pay' do
     it 'creates a pending Payment and starts a B-PAY checkout' do
       sign_in owner

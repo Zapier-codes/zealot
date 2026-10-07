@@ -41,6 +41,7 @@ class Api::Apps::StoreListingsController < Api::BaseController
 
     profile = current_user.publisher_profile
     return render_error('the owner has no publisher profile', 'publisher_profile_required') if profile.blank?
+    return if incomplete_listing_refused?(draft_only: true)
     return render_error("listing_status is #{@app.listing_status}", 'listing_not_available') unless @app.request_store_listing!(profile)
 
     render json: StoreListingReadiness.call(@app.reload)
@@ -57,6 +58,7 @@ class Api::Apps::StoreListingsController < Api::BaseController
     authorize @app, :list_on_store?
     return render_error('app is archived', 'app_archived') if @app.archived
     return render_error("listing_status is #{@app.listing_status}", 'listing_not_available') unless @app.listing_awaiting_payment?
+    return if incomplete_listing_refused?
 
     unless HyperswitchClient.configured?
       return render json: { error: 'payment is not configured on this server', code: 'payment_not_configured' },
@@ -79,6 +81,21 @@ class Api::Apps::StoreListingsController < Api::BaseController
   end
 
   private
+
+  # Task 43b-2: the publish gate. Before a request or a payment, the icon and 2 screenshots must exist
+  # (`ListingRequirements`); an already-listed app is exempt there. Answers 422 `listing_incomplete` with the
+  # list and changes nothing. `draft_only` keeps a non-draft app's request answering `listing_not_available`.
+  def incomplete_listing_refused?(draft_only: false)
+    return false if draft_only && !@app.listing_draft?
+
+    missing = ListingRequirements.call(@app)
+    return false if missing.empty?
+
+    render json: { error: "the store listing is incomplete: #{ListingRequirements.sentence(missing)}",
+                   code: 'listing_incomplete', missing: missing.as_json, listing_status: @app.listing_status },
+           status: :unprocessable_entity
+    true
+  end
 
   def checkout_return_url
     given = params[:return_url].to_s.strip

@@ -177,6 +177,11 @@ en:
         publish: Publish to the store
         pay: Pay $14.99 to publish
         mark_paid: Mark as paid
+        incomplete:
+          title: Add the store pictures first
+          body: "Publishing needs an icon and at least 2 screenshots. Missing: %{missing}."
+          graphics_link: Open the store graphics panel
+          icon_hint: The icon comes from your latest release. If it has none, set one with PUT /api/apps/<id>/listing_icon (a 512 x 512 PNG), then reload this page.
         mark_paid_hint: Payments are not connected yet. Until they are, an admin can record the payment by hand, which puts the app live.
         draft:
           body: This app is not on the store yet. Publishing puts it in front of store visitors under your publisher details.
@@ -187,10 +192,14 @@ en:
           shown_as: "Visitors see it published by %{name}."
         suspended:
           body: This app is suspended and hidden from the store.
+      missing:
+        icon: "no icon"
+        screenshots: "%{count} of %{target} screenshots"
       create:
         need_profile: First tell us how you publish, as an individual or as a company.
         requested: Publishing requested. The app goes live once payment is received.
         not_available: This app can't be sent for payment right now.
+        incomplete: "Add an icon and at least 2 screenshots to this app's listing before publishing. Missing: %{missing}."
       pay:
         title: Starting payment
         pay_button: Pay $14.99
@@ -198,6 +207,7 @@ en:
         not_finished: The app goes live automatically once B-PAY confirms the charge — this can take a few seconds after payment.
         back: Back to store listing
         not_available: This app isn't waiting for payment.
+        incomplete: "Add an icon and at least 2 screenshots to this app's listing before paying. Missing: %{missing}."
         payment_start_failed: Couldn't start payment right now. Please try again shortly.
         status:
           succeeded: Payment succeeded! This page will update once the app is live.

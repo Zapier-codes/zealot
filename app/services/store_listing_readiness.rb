@@ -42,6 +42,7 @@ class StoreListingReadiness
       editors_pick: @app.editors_pick ? true : false,
       latest_release: release_json(latest_release),
       available_release: release_json(available_release),
+      listing_missing: listing_missing.as_json,
       blockers: blockers,
       eligible_for_catalog_index: blockers.empty?
     }
@@ -84,12 +85,19 @@ class StoreListingReadiness
     }
   end
 
+  # Task 43b-3: what ListingRequirements says is missing (empty for a listed app); the publish gate (43b-2) refuses
+  # a request and a payment with the same list.
+  def listing_missing
+    @listing_missing ||= ListingRequirements.call(@app)
+  end
+
   def blockers
     @blockers ||= [].tap do |list|
       list << 'the app is archived' if @app.archived
       list << "the app belongs to tenant #{@app.tenant.tenant_id}, so it is in that tenant's index, not the default one" if @app.tenant
       list << "listing_status is #{@app.listing_status}; only live apps are indexed" unless @app.listing_live?
       list << 'no release has status available (a held release is not shown)' unless available_release
+      list << "the listing is incomplete: #{ListingRequirements.sentence(listing_missing)}" if listing_missing.any?
     end
   end
 end

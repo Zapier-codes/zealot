@@ -31,6 +31,8 @@ RSpec.describe 'API store listing, owner and editorial', type: :request do
   before do
     Zealot::TenantRegistry.reset!
     allow(CatalogIndexPublishJob).to receive(:perform_later)
+    # Task 43b: these examples are about the other rules, so the publish gate is off; its own examples are at the end.
+    allow(ListingRequirements).to receive(:call).and_return([])
     app.collaborators.where(owner: true).destroy_all
     app.create_owner(developer)
   end
@@ -310,6 +312,71 @@ RSpec.describe 'API store listing, owner and editorial', type: :request do
       get "/api/apps/#{app.id}/store_listing/payment", params: as(other)
 
       expect(response).to have_http_status(:forbidden)
+    end
+  end
+
+  # Task 43b-2 / 43b-3 (NOT run): the publish gate. The default stub above is replaced by the real service and the
+  # app is given what it needs, or not.
+  describe 'the publish gate (Task 43b)' do
+    let(:two) { [ ListingRequirements::Missing.new(key: :icon), ListingRequirements::Missing.new(key: :screenshots, count: 1, target: 2) ] }
+
+    before do
+      make_profile(developer)
+      allow(ListingRequirements).to receive(:call).and_call_original
+    end
+
+    it 'refuses a request with 422 listing_incomplete, the list, and leaves the app a draft' do
+      allow(ListingRequirements).to receive(:call).and_return(two)
+
+      post "/api/apps/#{app.id}/store_listing", params: as(developer)
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      body = response.parsed_body
+      expect(body['code']).to eq('listing_incomplete')
+      expect(body['error']).to include('no icon; 1 of 2 screenshots')
+      expect(body['missing']).to eq([ { 'key' => 'icon' }, { 'key' => 'screenshots', 'count' => 1, 'target' => 2 } ])
+      expect(app.reload.listing_status).to eq('draft')
+    end
+
+    it 'refuses a payment for an app that was requested before the gate, and creates no Payment' do
+      app.update!(listing_status: 'awaiting_payment')
+      allow(ListingRequirements).to receive(:call).and_return(two)
+      allow(HyperswitchClient).to receive(:configured?).and_return(true)
+
+      post "/api/apps/#{app.id}/store_listing/pay", params: as(developer)
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response.parsed_body['code']).to eq('listing_incomplete')
+      expect(Payment.count).to eq(0)
+    end
+
+    it 'still answers listing_not_available for a request on an app that is no longer a draft' do
+      app.update!(listing_status: 'awaiting_payment')
+      allow(ListingRequirements).to receive(:call).and_return(two)
+
+      post "/api/apps/#{app.id}/store_listing", params: as(developer)
+
+      expect(response.parsed_body['code']).to eq('listing_not_available')
+    end
+
+    it 'does not gate the admin mark_paid' do
+      app.update!(listing_status: 'awaiting_payment')
+      allow(ListingRequirements).to receive(:call).and_return(two)
+
+      patch "/api/apps/#{app.id}/store_listing/mark_paid", params: as(admin)
+
+      expect(response).to have_http_status(:ok)
+      expect(app.reload.listing_status).to eq('live')
+    end
+
+    it 'reports the missing items in the readiness answer and as a blocker' do
+      allow(ListingRequirements).to receive(:call).and_return(two)
+
+      get "/api/apps/#{app.id}/store_listing", params: as(admin)
+
+      body = response.parsed_body
+      expect(body['listing_missing'].map { |item| item['key'] }).to eq(%w[icon screenshots])
+      expect(body['blockers'].join(' ')).to include('the listing is incomplete: no icon; 1 of 2 screenshots')
     end
   end
 end

@@ -32,12 +32,23 @@ ruby:
         - if status == 'live' && @app.publisher_display_name.present?
           p.opacity-70 = t('.live.shown_as', name: @app.publisher_display_name)
 
+        - incomplete = %w[draft awaiting_payment].include?(status) && @missing.present?
+        - if incomplete
+          div class="space-y-1" id="listing-incomplete"
+            p.font-medium = t('.incomplete.title')
+            p.text-sm.opacity-70
+              = t('.incomplete.body', missing: @missing.map { |item| item.key == :screenshots ? t('apps.store_listings.missing.screenshots', count: item.count, target: item.target) : t('apps.store_listings.missing.icon') }.to_sentence)
+            p.text-sm
+              = link_to t('.incomplete.graphics_link'), app_path(@app, anchor: 'listing-graphics'), class: 'd-link'
+            - if @missing.any? { |item| item.key == :icon }
+              p.text-sm.opacity-70 = t('.incomplete.icon_hint')
+
         - if status == 'draft' && policy(@app).list_on_store?
-          = button_to t('.publish'), app_store_listing_path(@app), method: :post, class: 'd-btn d-btn-primary'
+          = button_to t('.publish'), app_store_listing_path(@app), method: :post, class: 'd-btn d-btn-primary', disabled: incomplete
 
         - if status == 'awaiting_payment' && policy(@app).list_on_store?
           div class="space-y-2"
-            = button_to t('.pay'), pay_app_store_listing_path(@app), method: :post, class: 'd-btn d-btn-primary'
+            = button_to t('.pay'), pay_app_store_listing_path(@app), method: :post, class: 'd-btn d-btn-primary', disabled: incomplete
 
         - if status == 'awaiting_payment' && policy(@app).mark_paid?
           div class="space-y-2"

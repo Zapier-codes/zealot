@@ -1,7 +1,8 @@
 # frozen_string_literal: true
 
 # Task 27d-e2-e: the Play-style checklist on the store-graphics panel. ADVICE, NOT A GATE: nothing here
-# blocks an upload, a publish or going live (docs/store_listing_graphics.md, "Not a publish gate").
+# blocks an upload, a publish or going live. (Task 43b added the real gate, `ListingRequirements`: an icon and
+# `MIN_SCREENSHOTS` screenshots before a listing request or payment; this checklist stays advice.)
 # It answers one question for the owner: how close is this listing to what Play's console asks for
 # and recommends?
 #

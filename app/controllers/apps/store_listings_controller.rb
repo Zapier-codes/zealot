@@ -19,6 +19,8 @@ class Apps::StoreListingsController < ApplicationController
     authorize @app, :view_store_listing?
     @title = t('.title')
     @profile = @app.publisher_profile || @app.owner&.user&.publisher_profile
+    # Task 43b-4: what the publish gate (43b-2) would refuse for; the page shows it and disables the buttons.
+    @missing = ListingRequirements.call(@app)
   end
 
   # POST /apps/:app_id/store_listing — the owner asks to publish.
@@ -30,6 +32,10 @@ class Apps::StoreListingsController < ApplicationController
     if profile.blank?
       return redirect_to new_publisher_profile_path(return_to: app_store_listing_path(@app)),
                          notice: t('.need_profile')
+    end
+
+    if @app.listing_draft? && (missing = ListingRequirements.call(@app)).any?
+      return redirect_to app_store_listing_path(@app), alert: t('.incomplete', missing: missing_sentence(missing))
     end
 
     if @app.request_store_listing!(profile)
@@ -65,6 +71,10 @@ class Apps::StoreListingsController < ApplicationController
       return redirect_to app_store_listing_path(@app), alert: t('.not_available')
     end
 
+    if (missing = ListingRequirements.call(@app)).any?
+      return redirect_to app_store_listing_path(@app), alert: t('.incomplete', missing: missing_sentence(missing))
+    end
+
     begin
       started = StoreListingPayment.start(app: @app, user: current_user, return_url: pay_app_store_listing_url(@app))
     rescue StoreListingPayment::StartFailed
@@ -90,6 +100,13 @@ class Apps::StoreListingsController < ApplicationController
   end
 
   private
+
+  # Task 43b-2: "no icon; 1 of 2 screenshots" in the viewer's language.
+  def missing_sentence(missing)
+    missing.map do |item|
+      item.key == :screenshots ? t('apps.store_listings.missing.screenshots', count: item.count, target: item.target) : t('apps.store_listings.missing.icon')
+    end.to_sentence
+  end
 
   def set_app
     @app = App.find(params[:app_id])
