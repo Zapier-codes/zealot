@@ -15,6 +15,8 @@ Rails.application.routes.draw do
   # rest of that namespace — same reasoning as email_preferences above
   # being outside any auth-required scope.
   post 'hooks/hyperswitch', to: 'hyperswitch_webhooks#create'
+  # Task 42i: hosted card page for one listing-fee payment; the signed token in the link is the only credential.
+  get 'checkout/:token', to: 'checkouts#show', as: :store_listing_checkout, constraints: { token: %r{[^/]+} }
 
   #############################################
   # User
@@ -359,8 +361,16 @@ Rails.application.routes.draw do
       member do
         post :lock
         delete :unlock
+        # Task 42j: a platform admin reads any account's API token.
+        get :token
       end
+
+      # Task 42j: a platform admin's view of any account's publisher profile.
+      resource :publisher_profile, only: %i[show update], controller: 'publisher_profiles'
     end
+
+    # Task 42j: the token's own publisher profile.
+    resource :publisher_profile, only: %i[show update], controller: 'publisher_profiles'
 
     resources :apps, except: %i[new edit] do
       collection do
@@ -400,6 +410,9 @@ Rails.application.routes.draw do
       # everything the console does to put an app in D-Store can be scripted. See the controllers' headers.
       resource :store_listing, only: %i[show create], controller: 'apps/store_listings' do
         patch :mark_paid
+        # Task 42f: start the B-PAY listing-fee payment (owner) and read its status.
+        post :pay
+        get :payment
       end
       resource :owner, only: :update, controller: 'apps/owners'
       resource :editorial, only: :update, controller: 'apps/editorials'

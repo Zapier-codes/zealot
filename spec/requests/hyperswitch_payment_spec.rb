@@ -116,5 +116,41 @@ RSpec.describe 'B-PAY payment (Task 32)', type: :request do
 
       expect(response).to have_http_status(:ok)
     end
+
+    it 'opens the per-app maintenance billing, first month covered, when the listing fee succeeds (Task 42h)' do
+      payment
+      signed_post(event_type: 'payment_succeeded', content: { payment_id: 'pay_1', mandate_id: 'mandate_1' })
+
+      billing = app_record.reload.maintenance_billing
+      expect(billing).to have_attributes(status: 'active', hyperswitch_mandate_id: 'mandate_1', amount_cents: 200)
+      expect(billing.paid_through).to be_within(1.minute).of(1.month.from_now)
+
+      signed_post(event_type: 'payment_succeeded', content: { payment_id: 'pay_1', mandate_id: 'mandate_1' })
+      expect(AppMaintenanceBilling.where(app_id: app_record.id).count).to eq(1)
+    end
+
+    it 'extends paid_through once for a succeeded maintenance payment, even if delivered twice (Task 42h)' do
+      app_record.go_live!
+      billing = AppMaintenanceBilling.create!(app: app_record, user: owner, status: 'active',
+                                              paid_through: 1.day.from_now, hyperswitch_mandate_id: 'mandate_1')
+      Payment.create!(app: app_record, user: owner, purpose: 'maintenance', billing_period: 'monthly',
+                      amount_cents: 200, currency: 'usd', status: 'pending', hyperswitch_payment_id: 'pay_3')
+
+      2.times { signed_post(event_type: 'payment_succeeded', content: { payment_id: 'pay_3' }) }
+
+      expect(billing.reload.paid_through).to be_within(1.minute).of(1.day.from_now + 1.month)
+    end
+
+    it 'marks the billing past due on a failed maintenance payment (Task 42h)' do
+      app_record.go_live!
+      billing = AppMaintenanceBilling.create!(app: app_record, user: owner, status: 'active',
+                                              paid_through: 1.day.ago, hyperswitch_mandate_id: 'mandate_1')
+      Payment.create!(app: app_record, user: owner, purpose: 'maintenance', billing_period: 'monthly',
+                      amount_cents: 200, currency: 'usd', status: 'pending', hyperswitch_payment_id: 'pay_4')
+
+      signed_post(event_type: 'payment_failed', content: { payment_id: 'pay_4' })
+
+      expect(billing.reload.status).to eq('past_due')
+    end
   end
 end

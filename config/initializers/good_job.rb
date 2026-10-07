@@ -33,6 +33,11 @@ CRON_JOBS_SETUP = lambda do
       class: 'CiCompileSweeperJob',
       description: 'Fail releases whose CI compile was queued or dispatched but never reported back'
     },
+    app_maintenance_billing: {
+      cron: '17 * * * *',
+      class: 'AppMaintenanceBillingJob',
+      description: 'Charge due per-app maintenance fees on the stored B-PAY mandate and suspend apps unpaid past the grace period'
+    },
     release_upload_sweeper: {
       cron: '*/15 * * * *',
       class: 'ReleaseUploadSweeperJob',

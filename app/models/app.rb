@@ -11,6 +11,7 @@ class App < ApplicationRecord
   has_many :debug_files, dependent: :destroy
   # Task 32: listing-fee + maintenance charges via B-PAY.
   has_many :payments, dependent: :destroy
+  has_one :maintenance_billing, class_name: 'AppMaintenanceBilling', dependent: :destroy
   # Task 31a: editorial/store-owned data the catalog index publishes --
   # see CatalogIndex::Serializer's `sponsored_slots`/`collections` blocks.
   has_many :sponsored_slots, dependent: :destroy

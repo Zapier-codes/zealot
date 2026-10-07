@@ -65,22 +65,11 @@ class Apps::StoreListingsController < ApplicationController
       return redirect_to app_store_listing_path(@app), alert: t('.not_available')
     end
 
-    payment = Payment.create!(app: @app, user: current_user, purpose: 'listing_fee',
-                              amount_cents: 1499, currency: 'usd', status: 'pending')
-
     begin
-      result = HyperswitchClient.create_payment(
-        amount_cents: payment.amount_cents, currency: payment.currency,
-        customer_id: "app-#{@app.id}", return_url: pay_app_store_listing_url(@app),
-        setup_future_usage: 'off_session', metadata: { app_id: @app.id, payment_id: payment.id }
-      )
-    rescue HyperswitchClient::Error => e
-      Rails.logger.error("[Apps::StoreListingsController#pay] #{e.class}: #{e.message}")
-      payment.mark_failed!(raw: e.message)
+      started = StoreListingPayment.start(app: @app, user: current_user, return_url: pay_app_store_listing_url(@app))
+    rescue StoreListingPayment::StartFailed
       return redirect_to app_store_listing_path(@app), alert: t('.payment_start_failed')
     end
-
-    payment.update!(hyperswitch_payment_id: result.payment_id)
 
     # Unified Checkout embed (app/views/apps/store_listings/pay.html.slim) —
     # real Hyperswitch client-side API (Hyper(), widgets(), confirmPayment(),
@@ -94,9 +83,9 @@ class Apps::StoreListingsController < ApplicationController
     # URL — self-hosted Hyperswitch serves HyperLoader.js from a separately
     # deployed "web client" component, not from B-PAY's API host, per
     # Hyperswitch's own open-source deployment docs.
-    @client_secret = result.client_secret
-    @publishable_key = ENV['HYPERSWITCH_PUBLISHABLE_KEY'].to_s.strip
-    @sdk_url = ENV['HYPERSWITCH_SDK_URL'].to_s.strip
+    @client_secret = started.client_secret
+    @publishable_key = StoreListingPayment.publishable_key
+    @sdk_url = StoreListingPayment.sdk_url
     @title = t('.title')
   end
 

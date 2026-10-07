@@ -20,6 +20,8 @@ class Payment < ApplicationRecord
   # existing pattern for "not a secret we generated, but sensitive enough
   # not to sit in plaintext").
   encrypts :hyperswitch_raw_response
+  # Task 42i: only while pending; see MigrationAddClientSecretToPayments. Cleared on success and on failure.
+  encrypts :client_secret
 
   belongs_to :app
   belongs_to :user
@@ -27,6 +29,7 @@ class Payment < ApplicationRecord
   PURPOSES = %w[listing_fee maintenance].freeze
   BILLING_PERIODS = %w[monthly semiannual annual].freeze
   STATUSES = %w[pending succeeded failed refunded].freeze
+  CHECKOUT_TTL = 1.hour
 
   validates :purpose, inclusion: { in: PURPOSES }
   validates :billing_period, inclusion: { in: BILLING_PERIODS }, allow_nil: true
@@ -51,6 +54,16 @@ class Payment < ApplicationRecord
     purpose == 'maintenance'
   end
 
+  # Task 42i: the signed, expiring token in the hosted checkout link. It names this one payment and nothing
+  # else, and stops working after CHECKOUT_TTL.
+  def checkout_token
+    signed_id(purpose: :checkout, expires_in: CHECKOUT_TTL)
+  end
+
+  def self.find_by_checkout_token(token)
+    find_signed(token, purpose: :checkout)
+  end
+
   # Called from HyperswitchWebhooksController once B-PAY confirms the charge
   # — the webhook, not the checkout redirect, is what's trusted.
   def mark_succeeded!(hyperswitch_payment_id:, mandate_id: nil, raw: nil)
@@ -59,12 +72,13 @@ class Payment < ApplicationRecord
       hyperswitch_payment_id: hyperswitch_payment_id,
       hyperswitch_mandate_id: mandate_id || hyperswitch_mandate_id,
       hyperswitch_raw_response: raw,
+      client_secret: nil,
       paid_at: Time.current
     )
   end
 
   def mark_failed!(raw: nil)
-    update!(status: 'failed', hyperswitch_raw_response: raw)
+    update!(status: 'failed', hyperswitch_raw_response: raw, client_secret: nil)
   end
 
   # No refund path is ever called automatically anywhere in this codebase —

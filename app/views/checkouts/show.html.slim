@@ -1,0 +1,61 @@
+doctype html
+html lang="en"
+  head
+    meta charset="utf-8"
+    meta name="viewport" content="width=device-width, initial-scale=1"
+    meta name="robots" content="noindex"
+    title = "Pay to publish #{@app.name}"
+  body style="font-family: system-ui, sans-serif; max-width: 32rem; margin: 2rem auto; padding: 0 1rem;"
+    h1 style="font-size: 1.25rem;" = "Pay to publish #{@app.name}"
+    p style="font-size: 1.125rem;"
+      s style="opacity: .5;" = number_to_currency(StoreListingPayment::LIST_PRICE_CENTS / 100.0)
+      strong style="margin-left: .5rem;" = number_to_currency(StoreListingPayment::LISTING_FEE_CENTS / 100.0)
+
+    p#payment-message style="display: none;"
+
+    - if @state == :paid
+      p Payment received. Your app goes live as soon as the payment provider confirms it.
+    - elsif @state == :unavailable
+      p This payment can no longer be completed here. Start the payment again.
+    - elsif @sdk_url.blank? || @publishable_key.blank?
+      p Card payment is not configured on this server.
+    - else
+      form#payment-form
+        #unified-checkout
+        button#submit type="submit" Pay
+
+      script src="https://#{@sdk_url}/HyperLoader.js"
+      javascript:
+        (function () {
+          var clientSecret = #{@client_secret.to_json};
+          var publishableKey = #{@publishable_key.to_json};
+          var returnUrl = #{store_listing_checkout_url(token: @token).to_json};
+          var messageEl = document.getElementById('payment-message');
+          function showMessage(text) { messageEl.textContent = text; messageEl.style.display = 'block'; }
+          var hyper = Hyper(publishableKey);
+
+          var returnedSecret = new URLSearchParams(window.location.search).get('payment_intent_client_secret');
+          if (returnedSecret) {
+            document.getElementById('payment-form').style.display = 'none';
+            hyper.retrievePayment(returnedSecret).then(function (res) {
+              var status = (res.payment || {}).status;
+              if (status === 'succeeded') showMessage('Payment received. Your app goes live as soon as the payment provider confirms it.');
+              else if (status === 'processing') showMessage('Your payment is processing.');
+              else if (status === 'requires_payment_method') showMessage('The payment did not go through. Start the payment again.');
+              else showMessage('Could not read the payment status.');
+            });
+            return;
+          }
+
+          var widgets = hyper.widgets({ appearance: { theme: 'default' }, clientSecret: clientSecret });
+          widgets.create('payment', { layout: 'tabs' }).mount('#unified-checkout');
+          document.getElementById('payment-form').addEventListener('submit', function (e) {
+            e.preventDefault();
+            document.getElementById('submit').disabled = true;
+            hyper.confirmPayment({ widgets: widgets, confirmParams: { return_url: returnUrl }, redirect: 'always' })
+              .then(function (result) {
+                document.getElementById('submit').disabled = false;
+                if (result.error) showMessage(result.error.message || 'The payment did not go through.');
+              });
+          });
+        })();

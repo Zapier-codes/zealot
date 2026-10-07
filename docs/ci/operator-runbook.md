@@ -698,7 +698,9 @@ both paths call the same model methods and policies.
 |---|---|---|
 | Read what keeps an app out of the index | `GET /api/apps/:id/store_listing` | owner or admin |
 | Request listing (draft -> awaiting_payment) | `POST /api/apps/:id/store_listing` | the **owner**, who needs a publisher profile |
-| Mark paid (awaiting_payment or suspended -> live) | `PATCH /api/apps/:id/store_listing/mark_paid` | platform admin |
+| **Pay** the listing fee (starts the B-PAY payment) | `POST /api/apps/:id/store_listing/pay` (optional `return_url=`) | the **owner** |
+| Read the payments and their status | `GET /api/apps/:id/store_listing/payment` | owner or admin |
+| Mark paid by hand (awaiting_payment or suspended -> live), the admin stand-in | `PATCH /api/apps/:id/store_listing/mark_paid` | platform admin |
 | Change the owner | `PUT /api/apps/:id/owner` with `user_id=` or `email=` | owner or admin |
 | Featured / Editors' Pick | `PUT /api/apps/:id/editorial` with `featured=true\|false` and/or `editors_pick=true\|false` | platform admin |
 | Publish a held release | `POST /api/releases/:id/release` (Task 34a-6, already there) | owner or admin |
@@ -724,11 +726,88 @@ curl -sS -X PATCH "$Z/api/apps/$A/store_listing/mark_paid" -d token="$T" | jq '{
 curl -sS -X PUT "$Z/api/apps/$A/editorial" -d token="$T" -d featured=true | jq '{featured, blockers}'
 ```
 
-**Reading refusals.** `422 publisher_profile_required`: the owner has no publisher profile (created in the console only;
-an API for it is not built). `422 listing_not_available`: the app is not in the state the step needs (asking again after a
+**Paying over the API (Task 42f; written, NOT run).** `POST .../store_listing/pay` runs the same code as the console's pay
+page (`StoreListingPayment`): a `pending` Payment of 1499 cents (`usd`) and a B-PAY payment with a mandate for the later
+maintenance charges. It answers `201` with `payment_id`, `status`, `amount_cents`, `currency`, `client_secret`,
+`publishable_key` and `sdk_url`. **That starts the payment; it does not take the card.** Zealot never handles card data, so
+the card step is B-PAY's own checkout (its web SDK, or its client-side confirm call with the publishable key, the client
+secret and the card details), which the caller's own app or page makes. The app goes live only when B-PAY's signed webhook
+reports success (`/hooks/hyperswitch`); poll `GET .../store_listing/payment` until `status` is `succeeded`, or watch the
+report's `listing_status` turn `live`. The client secret is shown once and cannot be read back; do not log it. Each `pay` call
+makes a new pending Payment, so do not put it in a retry loop. `503 payment_not_configured`: `HYPERSWITCH_API_KEY` is unset
+on Render. `502 payment_start_failed`: B-PAY refused; the Payment row is kept as `failed`.
+
+```
+curl -sS -X POST "$Z/api/apps/$A/store_listing/pay" -d token="<developer token>" -d return_url=https://example.com/done \
+  | jq '{payment_id, status, amount_cents, currency, publishable_key, sdk_url}'   # leave client_secret out of logs
+curl -sS -G "$Z/api/apps/$A/store_listing/payment" -d token="<developer token>" | jq '.payments[0] | {status, paid_at}'
+```
+
+**Reading refusals.** `422 publisher_profile_required`: the owner has no publisher profile (create it over the API, section 21). `422 listing_not_available`: the app is not in the state the step needs (asking again after a
 success lands here; read `listing_status`). `422 app_archived`. `403`: wrong role for that step (only the owner may
 request, only an admin may mark paid or set the flags). `404`: no such app, or an app of another tenant. `422` with no body
 about a token: a missing or wrong `token` on this legacy door.
 
 **Not verified:** nothing ran under Rails or against Render (see the 42e entry in `handover.md`). The spec is
 `spec/requests/api_app_store_listing_spec.rb`; read the `CI - RSpec` run for this commit first.
+
+## 20. Paying the listing fee from a terminal or any client (Task 42i, 2026-10-07; written, NOT run)
+
+`POST /api/apps/:id/store_listing/pay` (owner's user token) now also answers `checkout_url` and
+`checkout_expires_at` (one hour). Open `checkout_url` in any browser: it is a hosted page, no login, that shows
+`$25.00` struck through next to `$14.99` and B-PAY's card form. The card goes from that page to B-PAY; Zealot
+never sees it. The app goes live when B-PAY's signed webhook arrives, so poll
+`GET /api/apps/:id/store_listing/payment` until `status` is `succeeded`.
+
+From a terminal (needs `curl` and `jq`):
+
+```
+ZEALOT_URL=https://<zealot host> ZEALOT_TOKEN=<owner's user token> bin/pay-store-listing <app_id>
+```
+
+It starts the payment, then asks for the name on the card, the card number (hidden), the expiry (MM/YY) and the
+security code (hidden), checks them (card number checksum, expiry shape, code length), shows `Pay $14.99 with the
+card ending 4242 ...` and waits for Enter. On Enter it sends the card **directly to B-PAY** (`confirm_url`, with the
+publishable key and the one-time client secret from the `pay` answer); Zealot never receives it. Then it waits up
+to 10 minutes for `succeeded` or `failed`. If the bank wants 3-D Secure it prints a link to finish that in a
+browser. `bin/pay-store-listing --link <app_id>` prints the hosted page's link instead.
+
+Needs `HYPERSWITCH_API_KEY`, `HYPERSWITCH_PUBLISHABLE_KEY` and `HYPERSWITCH_SDK_URL` on the server. **Not verified
+against real B-PAY:** that its confirm call accepts a card from a non-browser caller with these fields (the
+`customer_acceptance` block and the lack of `browser_info` are the likeliest to need adjusting); test with a B-PAY
+test card first. Anyone holding the hosted link can pay that one invoice and nothing else; an expired link needs a
+new `pay` call.
+
+**An app made live by `mark_paid` is outside every payment rule (Task 42h).** `mark_paid` creates no Payment and no
+`app_maintenance_billings` row. The $14.99 listing fee and the $2/month maintenance charge, the charge job and the
+lapse suspension only ever act on an app that has a billing row, and a row is made only when a listing-fee payment
+succeeds through B-PAY. So an app already published and put in D-Store by hand (the section 19 commands above) is never
+charged, never suspended for non-payment, and its releases are shown for as long as it stays `live`.
+
+## 21. Everything over the API: any account's token and the publisher profile (Task 42j, 2026-10-07; written, NOT run)
+
+A platform admin can now do, with the admin's token alone, what used to need the console or the developer's own login.
+
+| Step | Call | Who |
+|---|---|---|
+| Find an account | `GET /api/users/search?email=<address>` | platform admin |
+| Read that account's API token | `GET /api/users/:id/token` -> `{user_id, email, token}` | platform admin only (a 403 for anyone else, even for their own id) |
+| Read your own publisher profile | `GET /api/publisher_profile` (404 `publisher_profile_missing` if none) | the token's user |
+| Create or change your own | `PUT /api/publisher_profile` with `kind`, `display_name`, `legal_name`, `country`, `contact_email` (201 created, 200 changed, 422 `publisher_profile_invalid` with `errors`) | the token's user |
+| Read, create or change any account's | `GET` / `PUT /api/users/:id/publisher_profile` (same fields) | platform admin only |
+
+The token is in no other answer; the user record never carries it. Each read is logged as "admin X read the API token
+of user Y" (never the token). It is the same power the console's Admin > Users > Edit page already gives; treat the
+token like a password and do not log it. Listing an app end to end with the admin token only:
+
+```
+. ~/.zealot.env; Z=https://zealot-deploy-latest.onrender.com; T=$(zealot-token); A=2
+U=$(curl -sS -G "$Z/api/users/search" -d token="$T" --data-urlencode email=claudeone7492@gmail.com | jq -r .id)
+read -rs DEV < <(curl -sS -G "$Z/api/users/$U/token" -d token="$T" | jq -r .token)   # the owner's token, not printed
+curl -sS -X PUT "$Z/api/users/$U/publisher_profile" -d token="$T" -d kind=individual -d display_name="<name>" \
+  -d legal_name="<legal name>" -d country="<country>" -d contact_email=<email> | jq .
+curl -sS -X POST "$Z/api/apps/$A/store_listing" -d token="$DEV" | jq '{listing_status, code, error}'      # draft -> awaiting_payment
+curl -sS -X POST "$Z/api/releases/<release id>/release" -d token="$T" | jq '{id, status}'                  # held -> available
+curl -sS -X PATCH "$Z/api/apps/$A/store_listing/mark_paid" -d token="$T" | jq '{listing_status, blockers}' # live, no payment
+```
+

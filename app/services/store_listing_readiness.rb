@@ -13,6 +13,15 @@ class StoreListingReadiness
     new(app).call
   end
 
+  # A payment as the API shows it: no secrets and no raw provider response.
+  def self.payment_json(payment)
+    return nil unless payment
+
+    { payment_id: payment.id, purpose: payment.purpose, status: payment.status, amount_cents: payment.amount_cents,
+      currency: payment.currency, hyperswitch_payment_id: payment.hyperswitch_payment_id,
+      paid_at: payment.paid_at, created_at: payment.created_at }
+  end
+
   def initialize(app)
     @app = app
   end
@@ -26,6 +35,9 @@ class StoreListingReadiness
       archived: @app.archived ? true : false,
       listing_status: @app.listing_status,
       publisher_profile: @app.publisher_profile.present?,
+      latest_payment: self.class.payment_json(@app.payments.where(purpose: 'listing_fee').order(:id).last),
+      listing_fee: StoreListingPayment.price_json,
+      maintenance: maintenance_json,
       featured: @app.featured ? true : false,
       editors_pick: @app.editors_pick ? true : false,
       latest_release: release_json(latest_release),
@@ -47,6 +59,15 @@ class StoreListingReadiness
 
   def available_release
     releases.reverse.find { |release| release.status == 'available' }
+  end
+
+  def maintenance_json
+    billing = @app.maintenance_billing
+    return nil unless billing
+
+    { status: billing.status, amount_cents: billing.amount_cents, currency: billing.currency,
+      billing_period: billing.billing_period, paid_through: billing.paid_through,
+      next_charge_at: billing.next_charge_at, lapsed: billing.lapsed_at.present? }
   end
 
   def owner_json

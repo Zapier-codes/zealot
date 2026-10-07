@@ -5,6 +5,9 @@
   .col-md-12
     .card
       .card-body class="space-y-4"
+        p.text-lg
+          s.opacity-50 = number_to_currency(StoreListingPayment::LIST_PRICE_CENTS / 100.0)
+          strong.ml-2 = number_to_currency(StoreListingPayment::LISTING_FEE_CENTS / 100.0)
         - if @sdk_url.blank? || @publishable_key.blank?
           //- Payment (B-PAY) task: operator hasn't supplied one or both of
           //- the two values the embed below needs — see handover.md.

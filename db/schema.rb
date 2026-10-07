@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_06_130000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_07_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -60,6 +60,27 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_130000) do
     t.index ["app_id"], name: "index_app_api_tokens_on_app_id"
     t.index ["created_by_id"], name: "index_app_api_tokens_on_created_by_id"
     t.index ["token_digest"], name: "index_app_api_tokens_on_token_digest", unique: true
+  end
+
+  create_table "app_maintenance_billings", force: :cascade do |t|
+    t.integer "amount_cents", default: 200, null: false
+    t.bigint "app_id", null: false
+    t.string "billing_period", default: "monthly", null: false
+    t.datetime "created_at", null: false
+    t.string "currency", default: "usd", null: false
+    t.string "hyperswitch_mandate_id"
+    t.datetime "lapsed_at"
+    t.bigint "last_payment_id"
+    t.datetime "next_charge_at"
+    t.datetime "paid_through"
+    t.string "status", default: "pending", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["app_id"], name: "index_app_maintenance_billings_on_app_id", unique: true
+    t.index ["next_charge_at"], name: "index_app_maintenance_billings_on_next_charge_at"
+    t.index ["status"], name: "index_app_maintenance_billings_on_status"
+    t.index ["user_id"], name: "index_app_maintenance_billings_on_user_id"
+    t.check_constraint "amount_cents > 0", name: "app_maintenance_billings_amount_positive"
   end
 
   create_table "apple_keys", force: :cascade do |t|
@@ -407,6 +428,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_130000) do
     t.integer "amount_cents", null: false
     t.bigint "app_id", null: false
     t.string "billing_period"
+    t.text "client_secret"
     t.datetime "created_at", null: false
     t.string "currency", default: "usd", null: false
     t.string "hyperswitch_mandate_id"
@@ -740,6 +762,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_06_130000) do
   add_foreign_key "android_package_registrations", "apps", on_delete: :nullify
   add_foreign_key "app_api_tokens", "apps", on_delete: :cascade
   add_foreign_key "app_api_tokens", "users", column: "created_by_id", on_delete: :nullify
+  add_foreign_key "app_maintenance_billings", "apps"
+  add_foreign_key "app_maintenance_billings", "users"
   add_foreign_key "apple_teams", "apple_keys", on_delete: :cascade
   add_foreign_key "apps", "publisher_profiles", on_delete: :nullify
   add_foreign_key "apps", "tenants"

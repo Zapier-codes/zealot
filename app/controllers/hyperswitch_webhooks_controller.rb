@@ -85,6 +85,7 @@ class HyperswitchWebhooksController < ApplicationController
       handle_succeeded(payment, payment_id, event)
     when 'payment_failed'
       payment.mark_failed!(raw: event.to_json)
+      payment.app.maintenance_billing&.mark_past_due! if payment.maintenance?
     when 'refund_succeeded'
       # Deliberately manual-only — no code path calls this automatically.
       # Play's own registration fee is non-refundable regardless of
@@ -101,8 +102,11 @@ class HyperswitchWebhooksController < ApplicationController
     mandate_id = event.dig('content', 'mandate_id')
     payment.mark_succeeded!(hyperswitch_payment_id: payment_id, mandate_id: mandate_id, raw: event.to_json)
 
+    return record_maintenance(payment) if payment.maintenance?
     return unless payment.listing_fee?
 
+    # Task 42h: the app's per-app maintenance billing starts with its listing fee (idempotent).
+    open_billing(payment)
     unless payment.app.go_live!
       # Not in awaiting_payment or suspended — e.g. an admin already used
       # mark_paid, or a duplicate webhook delivery. Not an error: log and
@@ -111,5 +115,25 @@ class HyperswitchWebhooksController < ApplicationController
       Rails.logger.info("[HyperswitchWebhooksController] app #{payment.app_id} " \
                         "already past awaiting_payment/suspended; go_live! no-op")
     end
+  end
+
+  # Task 42h: a succeeded maintenance payment extends what the app has paid for (and brings back an app Zealot
+  # suspended for this lapse). A second delivery of the same event changes nothing.
+  def record_maintenance(payment)
+    billing = payment.app.maintenance_billing
+    if billing
+      billing.record_payment!(payment)
+    else
+      Rails.logger.warn("[HyperswitchWebhooksController] maintenance payment #{payment.id} but app " \
+                        "#{payment.app_id} has no maintenance billing record")
+    end
+  end
+
+  def open_billing(payment)
+    billing = AppMaintenanceBilling.open_for_listing_payment!(payment)
+    return if billing.hyperswitch_mandate_id.present?
+
+    Rails.logger.warn("[HyperswitchWebhooksController] app #{payment.app_id} listing payment carried no " \
+                      'mandate_id; maintenance cannot be charged automatically')
   end
 end

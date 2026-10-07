@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# Task 42i: pay an app's store-listing fee from a terminal. It starts the payment over Zealot's API, asks for the
+# card details one by one, shows a summary and waits for Enter, then sends the card DIRECTLY to B-PAY (the
+# payment provider) with the one-time client secret Zealot returned. Zealot never receives the card: this script
+# talks to Zealot only to start the payment and to watch its status.
+#
+#   ZEALOT_URL=https://zealot.example.com ZEALOT_TOKEN=<owner's user token> bin/pay-store-listing <app_id>
+#   bin/pay-store-listing --link <app_id>     # print the hosted card-page link instead of asking in the terminal
+#
+# Needs curl and jq. The card number and security code are typed hidden and kept only in this process.
+# If the bank asks for 3-D Secure the script prints a link to finish that step in a browser.
+set -euo pipefail
+set +x
+
+link_only=0
+if [ "${1:-}" = "--link" ]; then link_only=1; shift; fi
+app_id="${1:-}"
+: "${ZEALOT_URL:?set ZEALOT_URL}" "${ZEALOT_TOKEN:?set ZEALOT_TOKEN}"
+[ -n "$app_id" ] || { echo "usage: $0 [--link] <app_id>" >&2; exit 2; }
+command -v jq >/dev/null && command -v curl >/dev/null || { echo "curl and jq are required" >&2; exit 2; }
+base="${ZEALOT_URL%/}/api/apps/${app_id}/store_listing"
+
+say() { printf '%s\n' "$*" >&2; }
+ask() { printf '%s' "$1" >&2; IFS= read -r "$2"; }
+ask_hidden() { printf '%s' "$1" >&2; IFS= read -r -s "$2"; printf '\n' >&2; }
+
+luhn_ok() {
+  local digits="$1" sum=0 alt=0 i d
+  for ((i=${#digits}-1; i>=0; i--)); do
+    d=${digits:i:1}
+    if [ $alt -eq 1 ]; then d=$((d*2)); [ $d -gt 9 ] && d=$((d-9)); fi
+    sum=$((sum+d)); alt=$((1-alt))
+  done
+  [ $((sum%10)) -eq 0 ]
+}
+
+resp=$(curl -sS -X POST "${base}/pay" --data-urlencode "token=${ZEALOT_TOKEN}" -w '\n%{http_code}')
+code=${resp##*$'\n'}; body=${resp%$'\n'*}
+if [ "$code" != "201" ]; then
+  say "Could not start the payment (HTTP $code): $(echo "$body" | jq -r '.code // .error // .' 2>/dev/null || echo "$body")"
+  exit 1
+fi
+amount=$(echo "$body" | jq -r '.amount_cents / 100')
+list_price=$(echo "$body" | jq -r '.list_price_cents / 100')
+
+if [ $link_only -eq 1 ]; then
+  say "Open this link and enter the card there (valid until $(echo "$body" | jq -r .checkout_expires_at)):"
+  echo "$body" | jq -r .checkout_url
+else
+  confirm_url=$(echo "$body" | jq -r .confirm_url)
+  publishable_key=$(echo "$body" | jq -r .publishable_key)
+  client_secret=$(echo "$body" | jq -r .client_secret)
+  say "Store listing fee: \$${amount} (Play Store price \$${list_price})"
+  say "Enter the card details. They go straight to the payment provider, not to Zealot."
+  say
+
+  while :; do
+    ask "Name on card: " holder
+    [ -n "$holder" ] && break; say "  required"
+  done
+  while :; do
+    ask_hidden "Card number (hidden): " number; number=${number//[ -]/}
+    if [[ "$number" =~ ^[0-9]{12,19}$ ]] && luhn_ok "$number"; then break; fi
+    say "  that is not a valid card number"
+  done
+  while :; do
+    ask "Expiry (MM/YY): " expiry
+    if [[ "$expiry" =~ ^(0[1-9]|1[0-2])/([0-9]{2}|[0-9]{4})$ ]]; then
+      exp_month=${BASH_REMATCH[1]}; exp_year=${BASH_REMATCH[2]}
+      [ ${#exp_year} -eq 2 ] && exp_year="20${exp_year}"
+      break
+    fi
+    say "  use MM/YY"
+  done
+  while :; do
+    ask_hidden "Security code (hidden): " cvc
+    [[ "$cvc" =~ ^[0-9]{3,4}$ ]] && break; say "  3 or 4 digits"
+  done
+
+  say
+  say "Pay \$${amount} with the card ending ${number: -4} (${holder}), expires ${exp_month}/${exp_year}."
+  ask "Press Enter to pay, or Ctrl-C to cancel. " _go
+
+  payload=$(CARD_NUMBER="$number" CARD_CVC="$cvc" CARD_HOLDER="$holder" CARD_MONTH="$exp_month" CARD_YEAR="$exp_year" \
+            SECRET="$client_secret" NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    jq -n '{client_secret: env.SECRET, payment_method: "card",
+            payment_method_data: {card: {card_number: env.CARD_NUMBER, card_exp_month: env.CARD_MONTH,
+                                         card_exp_year: env.CARD_YEAR, card_holder_name: env.CARD_HOLDER,
+                                         card_cvc: env.CARD_CVC}},
+            customer_acceptance: {acceptance_type: "online", accepted_at: env.NOW,
+                                  online: {user_agent: "zealot-pay-store-listing"}}}')
+  unset number cvc holder exp_month exp_year expiry
+
+  result=$(printf '%s' "$payload" | curl -sS -X POST "$confirm_url" -H "api-key: ${publishable_key}" \
+             -H 'Content-Type: application/json' --data-binary @- -w '\n%{http_code}')
+  unset payload client_secret
+  rcode=${result##*$'\n'}; rbody=${result%$'\n'*}
+  rstatus=$(echo "$rbody" | jq -r '.status // empty' 2>/dev/null || true)
+  if [[ ! "$rcode" =~ ^2 ]] || [ "$rstatus" = "failed" ] || [ "$rstatus" = "requires_payment_method" ]; then
+    say "The card was not accepted: $(echo "$rbody" | jq -r '.error.message // .error_message // .error // "no reason given"' 2>/dev/null)"
+    say "Nothing was charged. Run this command again to start a new payment."
+    exit 1
+  fi
+  redirect=$(echo "$rbody" | jq -r '.next_action.redirect_to_url // empty' 2>/dev/null || true)
+  if [ -n "$redirect" ]; then
+    say "Your bank needs one more step (3-D Secure). Open this link and finish it:"
+    say "  $redirect"
+  fi
+  say "Card sent. Waiting for the payment to be confirmed (Ctrl-C to stop)..."
+fi
+
+for _ in $(seq 1 120); do
+  sleep 5
+  status=$(curl -sS -G "${base}/payment" --data-urlencode "token=${ZEALOT_TOKEN}" | jq -r '.payments[0].status // empty' 2>/dev/null || true)
+  case "$status" in
+    succeeded) say "Payment succeeded. The app goes live once B-PAY's confirmation has been processed."; exit 0 ;;
+    failed) say "Payment failed. Run this command again to start a new one."; exit 1 ;;
+  esac
+done
+say "Still waiting after 10 minutes. Check later: curl -G '${base}/payment' --data-urlencode token=..."
+exit 3

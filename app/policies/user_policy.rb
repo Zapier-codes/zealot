@@ -30,6 +30,12 @@ class UserPolicy < ApplicationPolicy
     admin?
   end
 
+  # Task 42j: reading another account's API token over the API: platform admin only, the same power the
+  # console's Admin > Users > Edit page already gives.
+  def token?
+    admin?
+  end
+
   def lock?
     admin?
   end
