@@ -395,6 +395,14 @@ Rails.application.routes.draw do
       # Task 34d-2: create, list and revoke the app's per-app API tokens. User token in the Authorization
       # header ONLY; a per-app token can never open this (decision 34-4). See Api::Apps::ApiTokensController.
       resources :api_tokens, only: %i[index create destroy], controller: 'apps/api_tokens'
+
+      # Task 42e: the store listing, the owner and the editorial flags over the API (user token only), so
+      # everything the console does to put an app in D-Store can be scripted. See the controllers' headers.
+      resource :store_listing, only: %i[show create], controller: 'apps/store_listings' do
+        patch :mark_paid
+      end
+      resource :owner, only: :update, controller: 'apps/owners'
+      resource :editorial, only: :update, controller: 'apps/editorials'
     end
     resources :releases, only: %i[update destroy] do
       # Task 34a-6: POST /api/releases/:id/release (held -> available; user token or per-app token).

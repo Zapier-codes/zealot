@@ -687,3 +687,48 @@ Full state and the order of next steps are in `handover.md`, newest entry. Termu
 - **Set an env var on a service without opening the dashboard:** `curl -s -X PUT -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d "{\"value\":$(printf %s "$VALUE" | jq -Rs .)}" "https://api.render.com/v1/services/<srv id>/env-vars/<NAME>" | jq -r .key` prints the name back on success. Then start a deploy: `curl -s -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{}' "https://api.render.com/v1/services/<srv id>/deploys"`.
 - **Database:** Supabase **Session pooler** (port 5432), not the transaction pooler (6543); distr migrates on boot and takes advisory locks. Free Supabase projects pause when idle.
 
+
+## 19. Putting an app in D-Store over the API (Task 42e, 2026-10-07; written, NOT run)
+
+Everything section 17 did by clicking can now be done with `curl`. All routes take the **user token in the `token`
+parameter** (never a Bearer header, never a per-app token) and change nothing on a refusal. The console pages stay;
+both paths call the same model methods and policies.
+
+| Step | Call | Who |
+|---|---|---|
+| Read what keeps an app out of the index | `GET /api/apps/:id/store_listing` | owner or admin |
+| Request listing (draft -> awaiting_payment) | `POST /api/apps/:id/store_listing` | the **owner**, who needs a publisher profile |
+| Mark paid (awaiting_payment or suspended -> live) | `PATCH /api/apps/:id/store_listing/mark_paid` | platform admin |
+| Change the owner | `PUT /api/apps/:id/owner` with `user_id=` or `email=` | owner or admin |
+| Featured / Editors' Pick | `PUT /api/apps/:id/editorial` with `featured=true\|false` and/or `editors_pick=true\|false` | platform admin |
+| Publish a held release | `POST /api/releases/:id/release` (Task 34a-6, already there) | owner or admin |
+| Re-send a release to CI | `POST /api/releases/:id/retry_compile` (section 12) | platform admin |
+
+`:id` is the numeric app id (the number in the console URL `/apps/<id>`). Every answer from the first five is the same
+readiness report: `owner`, `tenant`, `listing_status`, `featured`, `latest_release`, `available_release`, `blockers`
+(plain sentences) and `eligible_for_catalog_index`. An empty `blockers` list means nothing Zealot knows of keeps the app
+out of the index; the published file is still the proof (`gh api repos/Zapier-codes/dstore-catalog/contents/index.json
+-H "Accept: application/vnd.github.raw"`). The tenant is not changeable here: an app that shows a tenant stays out of the
+default index until it is moved by hand.
+
+```
+. ~/.zealot.env; Z=https://zealot-deploy-latest.onrender.com; A=<app id>
+T=$(zealot-token)                                  # the ADMIN's token
+curl -sS -G "$Z/api/apps/$A/store_listing" -d token="$T" | jq '{listing_status, owner, tenant, blockers}'
+# hand the app to the developer account (by email)
+curl -sS -X PUT "$Z/api/apps/$A/owner" -d token="$T" --data-urlencode email=claudeone7492@gmail.com | jq '{changed, owner}'
+# the OWNER (not the admin) asks for the listing; use the developer account's own token
+curl -sS -X POST "$Z/api/apps/$A/store_listing" -d token="<developer token>" | jq '{listing_status, code, error}'
+# the admin marks it paid, which makes it live and republishes the index
+curl -sS -X PATCH "$Z/api/apps/$A/store_listing/mark_paid" -d token="$T" | jq '{listing_status, blockers}'
+curl -sS -X PUT "$Z/api/apps/$A/editorial" -d token="$T" -d featured=true | jq '{featured, blockers}'
+```
+
+**Reading refusals.** `422 publisher_profile_required`: the owner has no publisher profile (created in the console only;
+an API for it is not built). `422 listing_not_available`: the app is not in the state the step needs (asking again after a
+success lands here; read `listing_status`). `422 app_archived`. `403`: wrong role for that step (only the owner may
+request, only an admin may mark paid or set the flags). `404`: no such app, or an app of another tenant. `422` with no body
+about a token: a missing or wrong `token` on this legacy door.
+
+**Not verified:** nothing ran under Rails or against Render (see the 42e entry in `handover.md`). The spec is
+`spec/requests/api_app_store_listing_spec.rb`; read the `CI - RSpec` run for this commit first.

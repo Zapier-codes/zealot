@@ -5936,6 +5936,16 @@ them is already modernized.
 
 ## Session log
 
+### 2026-10-07 (newest of all, store listing API) -- Task 42e: request listing, mark paid, owner and Featured over the API (operator: "I need everything to be able to be achieved both programmatically and manually"; no testing, patch file only)
+
+- **Base:** `develop` @ `3ae2a0c3`. One combined patch. `ruby -c` passed on every changed Ruby file (ruby 3.2.3 installed in this sandbox from apt); nothing ran under Rails or RSpec (no Postgres, gems or GitHub token).
+- **Why:** runbook section 17 listed four console-only steps (owner, listing request, mark paid, Featured) before an app can show in D-Store. The operator wants each to be scriptable.
+- **Built (written, NOT run):** `app/services/store_listing_readiness.rb` (a read-only report: owner, tenant, listing status, flags, latest and available release, and plain-sentence `blockers` mirroring `CatalogIndex::Serializer`); `Api::Apps::StoreListingsController` (`GET`/`POST /api/apps/:app_id/store_listing`, `PATCH .../mark_paid`); `Api::Apps::OwnersController` (`PUT .../owner`, by `user_id` or `email`, idempotent); `Api::Apps::EditorialsController` (`PUT .../editorial`, sets `featured`/`editors_pick` to the value sent rather than flipping); routes under `namespace :api`; `spec/requests/api_app_store_listing_spec.rb`; runbook section 19 with the commands. No migration, no new locale keys (the new messages are plain English JSON).
+- **No new rules:** each action calls the console's own model method and policy question (`request_store_listing!`, `go_live!`, `AppPolicy#list_on_store?`, `mark_paid?`, `update_owner?`, `set_editorial_flags?`). A cross-tenant id is a 404. User token in `params[:token]` only.
+- **Found while doing it, not changed:** the published catalog index in `Zapier-codes/dstore-catalog` was last committed 2026-10-03, is empty (`"apps": []`), and its `expires_at` (24 h after generation, `Serializer::DEFAULT_TTL`) passed on 2026-10-04. Nothing republishes on a timer; only a go-live, suspension, listing edit or new release does. So the index goes stale after a day of no edits; whether D-Store refuses an expired index was NOT checked. Proposed follow-up (not built): a scheduled republish, or a longer TTL. Needs the operator's call.
+- **Limits:** the owner must still have a publisher profile, and there is no API to create one (console only); the readiness report cannot change an app's tenant; mark-paid still needs the app in `awaiting_payment` first, so the OWNER's token must request listing before the admin can mark it paid.
+- **Next:** apply, push, read the `CI - RSpec` run, then run runbook section 19 for Storeapp, then `gh api` the index to see it carry the app, then the Featured call.
+
 ### 2026-10-07 (newest of all, distr on its own Render) -- Door auth landed; distr built, published and being brought up on a separate Render account (operator-run commands, nothing run by the session)
 
 This session cloned `Zapier-codes/distr`, read its workflows and `render.yaml`, and walked the operator through each command. The session's sandbox cannot reach `api.render.com` and has no GitHub token, so **everything below that touches Render or GitHub Actions was run by the operator in Termux and read from what was pasted back**. No secret value is written here; only names and file locations.
