@@ -38,6 +38,11 @@ CRON_JOBS_SETUP = lambda do
       class: 'AppMaintenanceBillingJob',
       description: 'Charge due per-app maintenance fees on the stored B-PAY mandate and suspend apps unpaid past the grace period'
     },
+    github_download_count: {
+      cron: '0 */6 * * *',
+      class: 'GithubDownloadCountJob',
+      description: 'Read GitHub download counts of live apps installable files and republish the index when a total changed'
+    },
     release_upload_sweeper: {
       cron: '*/15 * * * *',
       class: 'ReleaseUploadSweeperJob',

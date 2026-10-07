@@ -232,7 +232,8 @@ module CatalogIndex
     def base_stats_for(app)
       return nil unless app.respond_to?(:migrated_downloads)
 
-      downloads = app.migrated_downloads.to_i
+      # Task 45e: carried-over history plus what GitHub has counted since (the installable file only).
+      downloads = app.migrated_downloads.to_i + (app.respond_to?(:github_download_total) ? app.github_download_total.to_i : 0)
       count = app.migrated_rating_count.to_i
       return nil if downloads.zero? && count.zero?
 

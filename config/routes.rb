@@ -424,6 +424,8 @@ Rails.application.routes.draw do
       resource :editorial, only: :update, controller: 'apps/editorials'
       # Task 45a: PUT/GET /api/apps/:app_id/migrated_stats (platform admin, user token only).
       resource :migrated_stats, only: %i[show update], controller: 'apps/migrated_stats'
+      # Task 45c: GET/POST /api/apps/:app_id/migrated_comments, DELETE .../:id (platform admin, user token only).
+      resources :migrated_comments, only: %i[index create destroy], controller: 'apps/migrated_comments'
     end
     resources :releases, only: %i[update destroy] do
       # Task 34a-6: POST /api/releases/:id/release (held -> available; user token or per-app token).

@@ -23,6 +23,12 @@ class ReleaseDownload
     @storage = storage
   end
 
+  # Task 45e: the stored file a download click is served from (the universal APK, the patched file or the
+  # original), nil when there is none. This is the one file whose host-side download count means "installs".
+  def served_storage_key
+    remote_key
+  end
+
   # Cheap and offline: is there anything to serve at all?
   def available?
     !local_path.nil? || !remote_key.nil?

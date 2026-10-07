@@ -25,6 +25,7 @@ class App < ApplicationRecord
   # Task 27d-d1: store-listing graphics (docs/store_listing_graphics.md). Owned by the app, not a
   # release. No uploader, route or reader yet (27d-d2, 27d-e1).
   has_many :listing_graphics, dependent: :destroy
+  has_many :migrated_comments, dependent: :destroy # Task 45c: comments carried over from before the listing
   # Task 34a-1: per-app API tokens for the owner's own CI (no route or caller until 34a-2).
   has_many :api_tokens, class_name: 'AppApiToken', dependent: :destroy
 
@@ -442,6 +443,19 @@ class App < ApplicationRecord
     return false unless listing_live?
 
     update!(listing_status: :suspended)
+  end
+
+  # Task 45e: downloads the storage host (GitHub) has counted for this app's installable files, summed over all of
+  # its releases. Each release keeps the highest count it has ever seen (GithubDownloadCounter), so a file that is
+  # replaced and starts again from 0 does not make the total fall.
+  def github_download_total
+    play_releases_scope.sum(:github_download_count)
+  end
+
+  # Task 45e: the stats job (GithubDownloadCountJob) republishes through the same owner rule as an app edit; this
+  # is the public door to it because `catalog_index_tenants_to_republish` is private.
+  def catalog_index_tenants_to_republish_for_stats
+    catalog_index_tenants_to_republish
   end
 
   # All releases of this app, across its schemes and channels.

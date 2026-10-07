@@ -136,6 +136,12 @@ class ReleaseStorage
     adapter.exist?(key)
   end
 
+  # Task 45e: how many times the host counted this file as downloaded (GitHub adapter only; nil elsewhere or when
+  # the file is missing).
+  def download_count(key)
+    adapter.respond_to?(:asset_download_count) ? adapter.asset_download_count(key) : nil
+  end
+
   # Task 44f: renames a stored file in place (no download, no re-upload where the adapter can avoid it).
   #
   # @return [Symbol] `:renamed`, `:already`, `:same` or `:missing` (see the adapters)

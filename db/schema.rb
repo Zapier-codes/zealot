@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_07_150000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_07_170000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -430,6 +430,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_150000) do
     t.index ["user_id"], name: "index_metadata_on_user_id"
   end
 
+  create_table "migrated_comments", force: :cascade do |t|
+    t.bigint "app_id", null: false
+    t.string "author_name", null: false
+    t.text "body"
+    t.date "commented_on", null: false
+    t.datetime "created_at", null: false
+    t.integer "helpful_count", default: 0, null: false
+    t.integer "rating", null: false
+    t.bigint "recorded_by_id"
+    t.text "source_note", null: false
+    t.datetime "updated_at", null: false
+    t.index ["app_id", "commented_on"], name: "index_migrated_comments_on_app_id_and_commented_on"
+    t.index ["app_id"], name: "index_migrated_comments_on_app_id"
+    t.index ["recorded_by_id"], name: "index_migrated_comments_on_recorded_by_id"
+  end
+
   create_table "payments", force: :cascade do |t|
     t.integer "amount_cents", null: false
     t.bigint "app_id", null: false
@@ -542,6 +558,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_150000) do
     t.string "file_sha256"
     t.string "file_storage_key"
     t.string "git_commit"
+    t.bigint "github_download_count", default: 0, null: false
+    t.datetime "github_download_count_synced_at"
     t.string "icon"
     t.string "icon_sha256"
     t.string "icon_storage_key"
@@ -782,6 +800,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_150000) do
   add_foreign_key "listing_edits", "apps", on_delete: :cascade
   add_foreign_key "listing_edits", "users", column: "editor_id", on_delete: :nullify
   add_foreign_key "listing_graphics", "apps", on_delete: :cascade
+  add_foreign_key "migrated_comments", "apps", on_delete: :cascade
+  add_foreign_key "migrated_comments", "users", column: "recorded_by_id", on_delete: :nullify
   add_foreign_key "metadata", "releases", on_delete: :cascade
   add_foreign_key "metadata", "users", on_delete: :cascade
   add_foreign_key "payments", "apps"

@@ -276,6 +276,15 @@ class ReleaseStorage::GithubAdapter
     !asset.nil?
   end
 
+  # Task 45e: GitHub's own `download_count` for ONE stored file (nil when the file is not there). Only the file a
+  # reader installs should be asked about: icons and listing graphics have counts too, but those are the index and
+  # mirror fetching pictures, not installs.
+  def asset_download_count(key)
+    ensure_repo_usable!
+    _release, asset = locate_asset(key)
+    asset && asset['download_count'].to_i
+  end
+
   # Task 44f: renames one stored file in place with GitHub's asset-rename call (PATCH
   # /repos/:repo/releases/assets/:id). Nothing is downloaded or uploaded, so a release already being served
   # keeps its file for the whole operation. Both keys must live in the same storage release (same tag).
