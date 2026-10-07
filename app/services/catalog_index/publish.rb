@@ -96,8 +96,19 @@ module CatalogIndex
       commit = client.publish(files, message: "catalog index#{message_scope} #{signed.generated_at.utc.iso8601} (#{signed.key_id})",
                                      root: publish_root)
 
+      store_snapshot(signed)
       Result.new(status: commit.status, commit_sha: commit.commit_sha,
                  generated_at: signed.generated_at, key_id: signed.key_id)
+    end
+
+    # Task 45g: keep the exact signed bytes so CatalogController can serve them from this host. The Pages commit
+    # has already landed, so a failure here is logged and never fails (or retries) the publish; the host then
+    # keeps serving the previous, still validly signed, copy until the next publish.
+    def store_snapshot(signed)
+      CatalogIndexSnapshot.store!(tenant: @tenant, index_json: signed.index_json, signature: "#{signed.signature}\n",
+                                  signing_key_id: signed.key_id, generated_at: signed.generated_at)
+    rescue StandardError => e
+      @logger&.error("[CatalogIndex::Publish] could not store the index snapshot: #{e.class}: #{e.message}")
     end
 
     # nil (the repo root, exactly as before) for the default tenant, `tenants/<id>` for any other.

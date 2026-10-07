@@ -73,6 +73,11 @@ class AppPolicy < ApplicationPolicy
     admin?
   end
 
+  # Task 45f: category and package name through the API are an admin's job, like the carried-over figures.
+  def set_catalog_basics?
+    admin?
+  end
+
   # Task 45a: carried-over downloads and ratings are store-owned data an owner must not set on their own app,
   # admin-only like the editorial flags.
   def set_migrated_stats?

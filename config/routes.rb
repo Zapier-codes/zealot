@@ -15,6 +15,9 @@ Rails.application.routes.draw do
   # rest of that namespace — same reasoning as email_preferences above
   # being outside any auth-required scope.
   post 'hooks/hyperswitch', to: 'hyperswitch_webhooks#create'
+  # Task 45g: the signed catalog index served from this host (exact stored bytes; see CatalogController).
+  get 'catalog/index.json', to: 'catalog#index', format: false
+  get 'catalog/index.json.sig', to: 'catalog#signature', format: false
   # Task 42i: hosted card page for one listing-fee payment; the signed token in the link is the only credential.
   get 'checkout/:token', to: 'checkouts#show', as: :store_listing_checkout, constraints: { token: %r{[^/]+} }
 
@@ -424,6 +427,8 @@ Rails.application.routes.draw do
       resource :editorial, only: :update, controller: 'apps/editorials'
       # Task 45a: PUT/GET /api/apps/:app_id/migrated_stats (platform admin, user token only).
       resource :migrated_stats, only: %i[show update], controller: 'apps/migrated_stats'
+      # Task 45f: GET/PUT /api/apps/:app_id/catalog_basics (category and package name; platform admin, user token only).
+      resource :catalog_basics, only: %i[show update], controller: 'apps/catalog_basics'
       # Task 45c: GET/POST /api/apps/:app_id/migrated_comments, DELETE .../:id (platform admin, user token only).
       resources :migrated_comments, only: %i[index create destroy], controller: 'apps/migrated_comments'
     end
