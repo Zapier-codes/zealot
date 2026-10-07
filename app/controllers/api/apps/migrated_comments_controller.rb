@@ -39,16 +39,26 @@ class Api::Apps::MigratedCommentsController < Api::BaseController
         created << comment
       end
     end
-    render json: { app_id: @app.id, created: created.map { |c| render_comment(c) } }, status: :created if created.size == rows.size
+    if created.size == rows.size
+      republish_index
+      render json: { app_id: @app.id, created: created.map { |c| render_comment(c) } }, status: :created
+    end
   end
 
   def destroy
     authorize @app, :set_migrated_stats?
     @app.migrated_comments.find(params[:id]).destroy!
+    republish_index
     head :no_content
   end
 
   private
+
+  # Task 45d: the index carries these comments (`reviews`), so adding or removing one republishes the
+  # catalog through the same owner rule an app edit uses (App#catalog_index_tenants_to_republish_for_stats).
+  def republish_index
+    @app.catalog_index_tenants_to_republish_for_stats.each { |tenant| CatalogIndexPublishJob.enqueue_for(tenant) }
+  end
 
   def set_app
     @app = policy_scope(App).find(params[:app_id])

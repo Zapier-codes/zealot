@@ -168,6 +168,7 @@ module CatalogIndex
         updated_at: iso(app.updated_at),
         editorial: editorial_for(app),
         base_stats: base_stats_for(app),         # Task 45a: downloads and ratings D-Store adds its own counts to
+        reviews: migrated_comments_for(app),     # Task 45d: carried-over comments, shown as ordinary reviews
         sponsored_slots: @editorial ? sponsored_slots_for(app) : [],
         collections: @editorial ? collection_slugs_for(app) : [],
         suggested_version_code: suggested_version_code_for(releases), # Task 27f-c
@@ -239,6 +240,33 @@ module CatalogIndex
 
       { downloads: downloads,
         rating: count.zero? ? nil : { average: app.migrated_rating_average.to_f.round(2), count: count } }
+    end
+
+    # Task 45d: comments an app earned before it was listed here, published so a reader can show them as
+    # ordinary reviews -- no label, the same "one number" rule as base_stats. Each row keeps its own author,
+    # rating, body, date and helpful count; `source_note` and who entered it stay in the backend and are never
+    # published. `[]` when the app has none (the association is absent on an old Struct fixture), so most
+    # entries are unchanged. D-Store merges these with its own reviews by date and does not count them twice.
+    def migrated_comments_for(app)
+      return [] unless app.respond_to?(:migrated_comments)
+
+      app.migrated_comments.order(:commented_on, :id).map do |comment|
+        { author_name: comment.author_name,
+          rating: comment.rating,
+          body: comment.body.presence,
+          commented_on: iso_date(comment.commented_on),
+          helpful_count: comment.helpful_count }
+      end
+    end
+
+    # `commented_on` is a `date` column, so it arrives as a Date, which has no `utc` (the shared `iso` helper
+    # assumes a Time). Publish it as UTC midnight of that day -- a valid `date-time`, deterministic, and the
+    # same instant whatever the server's zone.
+    def iso_date(value)
+      return nil if value.nil?
+      return iso(value) if value.respond_to?(:utc)
+
+      Time.utc(value.year, value.month, value.day).iso8601
     end
 
     # Task 31a: real `SponsoredSlot` rows once an app has any. Only

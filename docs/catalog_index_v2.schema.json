@@ -73,7 +73,7 @@
         "id", "package_name", "listing_status", "publisher", "listing",
         "slug", "summary", "category", "license", "links",
         "available_regions", "created_at", "updated_at",
-        "editorial", "sponsored_slots", "collections", "suggested_version_code", "versions"
+        "editorial", "base_stats", "reviews", "sponsored_slots", "collections", "suggested_version_code", "versions"
       ],
       "additionalProperties": false,
       "properties": {
@@ -208,6 +208,40 @@
           "properties": {
             "featured": { "type": "boolean" },
             "editors_pick": { "type": "boolean" }
+          }
+        },
+        "base_stats": {
+          "description": "Task 45a/45e. null, or {downloads, rating}. Downloads and ratings an app earned before it was listed here (real history entered by an admin; the source note stays in the backend). Task 45e: downloads is the carried-over figure PLUS the count GitHub keeps for each release's installable file. A reader shows one total, formatted like Play Store (5.8M), and adds no counter of its own for these apps.",
+          "type": [ "object", "null" ],
+          "required": [ "downloads", "rating" ],
+          "additionalProperties": false,
+          "properties": {
+            "downloads": { "type": "integer", "minimum": 0 },
+            "rating": {
+              "type": [ "object", "null" ],
+              "required": [ "average", "count" ],
+              "additionalProperties": false,
+              "properties": {
+                "average": { "type": "number", "minimum": 1, "maximum": 5 },
+                "count": { "type": "integer", "minimum": 1 }
+              }
+            }
+          }
+        },
+        "reviews": {
+          "description": "Task 45d. Comments an app earned before it was listed here, oldest first, published so a reader can show them as ordinary reviews -- no label. source_note and who entered each row stay in the backend and are never published. A reader merges these with its own reviews by date and does not count them twice. [] when the app has none. Additive: no schema_version bump; a reader that does not know the key ignores it.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [ "author_name", "rating", "body", "commented_on", "helpful_count" ],
+            "additionalProperties": false,
+            "properties": {
+              "author_name": { "type": "string" },
+              "rating": { "type": "integer", "minimum": 1, "maximum": 5 },
+              "body": { "type": [ "string", "null" ] },
+              "commented_on": { "type": "string", "format": "date-time" },
+              "helpful_count": { "type": "integer", "minimum": 0 }
+            }
           }
         },
         "sponsored_slots": {
