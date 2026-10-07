@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_07_180000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_07_190000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -548,6 +548,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_180000) do
 
   create_table "releases", force: :cascade do |t|
     t.jsonb "abis", default: [], null: false
+    t.string "asset_delivery_error"
+    t.string "asset_delivery_state"
+    t.datetime "asset_delivery_state_at"
     t.string "asset_pack_type"
     t.string "branch"
     t.boolean "brotli_compressed", default: false, null: false
@@ -627,6 +630,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_180000) do
     t.index ["source"], name: "index_releases_on_source"
     t.index ["status"], name: "index_releases_on_status"
     t.index ["version"], name: "index_releases_on_version"
+    t.check_constraint "asset_delivery_state IS NULL OR asset_delivery_state::text = 'pending'::text OR asset_delivery_state::text = 'done'::text OR asset_delivery_state::text = 'skipped'::text OR asset_delivery_state::text = 'failed'::text", name: "releases_asset_delivery_state_known"
     t.check_constraint "ci_compile_state IS NULL OR ci_compile_state::text = 'queued'::text OR ci_compile_state::text = 'dispatched'::text OR ci_compile_state::text = 'done'::text OR ci_compile_state::text = 'failed'::text", name: "releases_ci_compile_state_known"
     t.check_constraint "rollout_percentage >= 0 AND rollout_percentage <= 100", name: "releases_rollout_percentage_range"
     t.check_constraint "status::text = 'available'::text OR status::text = 'held'::text OR status::text = 'halted'::text OR status::text = 'pulled'::text", name: "releases_status_known"

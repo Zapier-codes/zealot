@@ -19,11 +19,26 @@ class AnthropicAssetDeliveryJob < ApplicationJob
       return
     end
 
-    return unless Rails.application.config.x.anthropic.asset_pack_delivery_enabled
-
     release = Release.find_by(id: release_id)
-    return unless release&.file&.path
-    return unless release.file.path.to_s.end_with?('.aab')
+    return unless release
+
+    unless Rails.application.config.x.anthropic.asset_pack_delivery_enabled
+      release.record_asset_delivery!(:skipped, error: 'asset pack delivery is disabled')
+      return
+    end
+
+    # Task 30: a release that reaches the job but has nothing to compile is `skipped`, not left NULL, so a
+    # reader can tell it apart from one the job never touched.
+    unless release.file&.path
+      release.record_asset_delivery!(:skipped, error: 'the release has no uploaded file')
+      return
+    end
+    unless release.file.path.to_s.end_with?('.aab')
+      release.record_asset_delivery!(:skipped, error: 'the release is not an Android App Bundle')
+      return
+    end
+
+    release.record_asset_delivery!(:pending)
 
     # Copy the upload to durable storage BEFORE compiling. The compile is the heaviest step on this
     # instance, and a restart during it (2026-10-03 21:00 and 2026-10-04 02:59, both OOM kills at 512Mi)
@@ -41,16 +56,28 @@ class AnthropicAssetDeliveryJob < ApplicationJob
     ensure
       FileUtils.remove_entry(work_dir, true)
     end
+
+    # Task 30: the compile finished without raising.
+    release.record_asset_delivery!(:done)
   rescue Anthropic::BundletoolService::BundletoolNotFoundError,
          Anthropic::BrotliService::BrotliNotFoundError => e
     logger.warn("[AnthropicAssetDeliveryJob] tooling unavailable, skipping: #{e.message}")
+    record_delivery(release_id, :skipped, e.message)
   rescue ReleaseStorage::MissingFileError => e
     logger.error("[AnthropicAssetDeliveryJob] release #{release_id}: #{e.message}")
+    record_delivery(release_id, :failed, e.message)
   rescue StandardError => e
     logger.error("[AnthropicAssetDeliveryJob] failed for release #{release_id}: #{e.full_message}")
+    record_delivery(release_id, :failed, "#{e.class}: #{e.message}")
   end
 
   private
+
+  # Task 30: the rescue blocks run before `release` is necessarily in scope, so the state is written by a
+  # fresh lookup; a missing release (deleted mid-flight) is simply nothing to record.
+  def record_delivery(release_id, state, error)
+    Release.find_by(id: release_id)&.record_asset_delivery!(state, error: error)
+  end
 
   # Runs the mirror inline (it skips anything already stored) and never lets a mirror failure stop the
   # compile: the mirror logs its own errors, and the compile then runs from the local copy as before.

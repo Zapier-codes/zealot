@@ -406,7 +406,14 @@ Rails.application.routes.draw do
       end
 
       # Task 43a: the store-listing graphics over the API (list, add, remove); user token or per-app token.
-      resources :listing_graphics, only: %i[index create destroy], controller: 'apps/listing_graphics'
+      resources :listing_graphics, only: %i[index create destroy], controller: 'apps/listing_graphics' do
+        collection do
+          # Task 32 (D-Store leaf 7.a.vii.zi): PUT the feature graphic, replacing it in place.
+          put :feature_graphic, to: 'apps/listing_graphics#replace_feature_graphic'
+          # Task 33 (D-Store leaf 7.a.vii.zo): PUT the whole ordered set of screenshots in one call.
+          put :screenshots, to: 'apps/listing_graphics#replace_screenshots'
+        end
+      end
 
       # Task 43f-3: the app's store icon over the API (PUT replaces it on the newest catalog release).
       resource :listing_icon, only: :update, controller: 'apps/listing_icons'
@@ -432,7 +439,7 @@ Rails.application.routes.draw do
       # Task 45c: GET/POST /api/apps/:app_id/migrated_comments, DELETE .../:id (platform admin, user token only).
       resources :migrated_comments, only: %i[index create destroy], controller: 'apps/migrated_comments'
     end
-    resources :releases, only: %i[update destroy] do
+    resources :releases, only: %i[show update destroy] do
       # Task 34a-6: POST /api/releases/:id/release (held -> available; user token or per-app token).
       member do
         post :release

@@ -1,5 +1,17 @@
 #!/usr/bin/with-contenv sh
 
 cd /app
-./bin/rails zealot:upgrade
-exit 0
+
+# Task 28 (D-Store leaf 7.a.iv.zi): a migration that fails at boot stops being silent. This script used to
+# run `./bin/rails zealot:upgrade` and then `exit 0` whatever happened, so a failed upgrade left the
+# container serving the OLD schema with nothing in the deploy to show it. It now prints one fixed,
+# greppable line and exits non-zero, so the platform (Render) keeps the previous, working instance instead
+# of bringing up a half-migrated one. This is option (a) of the leaf, the fail-fast default.
+if ./bin/rails zealot:upgrade; then
+  echo "[zealot-upgrade] schema is up to date"
+  exit 0
+else
+  status=$?
+  echo "[zealot-upgrade] FAILED: zealot:upgrade exited $status; the container will not start"
+  exit "$status"
+fi

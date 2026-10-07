@@ -4,9 +4,18 @@ class Api::ReleasesController < Api::BaseController
   # Task 34a-6 (Storeapp leaf `f.xiv`): `release` is the ONE action here that accepts a per-app token
   # (`Authorization: Bearer zpa_...`, see Api::AppTokenAuth). update and destroy stay user-token only:
   # a zpa_ header on them is ignored and they answer exactly as before.
-  before_action :validate_app_token, only: :release, if: :app_token_presented?
-  before_action :validate_user_token, unless: :app_token_release_request?
+  # Task 31 (D-Store leaf 7.a.vi.zo): `show` (GET /api/releases/:id) accepts the same two credentials --
+  # it is the read a CI job polls to see whether the compile finished (`status`, `signed`,
+  # `asset_delivery_state`, `asset_delivery_error`, all in Api::ReleaseStatusSerializer). update and
+  # destroy keep the user-token rule they always had.
+  before_action :validate_app_token, only: %i[release show], if: :app_token_presented?
+  before_action :validate_user_token, unless: :app_token_request?
   before_action :set_release
+
+  # GET /releases/:id
+  def show
+    render json: @release, serializer: Api::ReleaseStatusSerializer
+  end
 
   # UPDATE /releases/:id
   def update
@@ -98,13 +107,16 @@ class Api::ReleasesController < Api::BaseController
 
     # `release` has no predicate of its own: it is the console's status move, so it asks the same
     # question the console asks (ReleasePolicy#update_status?). Pundit would otherwise ask `release?`.
+    # For every other action the query is nil, which lets Pundit infer the action's own predicate --
+    # `update?`/`destroy?` as before, and, since Task 31, `show?` for the new read, which is true for
+    # anyone (`ReleasePolicy#show?`); the per-app token confinement above already scopes it.
     authorize @release, (action_name == 'release' ? :update_status? : nil)
   end
 
-  # True only for POST .../release carrying a `zpa_` bearer header; every other request keeps the
-  # user-token check it always had.
-  def app_token_release_request?
-    action_name == 'release' && app_token_presented?
+  # True only for the actions that accept a `zpa_` bearer header (`release` and, since Task 31, `show`),
+  # and only when such a header was actually presented; every other request keeps the user-token check.
+  def app_token_request?
+    %w[release show].include?(action_name) && app_token_presented?
   end
 
   def release_params

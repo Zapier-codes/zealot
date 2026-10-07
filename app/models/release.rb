@@ -184,6 +184,18 @@ class Release < ApplicationRecord
     failed: 'failed'
   }, prefix: :ci_compile
 
+  # Task 30 (D-Store leaf 7.a.vi.zi): the outcome of the compile that turns an AAB into signed APKs,
+  # recorded on every path of `AnthropicAssetDeliveryJob` (and by `Api::CiCompileController` for the CI
+  # path) so "still running" (NULL), "finished" (done), "nothing to do" (skipped) and "failed" are told
+  # apart. `asset_delivery_error` carries a short, safe reason and never a path or a secret. Distinct
+  # from `ci_compile_state`, which tracks the CI dispatch itself.
+  enum :asset_delivery_state, {
+    pending: 'pending',
+    done: 'done',
+    skipped: 'skipped',
+    failed: 'failed'
+  }, prefix: :asset_delivery
+
   # Task 27f-b: which status a release may move to from each status, and the name of the console
   # action for that move (`releases.show.status_actions.<name>`). One table drives both the buttons
   # on the release page and the server-side check in `ReleasesController#update_status`, so a
@@ -801,6 +813,18 @@ class Release < ApplicationRecord
     else
       AnthropicAssetDeliveryJob.perform_later(id)
     end
+  end
+
+  # Task 30: record the compile outcome, set on every path of `AnthropicAssetDeliveryJob` and by the CI
+  # callback (`Api::CiCompileController`). `error` is truncated and must be safe to show (never a path or
+  # a secret); a `done` or `skipped` write clears any earlier error. A missing record leaves the state
+  # NULL, which is how a release the compile never reached is told apart from one it finished.
+  def record_asset_delivery!(state, error: nil)
+    update_columns(
+      asset_delivery_state: state,
+      asset_delivery_error: error.to_s.presence&.truncate(500),
+      asset_delivery_state_at: Time.current
+    )
   end
 
   # Only fires when the uploader explicitly flagged this release as bound

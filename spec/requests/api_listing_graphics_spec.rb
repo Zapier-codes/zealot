@@ -130,4 +130,48 @@ RSpec.describe 'API listing graphics', type: :request do
     call(:delete, path(other_app, "/#{id}"), secret: issued.secret)
     expect(response).to have_http_status(:forbidden)
   end
+
+  # Task 33 (D-Store leaf 7.a.vii.zo): PUT the whole ordered set of screenshots in one call.
+  it 'replaces the whole screenshot set in one call, in the order given' do
+    call(:post, path, secret: issued.secret, kind: 'screenshot', file: upload(png, 'old.png'))
+    expect(app.listing_graphics.count).to eq(1)
+
+    call(:put, path(app, '/screenshots'), secret: issued.secret,
+                                            files: [upload(png, '1.png'), upload(png, '2.png')])
+
+    expect(response).to have_http_status(:ok)
+    expect(response.parsed_body['replaced']).to eq(2)
+    expect(app.listing_graphics.reload.count).to eq(2)
+    expect(app.listing_graphics.ordered.pluck(:position)).to eq([0, 1])
+  end
+
+  it 'refuses a bad picture in the set and keeps the old screenshots (all or nothing)' do
+    call(:post, path, secret: issued.secret, kind: 'screenshot', file: upload(png, 'old.png'))
+    before = app.listing_graphics.reload.pluck(:id)
+
+    call(:put, path(app, '/screenshots'), secret: issued.secret, fit: 'false',
+                                            files: [upload(png, 'good.png'), upload(png(width: 1080, height: 2400), 'bad.png')])
+
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(app.listing_graphics.reload.pluck(:id)).to eq(before)
+  end
+
+  # Task 32 (D-Store leaf 7.a.vii.zi): PUT the feature graphic, replacing it in place.
+  it 'replaces the feature graphic in place' do
+    feature = png(width: 1024, height: 500)
+    call(:put, path(app, '/feature_graphic'), secret: issued.secret, file: upload(feature, 'f.png'))
+    expect(response).to have_http_status(:ok)
+    expect(app.listing_graphics.reload.count).to eq(1)
+
+    call(:put, path(app, '/feature_graphic'), secret: issued.secret, file: upload(feature, 'f2.png'))
+    expect(response).to have_http_status(:ok)
+    expect(app.listing_graphics.reload.count).to eq(1)
+  end
+
+  it 'refuses a replace with no credential' do
+    call(:put, path(app, '/screenshots'), files: [upload(png)])
+
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(app.listing_graphics.count).to eq(0)
+  end
 end

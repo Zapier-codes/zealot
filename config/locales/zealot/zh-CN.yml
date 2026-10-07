@@ -1207,6 +1207,7 @@ zh-CN:
     channel_track_invalid: "未知的发布轨道。请使用以下之一：%{tracks}"
     release_app_archived: 该应用已归档，无法更改其版本
     release_not_held: 只有已暂缓的版本才能通过此方式发布（当前版本状态为 %{status}）
+    upload_duplicate: "该应用已有版本 %{release_version}（%{build_version}）；未再次上传（版本记录 %{id}）"
     ci_compile_retry_refused: "未发送到 CI：CI_COMPILE_ENABLED 必须为 true，版本必须是 AAB，且其 CI 状态必须为空或 failed（当前为 %{state}）"
     rename_stored_refused:
       ci_busy: "未重命名：CI 仍在处理此版本。请等待完成后再试"

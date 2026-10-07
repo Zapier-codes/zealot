@@ -16,6 +16,8 @@ class Api::Apps::UploadController < Api::BaseController
   before_action :set_parser
   before_action :refuse_android_multipart, if: -> { ReleaseUploadSession.direct_upload_required? }
   before_action :set_channel
+  # Task 29 (D-Store leaf 7.a.v.zi): after the channel is known, refuse a re-run of the same upload.
+  before_action :refuse_duplicate_upload
 
   # Upload an App
   #
@@ -204,6 +206,35 @@ class Api::Apps::UploadController < Api::BaseController
     # Task 23: a first upload has no channel yet (see #new_record?); this line
     # used to dereference nil there and the request ended in a 500.
     raise_if_app_archived!(@channel.app) if @channel
+  end
+
+  # Task 29 (D-Store leaf 7.a.v.zi): a duplicate upload is refused. The same channel, bundle id, version
+  # name and version code answers 409 with the existing release's id and creates nothing, so a workflow
+  # re-run (or a double-submit) can never make a second release for a version Zealot already holds.
+  #
+  # Only for an EXISTING channel: a first upload has no channel to match against and creates the app. The
+  # four values come from the file's own manifest (the same `@app_parser` the release is built from), so a
+  # caller cannot dodge the check by sending different text. A field the manifest did not yield (bundle id
+  # or version code missing) is not compared, so an unreadable bundle is judged by the manifest validation
+  # as before, not silently matched.
+  def refuse_duplicate_upload
+    return if @channel.blank?
+    return if @app_parser.nil?
+
+    bundle_id = @app_parser.bundle_id
+    release_version = @app_parser.release_version
+    build_version = @app_parser.build_version
+    return if bundle_id.blank? || release_version.blank? || build_version.blank?
+
+    existing = @channel.releases.find_by(
+      bundle_id: bundle_id, release_version: release_version, build_version: build_version
+    )
+    return unless existing
+
+    render json: { error: t('api.upload_duplicate', id: existing.id, release_version: release_version,
+                            build_version: build_version),
+                   release_id: existing.id },
+           status: :conflict
   end
 
   def append_present_value_from_params(data, key)

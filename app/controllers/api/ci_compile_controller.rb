@@ -146,6 +146,9 @@ class Api::CiCompileController < Api::BaseController
   def record_failure(release, reason)
     release.update!(ci_compile_state: 'failed', ci_compile_error: reason.to_s.truncate(1000),
                     ci_compile_finished_at: Time.current)
+    # Task 30: the CI path is the compile; mirror its outcome into asset_delivery_state so a reader polls
+    # one field whatever compiled the bundle.
+    release.record_asset_delivery!(:failed, error: reason)
   end
 
   def save_done(release, body, sha)
@@ -157,6 +160,8 @@ class Api::CiCompileController < Api::BaseController
     }
     attributes[:compressed_size] = Integer(body[:compressed_size].to_s, 10) if body[:compressed_size].present?
     release.update!(attributes)
+    # Task 30: CI finished the compile; record the same outcome the Ruby path records.
+    release.record_asset_delivery!(:done)
   end
 
   # Task 40f: the bundle on local disk is no longer needed once the result is recorded; the job re-checks

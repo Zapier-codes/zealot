@@ -69,7 +69,75 @@ class Api::Apps::ListingGraphicsController < Api::BaseController
     render json: { deleted: true, id: graphic.id }
   end
 
+  # PUT /api/apps/:app_id/listing_graphics/feature_graphic   (Task 32, D-Store leaf 7.a.vii.zi)
+  # multipart: file (one image). Replaces the app's feature graphic in place, so a re-run is idempotent.
+  def replace_feature_graphic
+    authorize ListingGraphic.new(app: @app), :create?
+    raise_if_app_archived!(@app)
+
+    replace(kind: 'feature_graphic')
+  end
+
+  # PUT /api/apps/:app_id/listing_graphics/screenshots   (Task 33, D-Store leaf 7.a.vii.zo)
+  # multipart: files[] (the whole ordered set). Replaces the app's screenshots in one call, so a re-run
+  # neither duplicates nor reorders. `alt_texts[]` (optional, same order) sets each description.
+  def replace_screenshots
+    authorize ListingGraphic.new(app: @app), :create?
+    raise_if_app_archived!(@app)
+
+    replace(kind: 'screenshot')
+  end
+
   private
+
+  # Shared by the two replace actions. Fits each upload (unless fit=false) and hands the whole set to
+  # ListingGraphicsReplacer, which is all-or-nothing: any refusal leaves the existing pictures untouched.
+  def replace(kind:)
+    uploads = uploaded_files
+    return render_error(t('api.listing_graphic_no_file'), :unprocessable_entity) if uploads.empty?
+
+    fitted = []
+    begin
+      paths = uploads.map do |upload|
+        if params[:fit].to_s == 'false'
+          upload.tempfile.path
+        else
+          fit = ListingGraphicFit.call(path: upload.tempfile.path, kind: kind)
+          fitted << fit
+          fit.path
+        end
+      end
+
+      result = ListingGraphicsReplacer.call(app: @app, kind: kind, uploads: paths.compact,
+                                            alt_texts: alt_texts(uploads.size))
+      if result.ok?
+        render json: { replaced: result.graphics.size, kind: kind,
+                       graphics: result.graphics.map { |graphic| describe(graphic) },
+                       fitted: fitted.any?(&:changed?), notes: fitted.flat_map(&:notes).uniq },
+               status: :ok
+      else
+        render_error(t('api.listing_graphic_refused', reasons: result.violations.map(&:message).to_sentence),
+                     :unprocessable_entity)
+      end
+    rescue ListingGraphicIngest::StorageFailed => e
+      Rails.logger.error("[Api::Apps::ListingGraphicsController#replace] app #{@app.id}: #{e.message}")
+      render_error(t('api.listing_graphic_storage_failed'), :service_unavailable)
+    ensure
+      fitted.each(&:cleanup)
+    end
+  end
+
+  # A single `file` or an ordered `files[]`; never anything that is not an uploaded file.
+  def uploaded_files
+    value = params[:files].presence || params[:file]
+    Array(value).select { |upload| upload.respond_to?(:tempfile) }
+  end
+
+  # Optional `alt_texts[]`, aligned with `files[]` by index.
+  def alt_texts(count)
+    values = Array(params[:alt_texts])
+    Array.new(count) { |index| values[index].is_a?(String) ? values[index] : nil }
+  end
 
   def set_app
     @app = scoped_apps.find(params[:app_id])
