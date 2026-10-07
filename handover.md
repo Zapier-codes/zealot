@@ -43,6 +43,15 @@ older apply block further down this file):**
    (Older task-board entries below still show the previous
    `git checkout develop && git pull` block and multi-patch sequences; those
    are historical — follow this section, not them.)
+**Cross-repo sessions (operator's instruction, 2026-10-07; supersedes the "exactly ONE `.patch` file" wording above whenever a session changes more than one repo).**
+The one-commit-per-repo rule stands, but the operator no longer applies patches by hand: a session that changes
+Zealot **and** another repo of the program hands over **one uniquely named file, `apply-all-<stamp>-<slug>.sh`**, built by D-Store's
+`scripts/make-apply-all.sh` (Zealot first in the order; branch `develop`; `git format-patch -1 HEAD --binary --stdout`).
+The operator runs `bash ~/storage/downloads/<the exact file name the session gives>` (add `--check` for a dry run; the name is new every delivery, never the bare `apply-all.sh`); it checks every repo before
+changing any, applies and pushes each, never forces, and rolls back on a failed `git am`. The full rule, the generator's
+usage and what the session must prove first are in D-Store's `HANDOVER.md`, "Cross-repo delivery". A Zealot-only
+session may still use the plain patch above.
+
 4. **After the push, check the RIGHT workflow** — `Anthropic - Build & Deploy
    develop` (two jobs: Build & push image to GHCR → Trigger Render deploy),
    not whatever run is listed on top. See "Which workflow is the deploy
