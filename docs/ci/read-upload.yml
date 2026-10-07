@@ -300,6 +300,25 @@ jobs:
           fallback = first(r"^application: .*? icon='([^']+)'")
           if fallback and fallback.lower().endswith((".png", ".webp")):
               icons.append((0, fallback))
+          # Task 43c-1: an adaptive icon (minSdk 26) is named by badging as an XML, e.g.
+          # res/mipmap-anydpi-v26/ic_launcher.xml, so nothing above matched. The same resource name usually still has
+          # a legacy raster beside it (res/mipmap-xxxhdpi-v4/ic_launcher.webp, read from Appstore 1.1.4's universal
+          # APK on 2026-10-07). Take the densest PNG or WebP with exactly that name; a name such as ic_launcher_round
+          # or ic_launcher_foreground is a different resource and never matches. Names that are listed but not present
+          # are simply not found: the icon stays absent and the read never fails because of it.
+          if not icons:
+              named = [p for _, p in re.findall(r"^application-icon-(\d+):'([^']+)'", badging, re.MULTILINE)]
+              if fallback:
+                  named.append(fallback)
+              stems = {os.path.splitext(os.path.basename(p))[0] for p in named if p.lower().endswith(".xml")}
+              ranks = {"ldpi": 120, "mdpi": 160, "hdpi": 240, "xhdpi": 320, "xxhdpi": 480, "xxxhdpi": 640}
+              with zipfile.ZipFile(os.environ["READABLE_APK"]) as archive:
+                  for entry in archive.namelist():
+                      found = re.match(r"^res/(?:mipmap|drawable)(?:-([a-z]+))?(?:-v\d+)?/([^/]+)\.(?:png|webp)$", entry)
+                      if found and found.group(2) in stems and found.group(1) in (None, *ranks):
+                          icons.append((ranks.get(found.group(1), 1), entry))
+              if not icons:
+                  print("::warning::the manifest names only an XML icon and no raster with that name is in the APK; no icon")
           if icons:
               icon_path = max(icons)[1]
               extension = os.path.splitext(icon_path)[1].lower()
