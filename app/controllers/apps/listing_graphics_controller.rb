@@ -28,8 +28,9 @@ class Apps::ListingGraphicsController < ApplicationController
     return redirect_to(app_path(@app), alert: t('.no_file')) unless upload.respond_to?(:tempfile)
 
     kind = graphic_params[:kind].to_s
-    result = ListingGraphicIngest.call(app: @app, path: upload.tempfile.path, kind: kind,
-                                       alt_text: graphic_params[:alt_text])
+    # Task 43e: fit the picture to Play's rules first (the ingest still judges the result).
+    fitted = ListingGraphicFit.call(path: upload.tempfile.path, kind: kind)
+    result = ListingGraphicIngest.call(app: @app, path: fitted.path, kind: kind, alt_text: graphic_params[:alt_text])
 
     if result.ok?
       redirect_to app_path(@app), notice: t(".added.#{result.graphic.kind}")
@@ -39,6 +40,8 @@ class Apps::ListingGraphicsController < ApplicationController
   rescue ListingGraphicIngest::StorageFailed => e
     Rails.logger.error("[Apps::ListingGraphicsController#create] app #{@app.id}: #{e.message}")
     redirect_to app_path(@app), alert: t('.storage_failed')
+  ensure
+    fitted&.cleanup
   end
 
   # PATCH /apps/:app_id/listing_graphics/:id  (Task 27d-e2-c1)

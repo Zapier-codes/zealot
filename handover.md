@@ -203,6 +203,24 @@ manual-only as well, it is the same one-line trigger change.)
 
 ## Task board
 
+### 🟡 Task 43: store-listing graphics must exist before an app is published (operator-directed 2026-10-07; **43a and 43e built, written NOT run**; 43b to 43d not built)
+
+**Why.** Appstore is in the signed index (`dstore-catalog`, `gh-pages`, 1 version) with `icon: null` and 0 screenshots, so D-store has nothing to show. The console panel for screenshots exists (27d-e2) but nothing else could add them: no API, and Storeapp's workflow never uploads any. Storeapp's `listing/screenshots/` is empty (a `.gitkeep`); its four PNGs are in `docs/` for the README and are 1080 x 2400, over the 2:1 rule.
+
+**Operator override of an earlier decision.** Task 27d recorded "optional, not a publish gate" (go live with fewer than 2 screenshots). The operator now wants the icon and screenshots present before a publish succeeds, with the console flagging what is missing. 43b changes that on purpose.
+
+| Slice | What | State |
+|---|---|---|
+| 43a ✅ | **Graphics over the API.** `GET/POST /api/apps/:app_id/listing_graphics`, `DELETE .../:id`, user token or per-app token (same rules as 34a-3). Multipart `file`, `kind` (`screenshot` or `feature_graphic`), optional `alt_text`. Calls `ListingGraphicIngest`, so Play's rules and the 8 slots are the console's. 422 lists every reason; 503 when storage fails. `ListingGraphicPolicy#index?` added. | built, written NOT run |
+| 43e ✅ | **Auto-resize.** `ListingGraphicFit` (ImageMagick through the existing `mini_magick`) runs before the ingest in the API and in the console panel: crops a too-tall or too-wide screenshot to exactly 2:1 around its centre (drops the status bar and gesture bar of a 1080 x 2400 capture), scales a side over 3840 down and under 320 up, flattens transparency onto white, writes PNG (JPEG stays JPEG; over 8 MB becomes JPEG), and makes a feature graphic exactly 1024 x 500. It never judges: an unreadable file goes on unchanged and the ingest gives the real refusal. The API takes `fit=false` to send a file as it is and answers `fitted` and `notes`. | built, written NOT run |
+| 43b | **Publish gate and flag.** Going live (`App#go_live!`, the store-listing page and `POST /api/apps/:id/store_listing`) refuses with the list of what is missing (icon, fewer than 2 phone screenshots) and the console page shows the same list with a link to the graphics panel. Hand-listed apps and already-live apps are outside the rule. | not built |
+| 43c | **Adaptive icon from the AAB.** `docs/ci/read-upload.yml` keeps only a PNG or WebP icon, so an adaptive-icon-only app (probably Appstore) gets none. Needs the stage-1 result or the `read-upload` run log for Appstore's upload first. | blocked on the operator's log |
+| 43d | **Storeapp (its own patch).** Put 2 to 8 screenshots in `listing/screenshots/` (cropped or re-captured to at most 2:1), add a `release-aab.yml` step that uploads them through 43a when the app has none, and turn "no screenshots" from a warning into an error in `build_listing.py`. | not built; Zealot's 43a first |
+
+**Use (43a).** `curl -H "Authorization: Bearer $ZEALOT_APP_TOKEN" -F kind=screenshot -F alt_text="Home" -F file=@01-home.png "$ZEALOT_URL/api/apps/<app id>/listing_graphics"`. The index republishes by itself (`ListingGraphic`'s after_commit); D-store re-reads it every 5 minutes.
+
+**Push note.** 43a changes app code and routes, so a push to `develop` starts `Anthropic - Build & Deploy develop`.
+
 ### 🧭 Play-parity program — Tasks 28–37 (Task 37 added this session; docs only; nothing below is built)
 
 *Read Task 28 first. Tasks 29–36 are listed in phase order, not newest-first. Every slice follows the TSF; every ❓ is for the operator, not for a session to guess.*

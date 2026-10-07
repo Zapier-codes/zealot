@@ -402,6 +402,9 @@ Rails.application.routes.draw do
         post :commit
       end
 
+      # Task 43a: the store-listing graphics over the API (list, add, remove); user token or per-app token.
+      resources :listing_graphics, only: %i[index create destroy], controller: 'apps/listing_graphics'
+
       # Task 34d-2: create, list and revoke the app's per-app API tokens. User token in the Authorization
       # header ONLY; a per-app token can never open this (decision 34-4). See Api::Apps::ApiTokensController.
       resources :api_tokens, only: %i[index create destroy], controller: 'apps/api_tokens'

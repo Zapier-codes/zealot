@@ -7,6 +7,11 @@
 # collaborator may not change them. Reading needs no rule here: the bytes are public
 # (`GET /download/graphics/:id`) and the owner's page is authorized through the app.
 class ListingGraphicPolicy < ApplicationPolicy
+  # Task 43a: the API's list. The same people who may change the graphics may read the owner's view of them.
+  def index?
+    manage_listing?
+  end
+
   def create?
     manage_listing?
   end

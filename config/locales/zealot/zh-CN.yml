@@ -1200,6 +1200,9 @@ zh-CN:
     listing_edit_none: 该应用没有待发布的商店文案草稿
     listing_edit_no_fields: "请至少提供以下之一（文本）：%{fields}"
     listing_edit_refused: "商店文案修改被拒绝：%{reasons}"
+    listing_graphic_no_file: "请以名为 file 的 multipart 字段发送图片"
+    listing_graphic_refused: "图片被拒绝：%{reasons}"
+    listing_graphic_storage_failed: "暂时无法保存图片，未保存任何内容，请重试"
     channel_track_invalid: "未知的发布轨道。请使用以下之一：%{tracks}"
     release_app_archived: 该应用已归档，无法更改其版本
     release_not_held: 只有已暂缓的版本才能通过此方式发布（当前版本状态为 %{status}）
