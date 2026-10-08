@@ -953,3 +953,29 @@ curl -sIL "$Z/download/releases/6" | grep -i -E "^HTTP|^location|content-disposi
 ```
 
 The first command answers `changes`: one row per stored file (`file_storage_key`, `universal_apk_storage_key`, `compressed_apks_storage_key`, `icon_storage_key`) with `from`, `to` and `status` (`renamed`, `already`, `same`). The last `content-disposition` should say `filename=appstore-1.1.4.apk`. Running it again is safe (every row says `same`). A 422 `CI is still working` means wait; a 502 names what storage said, files already renamed keep their new names, and a second run finishes the rest. If both the old and the new name exist, nothing is overwritten and it is a 502.
+
+## 26. Setting a release's permissions and replacing the old version (Task 46b, 46c, 2026-10-08; written, NOT run)
+
+`$Z` and `$T` as in section 23. Deploy Zealot first (a push to `develop`). Both calls need the user token of someone who manages the app.
+
+**Permissions.** A release made before Task 46a, or one whose CI read failed, has an empty list (the live index shows release 6 with none). This replaces the whole list; names that are not well-formed are dropped and come back in `ignored`; an empty array clears the list. The index is republished by itself.
+
+```
+curl -sS -X PUT "$Z/api/releases/6/permissions" -d token="$T" \
+  -d 'permissions=android.permission.INTERNET,android.permission.ACCESS_NETWORK_STATE,android.permission.WAKE_LOCK' | jq .
+```
+
+The answer shows `permissions` as stored. A minute later the same list appears under the version in `$Z/catalog/index.json`.
+
+Send the list the install screen shows for the file people actually install (stage 2 of `read-upload.yml` reads exactly that for new uploads). To read it from a downloaded APK, run `aapt2 dump permissions appstore-1.1.4.apk`.
+
+**Only one version is kept.** After a newer release is `available` and installable, remove everything older in its channel. It refuses (422, nothing removed) while the named release is held, halted, pulled, still in CI or failed in CI. A release uploaded after it is never touched. Run the dry run first.
+
+```
+curl -sS -X POST "$Z/api/releases/<newer id>/supersede_previous" -d token="$T" -d dry_run=true | jq .
+curl -sS -X POST "$Z/api/releases/<newer id>/supersede_previous" -d token="$T" | jq .
+```
+
+`removed` lists the deleted releases, `failed` any that could not be (run it again). Their stored files are deleted by the existing cleanup job, which now also covers the universal APK (before this task that file was left behind in storage). The signed index is republished after a real removal. **Deleting is permanent: there is no way back, and a removed version cannot be offered again.**
+
+**Not verified.** Nothing here ran: no Rails, no RSpec, no real call. `ruby -c` passed on every changed file.

@@ -299,8 +299,10 @@ class Release < ApplicationRecord
   # callback with an OR condition, so a save that changes several of them still enqueues once.
   # Task 40e: the universal APK's hash and size are what the index advertises for a CI-built release, and
   # CI's result arrives after the entry first went out at upload time, so recording them republishes.
+  # Task 46b: `permissions` is published per version too (Serializer), so setting them over the API
+  # (PUT /api/releases/:id/permissions) has to reach readers, not wait for an unrelated publish.
   CATALOG_INDEX_RELEASE_FIELDS = %w[
-    status rollout_percentage rollout_status universal_apk_sha256 universal_apk_size
+    status rollout_percentage rollout_status universal_apk_sha256 universal_apk_size permissions
   ].freeze
 
   after_update_commit :publish_catalog_index_if_app_live, if: :catalog_index_release_field_changed?
@@ -673,7 +675,10 @@ class Release < ApplicationRecord
   # see the in-memory attributes even though the row is gone), so the keys are
   # captured here and passed to the job rather than re-queried by id.
   def enqueue_storage_cleanup
-    keys = [file_storage_key, patched_file_storage_key, compressed_apks_storage_key, icon_storage_key].compact
+    # Task 46c: the CI-built universal APK is the biggest object a release owns and was missing from this list, so
+    # deleting a release left it behind in storage for good. Needed now that a new version replaces the old one.
+    keys = [file_storage_key, patched_file_storage_key, compressed_apks_storage_key, icon_storage_key,
+            universal_apk_storage_key].compact
     return if keys.empty?
 
     ReleaseStorageCleanupJob.perform_later(id, keys)

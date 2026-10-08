@@ -1213,6 +1213,11 @@ zh-CN:
       ci_busy: "未重命名：CI 仍在处理此版本。请等待完成后再试"
       nothing_stored: "未重命名：此版本没有已记录的存储文件"
     rename_stored_storage_failed: "存储拒绝了重命名（%{reason}）。已重命名的文件保留新名称；排除原因后请再运行一次"
+    release_permissions_missing: "请以 permissions 发送完整列表（数组，或以逗号分隔的字符串）；空数组表示清空"
+    supersede_previous_refused:
+      app_archived: "未删除任何内容：该应用已归档，无法更改其版本"
+      not_available: "未删除任何内容：此版本必须先处于 available 状态（暂缓、暂停或已撤下的版本不会提供下载）"
+      not_installable: "未删除任何内容：此版本尚无法安装（CI 未完成或失败，或文件缺失），在此之前旧版本会保留"
     direct_upload_required: "Android 文件必须通过 POST /api/apps/upload_sessions 上传（再 PUT 到返回的地址，然后完成）。参见 docs/direct_upload.md。"
     new_app_session_default_host_only: "应用的首次上传仅在默认主机上可用。请上传到已有频道，或使用控制台。"
     new_app_session_refused: "您的账号不能创建应用，因此首次上传被拒绝。请发送 channel_key 以上传到已有应用。"

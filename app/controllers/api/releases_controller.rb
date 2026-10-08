@@ -90,7 +90,71 @@ class Api::ReleasesController < Api::BaseController
     render json: { error: t('api.rename_stored_storage_failed', reason: e.message) }, status: :bad_gateway
   end
 
+  # Task 46b: PUT /api/releases/:id/permissions -- replace the release's permission list (user token; the same
+  # people who may update the release). Send `permissions[]=android.permission.INTERNET&permissions[]=...`, a JSON
+  # array, or one string separated by commas or spaces; an empty array clears the list. Each name is judged by the
+  # same cleaner the CI upload uses (`ReleaseUploadIntake.clean_permissions`: well-formed names only, duplicates
+  # collapse, sorted, at most 200), and what it dropped comes back in `ignored`, so a typo is never silent. The
+  # catalog index is republished through the release's own callback (`permissions` is one of its watched columns).
+  # Needed because a release made before Task 46a, or one whose CI read failed, keeps an empty list.
+  #
+  # @param id [Integer] required release id
+  # @param permissions [Array<String>, String] required, the full list
+  # @return [JSON] `id`, `permissions` (as stored) and `ignored`, or 422 when `permissions` is missing
+  def permissions
+    given = permissions_param
+    return render json: { error: t('api.release_permissions_missing') }, status: :unprocessable_entity if given.nil?
+
+    if @release.app.archived
+      return render json: { error: t('api.release_app_archived') }, status: :unprocessable_entity
+    end
+
+    names = ReleaseUploadIntake.clean_permissions(given)
+    @release.update!(permissions: names)
+    render json: { id: @release.id, permissions: @release.permissions,
+                   ignored: given.map { |name| name.to_s.strip }.uniq - names }
+  end
+
+  # Task 46c: POST /api/releases/:id/supersede_previous -- this release is the newer version: remove every older
+  # release of its channel (and their stored files), so only this one is kept. The operator's rule is that Zealot
+  # keeps one version and a new upload replaces the old. Refused (422, nothing removed) unless this release is
+  # `available` and installable (see ReleaseSuperseder), so the app always keeps something to download. A release
+  # uploaded AFTER this one is never touched. `dry_run=true` lists what would go and changes nothing. A release
+  # that could not be removed is listed in `failed`; run it again after fixing the cause.
+  #
+  # @param id [Integer] required release id (the one that stays)
+  # @param dry_run [Boolean] optional, report only
+  # @return [JSON] `kept`, `dry_run`, `removed` and `failed` (each entry: id, release_version, build_version)
+  def supersede_previous
+    result = ReleaseSuperseder.new(@release).call(dry_run: dry_run_requested?)
+    render json: { id: @release.id }.merge(result.to_h)
+  rescue ReleaseSuperseder::Refused => e
+    render json: { error: t("api.supersede_previous_refused.#{e.message}") }, status: :unprocessable_entity
+  end
+
   protected
+
+  # The Pundit question each action asks. `release` is the console's status move; the two Task 46 actions reuse the
+  # rules that already say who may change or remove a release of this app. Any other action maps to nil, which lets
+  # Pundit infer its own predicate (`update?`, `destroy?`, `show?`, `retry_compile?`, `rename_stored?`) as before.
+  AUTHORIZE_AS = {
+    'release' => :update_status?,
+    'permissions' => :update?,
+    'supersede_previous' => :destroy?
+  }.freeze
+
+  # Task 46b: the permission list as an Array of strings, or nil when the request did not send `permissions`.
+  def permissions_param
+    value = params[:permissions]
+    return value.map(&:to_s) if value.is_a?(Array)
+    return value.split(/[\s,]+/).reject(&:blank?) if value.is_a?(String)
+
+    nil
+  end
+
+  def dry_run_requested?
+    ActiveModel::Type::Boolean.new.cast(params[:dry_run]) == true
+  end
 
   # Task 23: this controller never authorized anything, so any token holder
   # could edit or delete any release of any app (PUT/DELETE /api/releases/:id).
@@ -110,7 +174,7 @@ class Api::ReleasesController < Api::BaseController
     # For every other action the query is nil, which lets Pundit infer the action's own predicate --
     # `update?`/`destroy?` as before, and, since Task 31, `show?` for the new read, which is true for
     # anyone (`ReleasePolicy#show?`); the per-app token confinement above already scopes it.
-    authorize @release, (action_name == 'release' ? :update_status? : nil)
+    authorize @release, AUTHORIZE_AS[action_name]
   end
 
   # True only for the actions that accept a `zpa_` bearer header (`release` and, since Task 31, `show`),

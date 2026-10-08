@@ -447,6 +447,10 @@ Rails.application.routes.draw do
         post :retry_compile
         # Task 44f: POST /api/releases/:id/rename_stored (platform admin, user token only).
         post :rename_stored
+        # Task 46b: PUT /api/releases/:id/permissions (replace the permission list; user token).
+        put :permissions
+        # Task 46c: POST /api/releases/:id/supersede_previous (remove the older releases of the channel; user token).
+        post :supersede_previous
       end
     end
 

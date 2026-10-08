@@ -1237,6 +1237,11 @@ en:
       ci_busy: "Not renamed: CI is still working on this release. Wait for it to finish, then try again"
       nothing_stored: "Not renamed: no stored file is recorded for this release"
     rename_stored_storage_failed: "Storage refused the rename (%{reason}). Files already renamed keep their new names; run it again after fixing the cause"
+    release_permissions_missing: "Send the full list as permissions (an array, or one string separated by commas); an empty array clears it"
+    supersede_previous_refused:
+      app_archived: "Nothing removed: this app is archived, so its releases cannot be changed"
+      not_available: "Nothing removed: this release must be available first (a held, halted or pulled release is not served)"
+      not_installable: "Nothing removed: this release cannot be installed yet (CI has not finished or failed, or its file is missing), and the older version stays until it can"
     direct_upload_required: "Android files must be uploaded through POST /api/apps/upload_sessions (then PUT to the URL it returns, then finalize). See docs/direct_upload.md."
     new_app_session_default_host_only: "The first upload of an app is only available on the default host. Upload to an existing channel, or use the console."
     new_app_session_refused: "Your account may not create apps, so the first upload of an app was refused. Send channel_key to upload to an existing app."
