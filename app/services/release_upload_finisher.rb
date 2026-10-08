@@ -322,12 +322,16 @@ class ReleaseUploadFinisher
     return :not_open unless row.state_processing? && row.release_id.present?
 
     release = Release.lock.find(row.release_id)
-    release.update!(release_attributes(row, keys))
+    release.update!(release_attributes(release, row, keys))
+    # The state `GET /api/releases/:id` reports and release workflows poll (`done` = built and recorded;
+    # an APK has nothing to build, so `skipped`). The staged flow used to leave it NULL, so a poller waited
+    # for ever and the release stayed held.
+    release.record_asset_delivery!(bundle? ? :done : :skipped)
     row.update_columns(state: 'done', error: nil, updated_at: @now)
     :finished
   end
 
-  def release_attributes(row, keys)
+  def release_attributes(release, row, keys)
     attributes = { file_storage_key: keys[:file] }
     attributes[:file_sha256] = body['injected_file_sha256'].to_s.downcase if injected_apk?
     attributes[:file_sha256] = body['signed_file_sha256'].to_s.downcase if signed_apk?
@@ -335,7 +339,7 @@ class ReleaseUploadFinisher
     attributes.merge!(bundle_attributes(keys)) if bundle?
     attributes[:permissions] = reported_permissions if reported_permissions.any?
     attributes.merge!(signing_attributes)
-    attributes[:status] = 'available' unless hold_requested?(row)
+    attributes[:status] = 'available' unless hold_honoured?(release, row)
     attributes
   end
 
@@ -375,6 +379,23 @@ class ReleaseUploadFinisher
   # The same cast the API upload door uses for `hold`.
   def hold_requested?(row)
     ActiveModel::Type::Boolean.new.cast(row.form_options['hold']) == true
+  end
+
+  # Releases go out automatically. `hold` is honoured only for the FIRST release of an app (an owner who wants
+  # to look at it before it can be installed); an UPDATE of an app that already has an earlier release is
+  # never held, whatever the client sent, because a held update would leave people on the old version until
+  # somebody clicked. Whether the app is visible at all is not decided here: the catalog only lists apps whose
+  # listing is live (admin approval or the payment webhook) and whose account is not suspended
+  # (`App.listing_live`), and a release that is `available` appears the moment that is true.
+  def hold_honoured?(release, row)
+    hold_requested?(row) && first_release_of_app?(release)
+  end
+
+  def first_release_of_app?(release)
+    app_id = release.app&.id
+    return true if app_id.nil?
+
+    !Release.joins(channel: :scheme).where(schemes: { app_id: app_id }).where.not(id: release.id).exists?
   end
 
   # Housekeeping that must not turn an accepted result into an error: the release is already saved.
@@ -438,7 +459,9 @@ class ReleaseUploadFinisher
       text = reason.to_s.truncate(1000)
       row.update_columns(state: 'failed', error: text, updated_at: @now)
       Release.where(id: row.release_id)
-             .update_all(ci_compile_state: 'failed', ci_compile_error: text, ci_compile_finished_at: @now)
+             .update_all(ci_compile_state: 'failed', ci_compile_error: text, ci_compile_finished_at: @now,
+                         asset_delivery_state: 'failed', asset_delivery_error: text.truncate(500),
+                         asset_delivery_state_at: @now)
       true
     end
   end

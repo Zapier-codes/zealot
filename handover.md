@@ -8807,3 +8807,14 @@ Termux, on the real file: `ls -l`, `sha256sum` (expect 31,238,330 and `a5ec9fef.
   6. **Install gating:** Play does not let an update from a different signing key replace an app. The organisation-key rule in Task 47 point 8 is the same Android rule, not a Zealot choice.
 - **Operator's instruction recorded:** an app published through Zealot is adopted and patched automatically from its bundle: the updater (Task 47) and the other no-reinstall extras (what's-new text, minimum-version advisory) are injected without publisher work, controlled by the publisher switch (47e) and disclosed in the publish flow (47f). This stands as Task 47's goal. **A release that does not install cannot update itself, so 46c-prov must be proven on a device before any of 47a to 47c is built.**
 - **Take next (replaces the list above):** (1) the operator's Termux output and the exact install error for release 6; (2) copy `ManifestPatch.java` to `zealot-storage/zealot-ci/aab_manifest_patch/`, cut a new Appstore release, install it, report the result; (3) on the go-ahead, the checker and boolean fixes above; (4) then Task 47 in its stated order, with 47i and the setting-detection requirement added; (5) 46b-index guard, D-Store download door, 46d.
+
+## Task 48: updates are never held; the staged flow reports its compile state; the account's standing is one thing
+
+**Found (release 7 of Appstore, `status: held`, `ci_compile_state: done`, `asset_delivery_state: null`).** Storeapp's `release-aab.yml` uploads with `hold=true` and a later job polls `GET /api/releases/:id` until `asset_delivery_state` is `done`, then calls `POST /api/releases/:id/release`. The staged-upload finisher (40i-c) sets `ci_compile_state: done` but never wrote `asset_delivery_state`, so the poll never saw `done`, timed out, and the release stayed held while D-Store kept showing the previous version (a held release is left out of `versions[]`).
+
+**Changed (written, NOT run: no Ruby in the sandbox).**
+- `ReleaseUploadFinisher`: stage 2 records `asset_delivery_state` (`done` for a bundle, `skipped` for an APK, `failed` with the reason on a failed or rejected upload). `hold` is honoured only for the first release of an app; an update is always `available` when stage 2 finishes. Visibility of the app is still decided by `App.listing_live` (admin approval or the payment webhook).
+- `AppMaintenanceBilling`: the standing is the account's. `suspend_for_lapse!` suspends every live app of that user (`suspend_account!`); a maintenance payment restores them all at once (`restore_account!`) unless another of the user's apps is still overdue.
+
+**Not changed, by choice.** The $2 fee is still per app (`MONTHLY_FEE_CENTS`), `GRACE_DAYS` is still 7, the sweep is still hourly (`17 * * * *`), and an app with no billing row is not touched by the account cascade.
+**To release the stuck one:** `POST /api/releases/7/release` (held to available; republishes the index).

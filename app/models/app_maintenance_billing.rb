@@ -10,6 +10,10 @@
 # - A failed charge is retried every RETRY_AFTER.
 # - An app not paid up for GRACE_DAYS past `paid_through` is suspended (taken off the catalog); `lapsed_at`
 #   records that Zealot did it. A later successful maintenance payment brings it back.
+# - The standing is the ACCOUNT's, not the app's: when one of a user's apps lapses, every other live app of that
+#   user is suspended with it (`suspend_account!`), and when the payment arrives all of them come back at once
+#   (`restore_account!`), unless another of the user's apps is still overdue. Suspended apps keep accepting
+#   uploads, but nothing of theirs is in the catalog until the account is back in good standing.
 class AppMaintenanceBilling < ApplicationRecord
   MONTHLY_FEE_CENTS = 200
   INCLUDED_MONTHS = 1
@@ -56,9 +60,34 @@ class AppMaintenanceBilling < ApplicationRecord
     was_lapsed = lapsed_at.present?
     update!(status: 'active', last_payment_id: payment.id,
             hyperswitch_mandate_id: payment.hyperswitch_mandate_id || hyperswitch_mandate_id,
-            paid_through: start + 1.month, next_charge_at: start + 1.month, lapsed_at: nil)
-    app.go_live! if was_lapsed
+            paid_through: start + 1.month, next_charge_at: start + 1.month)
+    self.class.restore_account!(user_id) if was_lapsed
     self
+  end
+
+  # True when any of the account's apps is unpaid GRACE_DAYS past its `paid_through`.
+  def self.overdue_for_account?(user_id)
+    where(user_id: user_id, status: %w[active past_due]).where('paid_through < ?', GRACE_DAYS.days.ago).exists?
+  end
+
+  # Suspends every live app of the account (each is marked with `lapsed_at` so only Zealot's own suspensions are
+  # ever lifted again). An app that is not live (draft, awaiting payment, or suspended by an admin) is left alone.
+  def self.suspend_account!(user_id)
+    where(user_id: user_id, lapsed_at: nil).includes(:app).find_each do |billing|
+      billing.update!(lapsed_at: Time.current) if billing.app.suspend!
+    end
+  end
+
+  # Puts back every app Zealot suspended for this account, in one pass, once nothing of the account is overdue.
+  # Each `go_live!` republishes the catalog index, so the apps are listed again straight away.
+  def self.restore_account!(user_id)
+    return false if overdue_for_account?(user_id)
+
+    where(user_id: user_id).where.not(lapsed_at: nil).includes(:app).find_each do |billing|
+      billing.app.go_live!
+      billing.update!(lapsed_at: nil)
+    end
+    true
   end
 
   # A failed or refused charge: past due, and try again after RETRY_AFTER. It does not suspend by itself;
@@ -70,8 +99,9 @@ class AppMaintenanceBilling < ApplicationRecord
   # Takes a lapsed app off the catalog. Only a currently-live app is suspended (App#suspend!), and the lapse is
   # recorded only when that worked.
   def suspend_for_lapse!
-    return false unless app.suspend!
-
-    update!(lapsed_at: Time.current)
+    suspended = app.suspend!
+    update!(lapsed_at: Time.current) if suspended
+    self.class.suspend_account!(user_id)
+    suspended
   end
 end
