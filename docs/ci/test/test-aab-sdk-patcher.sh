@@ -89,4 +89,8 @@ elif [[ "$MANIFEST_OK" == "0" ]]; then
   echo "FAIL: built APK's manifest is missing the provider and/or the permission"; exit 1
 fi
 
+echo "[*] checking every injected attribute carries its Android resource id (Task 46c-prov)"
+python3 -I "$REPO_ROOT/docs/ci/test/check-manifest-resource-ids.py" "$APK_PATH" \
+  || { echo "FAIL: injected attributes lack resource ids; Android would report a parse error"; exit 1; }
+
 echo "[*] all checks passed (manifest-content check: $([[ $MANIFEST_OK == 1 ]] && echo ran && echo || echo skipped))"

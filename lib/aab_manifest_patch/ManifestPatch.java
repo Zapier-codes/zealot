@@ -5,7 +5,7 @@
 //
 // Adds, inside <application>:
 //   <provider android:name="com.zealot.proxy.ZealotProxyProvider"
-//             android:authorities="${applicationId}.zealot-proxy" android:exported="false">
+//             android:authorities="<package>.zealot-proxy" android:exported="false">
 //     <meta-data android:name="com.zealot.proxy.API_KEY" android:value="<api_key>"/>
 //   </provider>
 // and, as top-level children of <manifest>, each permission the SDK needs that the app lacks (INTERNET,
@@ -62,7 +62,7 @@ public class ManifestPatch {
             XmlElement providerEl = XmlElement.newBuilder()
                 .setName("provider")
                 .addAttribute(attr("name", "com.zealot.proxy.ZealotProxyProvider"))
-                .addAttribute(attr("authorities", "${applicationId}.zealot-proxy"))
+                .addAttribute(attr("authorities", packageName(manifestBuilder) + ".zealot-proxy"))
                 .addAttribute(attr("exported", "false"))
                 .addChild(XmlNode.newBuilder().setElement(metaDataEl).build())
                 .build();
@@ -100,8 +100,31 @@ public class ManifestPatch {
         }
     }
 
+    // Task 46c-prov: every android: attribute must carry its framework resource id. Android's installer
+    // matches manifest attributes by id, not by name; an attribute with id 0 is not read, so a provider
+    // without a readable android:name/android:authorities makes the whole manifest malformed
+    // ("There was a problem parsing the package"). Name-only dumps (aapt2, androguard) do not show this.
+    private static int resId(String name) {
+        switch (name) {
+            case "name": return 0x01010003;
+            case "exported": return 0x01010010;
+            case "authorities": return 0x01010018;
+            case "value": return 0x01010024;
+            default: throw new IllegalArgumentException("no framework resource id known for android:" + name);
+        }
+    }
+
     private static XmlAttribute attr(String name, String value) {
-        return XmlAttribute.newBuilder().setNamespaceUri(ANDROID_NS).setName(name).setValue(value).build();
+        return XmlAttribute.newBuilder().setNamespaceUri(ANDROID_NS).setName(name)
+            .setResourceId(resId(name)).setValue(value).build();
+    }
+
+    // The bundle's manifest is already merged, so ${applicationId} would never be replaced: use its package.
+    private static String packageName(XmlElement.Builder manifest) {
+        for (XmlAttribute a : manifest.getAttributeList()) {
+            if (a.getName().equals("package") && !a.getValue().isEmpty()) return a.getValue();
+        }
+        throw new RuntimeException("manifest has no package attribute");
     }
 
     private static XmlNode.Builder findChildBuilder(XmlElement.Builder parent, String tagName) {
