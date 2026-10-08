@@ -333,6 +333,7 @@ class ReleaseUploadFinisher
     attributes[:file_sha256] = body['signed_file_sha256'].to_s.downcase if signed_apk?
     attributes.merge!(icon_storage_key: keys[:icon], icon_sha256: metadata['icon_sha256']) if keys[:icon]
     attributes.merge!(bundle_attributes(keys)) if bundle?
+    attributes[:permissions] = reported_permissions if reported_permissions.any?
     attributes.merge!(signing_attributes)
     attributes[:status] = 'available' unless hold_requested?(row)
     attributes
@@ -352,6 +353,12 @@ class ReleaseUploadFinisher
 
     reported = normalize_fingerprint(body['cert_sha256'])
     reported.present? && expected_certificate.present? && reported == expected_certificate
+  end
+
+  # Task 46a: the permissions of the file people will install (read by CI after any SDK injection). Cleaned the
+  # same way as stage 1's list; empty means CI did not send any and the stage-1 list stays as it is.
+  def reported_permissions
+    @reported_permissions ||= ReleaseUploadIntake.clean_permissions(body['permissions'])
   end
 
   def bundle_attributes(keys)

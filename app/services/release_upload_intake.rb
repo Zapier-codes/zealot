@@ -33,6 +33,9 @@ class ReleaseUploadIntake
   PACKAGE_FORMAT = /\A[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+\z/
   SHA256_FORMAT = /\A[0-9a-f]{64}\z/
   ABI_FORMAT = /\A[A-Za-z0-9_-]{1,32}\z/
+  # Task 46a: an Android permission name (`android.permission.INTERNET`, `com.example.app.SOME_PERMISSION`).
+  PERMISSION_FORMAT = /\A[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+\z/
+  MAX_PERMISSIONS = 200
   KINDS = { 'apk' => '.apk', 'aab' => '.aab' }.freeze
   MAX_VERSION_CODE = 2_100_000_000
 
@@ -215,9 +218,21 @@ class ReleaseUploadIntake
       'version_code' => Integer(body['version_code'].to_s, 10), 'version_name' => body['version_name'].to_s,
       'app_label' => body['app_label'].presence, 'file_sha256' => sha, 'file_size' => upload.uploaded_size,
       'min_sdk' => integer_or_nil(body['min_sdk']), 'target_sdk' => integer_or_nil(body['target_sdk']),
-      'abis' => Array(body['abis']), 'icon_key' => body['icon_key'].presence,
+      'abis' => Array(body['abis']), 'permissions' => self.class.clean_permissions(body['permissions']),
+      'icon_key' => body['icon_key'].presence,
       'icon_sha256' => body['icon_sha256'].to_s.downcase.presence
     }.compact
+  end
+
+  # Task 46a: the permissions CI read from the manifest. Cleaned, never refused ("nothing is rejected"): anything that
+  # is not a well-formed permission name is dropped, duplicates collapse, the list is capped and sorted. Used by the
+  # stage-2 finisher too, so both stages judge a name the same way. Always an Array.
+  def self.clean_permissions(value)
+    return [] unless value.is_a?(Array)
+
+    value.filter_map { |name| name.to_s.strip if name.is_a?(String) && name.length <= 255 }
+         .select { |name| PERMISSION_FORMAT.match?(name) }
+         .uniq.sort.first(MAX_PERMISSIONS)
   end
 
   def integer_or_nil(value)

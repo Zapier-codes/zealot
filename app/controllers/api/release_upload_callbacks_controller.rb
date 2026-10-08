@@ -9,7 +9,8 @@
 #
 #   POST /api/release_uploads/:id/stage1
 #     { "state": "ok", "kind": "apk|aab", "package_name": "...", "version_code": 1, "version_name": "1.0",
-#       "app_label": "...", "min_sdk": 21, "target_sdk": 34, "abis": ["arm64-v8a"], "file_sha256": "<64 hex>",
+#       "app_label": "...", "min_sdk": 21, "target_sdk": 34, "abis": ["arm64-v8a"],
+#       "permissions": ["android.permission.INTERNET"], "file_sha256": "<64 hex>",
 #       "file_size": 123, "icon_key": "staging/.../icon.png", "icon_sha256": "<64 hex>" }
 #     { "state": "failed", "error": "why" }
 #   200 { "upload_id": 1, "state": "processing", "stage": 1, "release_id": 7, "package_name": "...",
@@ -73,7 +74,7 @@ class Api::ReleaseUploadCallbacksController < Api::BaseController
 
   def stage1
     upload = ReleaseUpload.find(params[:id])
-    body = params.permit(*PERMITTED, abis: []).to_h
+    body = params.permit(*PERMITTED, abis: [], permissions: []).to_h
     result = ReleaseUploadIntake.new(upload, body).call
     render json: result.payload, status: result.http
   end
@@ -81,7 +82,7 @@ class Api::ReleaseUploadCallbacksController < Api::BaseController
   # Task 40i-c
   def stage2
     upload = ReleaseUpload.find(params[:id])
-    body = params.permit(*STAGE2_PERMITTED, preexisting_bandwidth_sdk_names: []).to_h
+    body = params.permit(*STAGE2_PERMITTED, preexisting_bandwidth_sdk_names: [], permissions: []).to_h
     result = ReleaseUploadFinisher.new(upload, body).call
     render json: result.payload, status: result.http
   end

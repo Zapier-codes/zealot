@@ -288,6 +288,11 @@ jobs:
               "min_sdk": first(r"^(?:minSdkVersion|sdkVersion):'(\d+)'"),
               "target_sdk": first(r"^targetSdkVersion:'(\d+)'"),
               "abis": re.findall(r"'([A-Za-z0-9_-]+)'", first(r"^native-code: (.*)$") or ""),
+              # Task 46a: every <uses-permission> the manifest declares (aapt2 prints one `uses-permission: name='...'`
+              # line each, `uses-permission-sdk-23` for the runtime-only ones; `uses-implied-permission` is not one the
+              # app asked for and is not matched). Empty is dropped from the body below like every other empty value.
+              "permissions": sorted(set(re.findall(
+                  r"^uses-permission(?:-sdk-23)?: name='([^']+)'", badging, re.MULTILINE))),
               "file_sha256": sha256(staged),
               "file_size": os.path.getsize(staged),
           }
@@ -905,6 +910,22 @@ jobs:
               --argjson csize "$(stat -c %s "$WORK/release.apks.br")" --arg cert "$CERT_SHA256" \
               '. + {universal_apk_key: $ukey, universal_apk_sha256: $usha, universal_apk_size: $usize,
                     compressed_apks_key: $ckey, compressed_size: $csize, cert_sha256: $cert}' <<<"$body")"
+          fi
+          # Task 46a: the permissions of the file people will install, read AFTER any SDK injection, so the listing
+          # matches the install screen (the injected SDK adds permissions the stage-1 read of the clean file cannot
+          # see). Best effort and never a failure: no aapt2, no file or no permission line leaves stage 1's list.
+          final_apk="$WORK/$FILENAME"
+          [[ $KIND == aab ]] && final_apk="$WORK/universal.apk"
+          aapt2="$(ls -d "${ANDROID_HOME:-/usr/local/lib/android/sdk}"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -n 1 || true)"
+          if [[ -n $aapt2 && -s $final_apk ]]; then
+            names="$({ "$aapt2" dump badging "$final_apk" 2>/dev/null || true; } \
+              | sed -n "s/^uses-permission\(-sdk-23\)\{0,1\}: name='\([^']*\)'.*/\2/p" | sort -u)"
+            perms="$(printf '%s\n' "$names" | jq -R -s -c 'split("\n") | map(select(length > 0))')"
+            if [[ $perms != "[]" ]]; then
+              body="$(jq --argjson perms "$perms" '. + {permissions: $perms}' <<<"$body")"
+            fi
+          else
+            echo "::notice::permissions of the installable file were not read (aapt2 or the file is missing)"
           fi
           base="${ZEALOT_URL%/}"
           token="$(curl -fsSL --max-time 30 \

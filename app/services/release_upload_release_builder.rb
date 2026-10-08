@@ -119,6 +119,7 @@ class ReleaseUploadReleaseBuilder
       name: meta['app_label'].presence || meta['package_name'], bundle_id: meta['package_name'],
       release_version: meta['version_name'], build_version: meta['version_code'].to_s,
       min_sdk_version: meta['min_sdk'], target_sdk_version: meta['target_sdk'], abis: Array(meta['abis']),
+      permissions: Array(meta['permissions']),
       file_sha256: meta['file_sha256'], source: row.form_options['source'].presence
     }
   end
