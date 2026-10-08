@@ -26,7 +26,7 @@ RSpec.describe 'API app migrated_comments', type: :request do
 
   it 'refuses a request with no credential and a non-admin user' do
     post path, params: { source_note: note, comments: comments }
-    expect(response).to have_http_status(:unauthorized)
+    expect(response).to have_http_status(:unprocessable_entity)
 
     post path, params: { token: developer.token, source_note: note, comments: comments }
     expect(response).to have_http_status(:forbidden)

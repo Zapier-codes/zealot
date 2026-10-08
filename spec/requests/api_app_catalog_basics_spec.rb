@@ -21,7 +21,7 @@ RSpec.describe 'API app catalog_basics', type: :request do
 
   it 'refuses a request with no credential and a non-admin user' do
     put path, params: { category: 'entertainment' }
-    expect(response).to have_http_status(:unauthorized)
+    expect(response).to have_http_status(:unprocessable_entity)
 
     put path, params: { token: developer.token, category: 'entertainment' }
     expect(response).to have_http_status(:forbidden)

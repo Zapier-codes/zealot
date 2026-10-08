@@ -30,11 +30,14 @@ RSpec.describe CatalogIndex::Serializer, 'reviews (carried-over comments)' do
     newer = comment(author_name: 'Zainab L.', rating: 3, body: 'Search is slow.', commented_on: Date.new(2026, 9, 18),
                     helpful_count: 23)
 
+    # commented_on is a `date` column; the serializer publishes it as a date-time at UTC midnight
+    # (`iso_date`), matching docs/catalog_index_v2.schema.json's `format: date-time` and D-Store's
+    # carried-over reader, which reads it alongside the store's own `created_at` date-times.
     expect(serializer.send(:migrated_comments_for, app_with([older, newer]))).to eq(
       [{ author_name: 'Amina K.', rating: 5, body: 'Picked the right APK first time.',
-         commented_on: '2026-09-02', helpful_count: 41 },
+         commented_on: '2026-09-02T00:00:00Z', helpful_count: 41 },
        { author_name: 'Zainab L.', rating: 3, body: 'Search is slow.',
-         commented_on: '2026-09-18', helpful_count: 23 }]
+         commented_on: '2026-09-18T00:00:00Z', helpful_count: 23 }]
     )
   end
 

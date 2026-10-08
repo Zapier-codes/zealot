@@ -815,10 +815,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_07_190000) do
   add_foreign_key "listing_edits", "apps", on_delete: :cascade
   add_foreign_key "listing_edits", "users", column: "editor_id", on_delete: :nullify
   add_foreign_key "listing_graphics", "apps", on_delete: :cascade
-  add_foreign_key "migrated_comments", "apps", on_delete: :cascade
-  add_foreign_key "migrated_comments", "users", column: "recorded_by_id", on_delete: :nullify
   add_foreign_key "metadata", "releases", on_delete: :cascade
   add_foreign_key "metadata", "users", on_delete: :cascade
+  add_foreign_key "migrated_comments", "apps", on_delete: :cascade
+  add_foreign_key "migrated_comments", "users", column: "recorded_by_id", on_delete: :nullify
   add_foreign_key "payments", "apps"
   add_foreign_key "payments", "users"
   add_foreign_key "publisher_profiles", "users", on_delete: :cascade

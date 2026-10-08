@@ -35,7 +35,7 @@ RSpec.describe 'API release rename_stored', type: :request do
   it 'refuses a request with no credential' do
     post path
 
-    expect(response).to have_http_status(:unauthorized)
+    expect(response).to have_http_status(:unprocessable_entity)
   end
 
   it 'refuses a non-admin user' do
