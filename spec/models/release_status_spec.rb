@@ -53,7 +53,9 @@ RSpec.describe Release, 'status (Task 27f-a)' do
 
     it 'leaves a held release out of versions[] altogether' do
       kept = make_release(version: 1)
-      make_release(version: 2).update!(status: :held)
+      # Task 49: an update can no longer be held through the model, so the held row is written directly (a
+      # legacy row, or one a first release left behind) to keep testing what the index does with `held`.
+      make_release(version: 2).update_columns(status: 'held')
 
       expect(serialized_versions(app).map { |v| v[:release_id] }).to eq([kept.id])
     end

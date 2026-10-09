@@ -213,6 +213,8 @@ publishes can never interleave and the order they are signed in is the order the
 in. (The lock is per DB session, so it also covers separate processes and is released
 if a process dies.)
 
+**Freshness (Task 49).** `expires_at` is 48 hours after `generated_at`, and `CatalogIndexHeartbeatJob` republishes every configured index twice a day (16:05 and 22:05 UTC) even when nothing changed, so a quiet day never lets an index expire. A reader still refuses an expired index.
+
 **Deploy hook.** `DSTORE_DEPLOY_HOOK_URL` (optional; a secret, never logged) is POSTed
 after a commit actually landed. A failing hook never fails the publish — the index is
 already public — and D-store's own cache rule refreshes it anyway.

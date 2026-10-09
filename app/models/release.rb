@@ -210,8 +210,44 @@ class Release < ApplicationRecord
   }.freeze
 
   # The moves offered from the current status, as `{ target_status => action_name }`.
+  #
+  # Task 49: `hold` is offered only while the release may still be held (see `hold_allowed?`), so the
+  # console button, the API's `release` check and `status_change_allowed?` all read the same rule.
   def status_actions
-    STATUS_TRANSITIONS.fetch(status.to_s, {})
+    actions = STATUS_TRANSITIONS.fetch(status.to_s, {})
+    return actions unless actions.key?('held') && !hold_allowed?
+
+    actions.except('held')
+  end
+
+  # Task 49: the one rule for holding a release, used by every door (the staged finisher, the API upload,
+  # the console's `hold` move and the model's own validation). Only the FIRST release of an app may be
+  # held (an owner who wants to check it before it goes out, the way Play's managed publishing does).
+  # An update to an app that already has a version is never held: a held update leaves everyone who
+  # visits the website or the store on the old version until someone notices, which is what happened to
+  # release 7 of Appstore. Taking a bad update away stays possible with `halt` and `pull`, which keep it
+  # in the index so a store client can stop offering it.
+  def first_release_of_app?
+    app_id = app&.id
+    return true if app_id.nil?
+
+    others = Release.joins(channel: :scheme).where(schemes: { app_id: app_id })
+    others = others.where.not(id: id) if persisted?
+    !others.exists?
+  end
+  alias hold_allowed? first_release_of_app?
+
+  # Task 49: the model-level guard behind `status_actions`, so a console edit, a rake task or any other
+  # writer that bypasses the transition table cannot hold an update either. Creating a release `held`
+  # is not an update and is untouched (the staged builder always starts a release held and the
+  # finisher then releases it).
+  def update_cannot_be_held
+    return unless will_save_change_to_status? && status_held?
+    return if hold_allowed?
+
+    errors.add(:status, I18n.t('releases.messages.errors.update_cannot_be_held',
+                               default: 'An update to an app that already has a version cannot be held; ' \
+                                        'halt or pull it instead.'))
   end
 
   def status_change_allowed?(target)
@@ -236,6 +272,7 @@ class Release < ApplicationRecord
   validates :rollout_percentage, numericality: {
     only_integer: true, greater_than_or_equal_to: 0, less_than_or_equal_to: 100
   }
+  validate :update_cannot_be_held, on: :update
   validate :manifest_readable, on: :create
   validate :bundle_id_matched, on: :create
   validate :determine_file_exist, on: :create

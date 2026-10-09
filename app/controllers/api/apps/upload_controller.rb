@@ -29,7 +29,9 @@ class Api::Apps::UploadController < Api::BaseController
   # @param channel_key   [String]   optional  channel key of app (REQUIRED with an app token: a token
   #                                              uploads into its own app's channel, never creates an app)
   # @param hold          [Boolean]  optional  true: create the release `held`, kept out of the catalog
-  #                                              index until it is released (Task 27f-a/b, 34a-5)
+  #                                              index until it is released (Task 27f-a/b, 34a-5). Honoured
+  #                                              for an app's FIRST release only; an update is never held
+  #                                              (Task 49)
   # @param name          [String]   optional  name of app
   # @param password      [String]   optional  password to download app
   # @param release_type  [String]   optional  release type(debug, beta, adhoc, release, enterprise etc)
@@ -104,7 +106,9 @@ class Api::Apps::UploadController < Api::BaseController
   def create_release(channel)
     @release = channel.releases.upload_file(release_params, parser: @app_parser, source: 'api')
     authorize @release
-    @release.status = 'held' if hold_requested?
+    # Task 49: `hold` is honoured only for the app's first release, the same rule the staged upload finisher
+    # applies (`Release#hold_allowed?`); an update is released at once whatever the client sent.
+    @release.status = 'held' if hold_requested? && @release.hold_allowed?
 
     @release.save!
   end

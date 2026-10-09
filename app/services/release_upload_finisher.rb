@@ -392,10 +392,7 @@ class ReleaseUploadFinisher
   end
 
   def first_release_of_app?(release)
-    app_id = release.app&.id
-    return true if app_id.nil?
-
-    !Release.joins(channel: :scheme).where(schemes: { app_id: app_id }).where.not(id: release.id).exists?
+    release.first_release_of_app? # Task 49: the one rule lives on Release (`hold_allowed?`)
   end
 
   # Housekeeping that must not turn an accepted result into an error: the release is already saved.

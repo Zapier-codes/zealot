@@ -53,14 +53,12 @@ module CatalogIndex
     CATEGORIES = App::CATEGORY_VALUES
 
     # Freshness bound for `expires_at` when the caller doesn't supply one.
-    # Arbitrary and undecided for real (not one of Task 29's two recorded
-    # ❓s, but should be treated as a third): a signed index that isn't
-    # re-published inside this window is, per the v2 schema, something a
-    # reader should refuse. 24h matches "publish on every listing change,
-    # worst case once a day even with no changes" -- revisit once 27c wires
-    # actual publish triggers and this can be measured against real
-    # publish frequency instead of guessed.
-    DEFAULT_TTL = 24 * 60 * 60 # seconds; avoids a hard ActiveSupport::Duration dependency here
+    # Task 49: 48 hours. A signed index that isn't re-published inside this window is, per the v2 schema,
+    # something a reader refuses (D-Store then falls back to an old copy). `CatalogIndexHeartbeatJob`
+    # re-signs every index twice a day whether or not anything changed, so the window is twice the longest
+    # gap the schedule is meant to leave and one missed tick (Render Free sleeps, GoodJob does not backfill)
+    # never expires an index. It was 24 hours with no timer at all, which is how the index went stale.
+    DEFAULT_TTL = 48 * 60 * 60 # seconds; avoids a hard ActiveSupport::Duration dependency here
 
     # apps: an app, or an enumerable of apps. Production code should pass
     # `App.listing_live` (see .for_live_apps) -- an app not live on our

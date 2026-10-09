@@ -57,7 +57,7 @@ RSpec.describe CatalogIndex::Serializer do
       expect(result[:schema_version]).to eq(2)
       expect(result[:generated_at]).to eq('2026-09-24T12:00:00Z')
       expect(result[:sequence]).to eq(7)
-      expect(result[:expires_at]).to eq('2026-09-25T12:00:00Z') # DEFAULT_TTL = 24h
+      expect(result[:expires_at]).to eq('2026-09-26T12:00:00Z') # DEFAULT_TTL = 48h (Task 49)
     end
 
     it 'accepts an explicit expires_at instead of the default TTL' do

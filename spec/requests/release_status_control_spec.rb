@@ -49,6 +49,17 @@ RSpec.describe 'Release status control', type: :request do
       end
     end
 
+    it 'refuses to hold an update of an app that already has a version (Task 49)' do
+      update = Release.new(channel: channel, version: 2, changelog: [], release_version: '1.0.2', build_version: '2')
+                      .tap { |r| r.save!(validate: false) }
+
+      patch status_channel_release_path(channel, update), params: { release: { status: 'held' } }
+
+      expect(response).to redirect_to(friendly_channel_release_path(channel, update))
+      expect(flash[:alert]).to be_present
+      expect(update.reload.status).to eq('available')
+    end
+
     it 'refuses a move the page does not offer and changes nothing' do
       release.update!(status: 'pulled')
 

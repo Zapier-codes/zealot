@@ -43,6 +43,18 @@ CRON_JOBS_SETUP = lambda do
       class: 'GithubDownloadCountJob',
       description: 'Read GitHub download counts of live apps installable files and republish the index when a total changed'
     },
+    # Task 49: re-sign every catalog index twice a day, inside the hours the wake workflow keeps Render awake
+    # (wake_render_service.yml brackets 16:00 and 22:00 UTC), so an index never reaches its `expires_at`.
+    catalog_index_heartbeat_afternoon: {
+      cron: '5 16 * * *',
+      class: 'CatalogIndexHeartbeatJob',
+      description: 'Republish every signed catalog index so it never expires (afternoon tick)'
+    },
+    catalog_index_heartbeat_night: {
+      cron: '5 22 * * *',
+      class: 'CatalogIndexHeartbeatJob',
+      description: 'Republish every signed catalog index so it never expires (night tick)'
+    },
     release_upload_sweeper: {
       cron: '*/15 * * * *',
       class: 'ReleaseUploadSweeperJob',
