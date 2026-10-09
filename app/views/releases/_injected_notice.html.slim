@@ -1,0 +1,19 @@
+/ Task 47f: what Zealot adds to the build its store and website serve (see InjectedComponents). Local: app.
+- components = InjectedComponents.for(app)
+.injected-notice.mt-4.text-sm
+  h4.font-semibold = t('releases.injected.title')
+  p.opacity-70 = t('releases.injected.intro')
+  ul.list-disc.ml-5.mt-2
+    - components.each do |component|
+      li.mb-2
+        strong = t("releases.injected.#{component.key}.name")
+        - if component.status != :active
+          span.opacity-70 = " (#{t("releases.injected.status.#{component.status}")})"
+        br
+        span = t("releases.injected.#{component.key}.what")
+        br
+        span.opacity-70 = t('releases.injected.permissions', list: component.permissions.join(', '))
+  - if app.updater_enabled
+    p.opacity-70 = t('releases.injected.updater_limits')
+  - else
+    p.opacity-70 = t('releases.injected.updater_off')

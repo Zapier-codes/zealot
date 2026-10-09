@@ -18,6 +18,10 @@ Rails.application.routes.draw do
   # Task 45g: the signed catalog index served from this host (exact stored bytes; see CatalogController).
   get 'catalog/index.json', to: 'catalog#index', format: false
   get 'catalog/index.json.sig', to: 'catalog#signature', format: false
+  # Task 47d: the newest installable version of one package (the injected updater's check). The constraint lets
+  # the dots of a package name through (a segment stops at a dot otherwise); the lookup validates the name again.
+  get 'catalog/updates/:package_name', to: 'catalog#latest', format: false,
+                                       constraints: { package_name: /[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+/ }
   # Task 42i: hosted card page for one listing-fee payment; the signed token in the link is the only credential.
   get 'checkout/:token', to: 'checkouts#show', as: :store_listing_checkout, constraints: { token: %r{[^/]+} }
 
@@ -436,6 +440,8 @@ Rails.application.routes.draw do
       resource :migrated_stats, only: %i[show update], controller: 'apps/migrated_stats'
       # Task 45f: GET/PUT /api/apps/:app_id/catalog_basics (category and package name; platform admin, user token only).
       resource :catalog_basics, only: %i[show update], controller: 'apps/catalog_basics'
+      # Task 47e: GET/PUT /api/apps/:app_id/updater (the publisher's switch for the injected updater; user token).
+      resource :updater, only: %i[show update], controller: 'apps/updater'
       # Task 45c: GET/POST /api/apps/:app_id/migrated_comments, DELETE .../:id (platform admin, user token only).
       resources :migrated_comments, only: %i[index create destroy], controller: 'apps/migrated_comments'
     end

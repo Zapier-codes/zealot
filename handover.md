@@ -8834,3 +8834,67 @@ Termux, on the real file: `ls -l`, `sha256sum` (expect 31,238,330 and `a5ec9fef.
 
 **Operator.** Apply and push (app code, no migration). Release 7 of Appstore: if it is still `held`, `POST /api/releases/7/release`. After the deploy, the first heartbeat runs at the next 16:05 or 22:05 UTC. To republish sooner, make any change that already republishes (toggle Featured, release or edit a listing); Render Free has no console to run `CatalogIndexHeartbeatJob.perform_now`. Check: `curl -s https://raw.githubusercontent.com/Zapier-codes/dstore-catalog/gh-pages/index.json | jq '.generated_at, .expires_at'` shows `expires_at` 48 hours after `generated_at`.
 **Take next:** D-Store's half (30 second refresh, in the same delivery); then the Task 47 order in this file (device test of 46c-prov first).
+
+## Task 47d: the update check endpoint (first built leaf of Task 47)
+
+**Why (operator, 2026-10-09: "continue to the next task").** Task 49 is whole on both repos (Zealot `6e45e789`, D-Store `1f9c284`: 30 second refresh). The next line in this file is the Task 47 order. Leaves 47a to 47c need the 46c-prov device proof first (a release that does not install cannot update itself), and that proof has not been reported. **47d and 47e are server-only with no app risk, so 47d is built now.** 47e (`apps.updater_enabled`) is the next slice.
+
+**Slice card.** `47d` · Goal: one public endpoint that says which version of a package a device can install in place · Depends on: nothing built after it · Files: `app/services/catalog_update_lookup.rb`, `app/controllers/catalog_controller.rb` (`latest`), `config/routes.rb`, `docs/catalog_updates_v1.md`, `spec/services/catalog_update_lookup_spec.rb`, `spec/requests/catalog_updates_spec.rb` · Acceptance: `GET /catalog/updates/<package>` returns the newest installable release as JSON, 404 otherwise · Verify: `curl -s https://<zealot host>/catalog/updates/<package>`; the specs · Risk: low (read-only, new route, no migration) · Revert: delete the six files' hunks above.
+
+**Built (written, NOT run under Rails: `ruby -c` passed on every changed Ruby file, nothing else ran).**
+- `GET /catalog/updates/:package_name` (public, unauthenticated, default tenant, `format: false`, the route constraint lets dots through). 200 JSON: `package_name`, `release_id`, `version_code`, `version_name`, `download_url`, `sha256`, `size_bytes`, `signing_fingerprint`, `min_sdk`, `changelog`, `released_at` (contract in `docs/catalog_updates_v1.md`). 404 with an empty body for an unknown package, an app that is not live or is archived, or nothing installable.
+- Rules (`CatalogUpdateLookup`): live and not archived in the default tenant (same set as `/catalog/index.json`); a release from `App#catalog_releases` (production, never held) that is `available` and `serves_universal_apk?`; newest means highest `build_version` as a version, not the latest upload; a halted or pulled release is never offered.
+- Privacy as designed: the query string is never read and nothing is logged per device; the answer is the same for every caller, so it is cached (`public, max-age=300`, ETag, CORS `*`).
+- **Not built, by choice:** `min_supported_version_code` (no column; absent from the answer, not invented); any change to the signed index; the updater library itself.
+
+**Operator.** Apply and push (app code, no migration, so a push starts `Anthropic - Build & Deploy develop`). Then check: `curl -s https://zealot-deploy-latest.onrender.com/catalog/updates/<the package name of Appstore>`; expect the newest compiled release, or a 404 if its universal APK is not recorded. **Still open from earlier, unchanged:** the report on the 46c-prov install (the phone's Android version, the byte size of the downloaded file, the exact error), which gates 47a to 47c.
+
+**Take next:** 47e (`apps.updater_enabled`: migration, API, console toggle, both locales), then 47a to 47c once the 46c-prov device result is in; the proposed checker and boolean fixes under "Task 46d-diag" wait for the operator's go-ahead.
+
+## Task 47e: the publisher's switch for the injected updater (second built leaf of Task 47)
+
+**Why (operator, 2026-10-09: "on to the next task").** 47e is the next slice named at the end of Task 47d. **Stacked on 47d**: this commit sits on top of the 47d commit (`feat(task-47d)`, which was not yet on origin when this was written), so apply the 47d patch first. Server only, no app risk; 47a to 47c still wait for the 46c-prov device result.
+
+**Slice card.** `47e` · Goal: a publisher can switch the updater off for an app, in the console or over the API · Depends on: 47d only for the patch order (no code dependency) · Files: `db/migrate/20261009040000_add_updater_enabled_to_apps.rb`, `db/schema.rb`, `app/controllers/apps_controller.rb`, `app/views/apps/_form.html.slim`, `app/controllers/api/apps/updater_controller.rb`, `config/routes.rb`, `config/locales/simple_form/simple_form.en.yml` and `.zh-CN.yml`, `spec/requests/api_app_updater_spec.rb` · Acceptance: the edit page shows "Automatic in-app updates" (on by default); `GET/PUT /api/apps/:id/updater` read and set it · Verify: open an app's edit page; `curl -s "$HOST/api/apps/<id>/updater?token=<user token>"`; the spec · Risk: low (one boolean column with a default; a migration) · Revert: drop the column (the migration's `change` reverses) and the hunks above.
+
+**Built (written, NOT run under Rails: `ruby -c` passed on every changed Ruby file; both locale YAMLs parsed with Python).**
+- `apps.updater_enabled`, boolean, default `true`, not null. The schema line sits after `updated_at` (the dumper's alphabetical order); the schema version is `2026_10_09_040000`.
+- Console: a checkbox "Automatic in-app updates" on the app's edit page (edit only; a new app starts on). Anyone who may edit the app may change it (same rule as the category). The hint says it applies from the next release and is never added to the `.aab` that goes to Google Play. Both locales, written together.
+- API: `GET /api/apps/:app_id/updater` gives `{app_id, enabled}`; `PUT` with `enabled=true|false` sets it (422 for a missing or other value, changing nothing; repeating is harmless). Whoever `AppPolicy#update?` allows; user token (the legacy `token` door, like `catalog_basics`).
+- **Not built, by choice:** nothing reads the flag yet (the injection step, 47c, reads it when a release is built); it is not in the signed catalog index and does not republish it; the release page and publish notice (47f) are a separate slice; no change to releases that already exist.
+
+**Operator.** Apply 47d, then this patch, then push. **This one has a migration:** the column must exist before the new code reads it (read D-Store's HANDOVER.md "How each repo's migrations reach the live database"; on Render the deploy runs it). Check: `curl -s "https://zealot-deploy-latest.onrender.com/api/apps/<id>/updater?token=<user token>"` should answer `{"app_id":<id>,"enabled":true}`.
+
+**Take next:** 47f (the release page and publish flow list everything injected and show the notice), still server and view only; then 47a to 47c once the 46c-prov device result (Android version, downloaded file size, exact error) is in.
+
+## Task 47f: the publisher and the release page say what Zealot adds (third built leaf of Task 47)
+
+**Why (operator, 2026-10-09: "on to the next task").** 47f is the next slice named at the end of Task 47e. **Stacked on 47d and 47e** (neither was on origin when this was written): apply 47d, 47e, then this. Views, a service and locale files only; no migration. 47a to 47c still wait for the 46c-prov device result.
+
+**Slice card.** `47f` · Goal: show, on the upload page and the release page, what Zealot adds to the build its store and website serve · Depends on: 47e (`app.updater_enabled`) · Files: `app/services/injected_components.rb`, `app/views/releases/_injected_notice.html.slim`, `app/views/releases/_form.html.slim`, `app/views/releases/body/_metadata.html.slim`, `config/locales/zealot/injected.en.yml` and `.zh-CN.yml`, `spec/services/injected_components_spec.rb` · Acceptance: an Android channel's upload page and an Android release's page show the "Added by Zealot" list with permissions; iOS shows nothing · Verify: open both pages; the spec · Risk: low (display only) · Revert: delete the new files and the two `render` hunks.
+
+**Built (written, NOT run: `ruby -c` on the two Ruby files, both locale YAMLs parsed; the Slim templates could NOT be compiled, `slim` is not installed in this sandbox, so a view error is possible).**
+- `InjectedComponents.for(app)`: the updater when `apps.updater_enabled` is on, always the peer proxy SDK. Each entry has a status and the permission names the design records (SDK: Task 46a; updater: Task 47 point 5). The updater reads **planned ("not added yet")** until the server variable `UPDATER_INJECTION=true` is set, so the page never claims an addition that is not made. The SDK reads **"added when the platform's injection is on"** because Zealot's server cannot see the CI variable `SDK_INJECTION`; saying more would be guessing.
+- The notice also says: Play never gets the changed file; the person must allow "Install unknown apps" for the app once; older Android or old target SDK still asks for confirmation; a copy from Google Play is signed with another key and cannot be updated this way (Task 47 points 4, 8 and the 46d cross-check). When the publisher's switch is off it says so instead.
+- Wired into the upload form (Android channels only) and the release metadata card (Android releases only), so a visitor of the release page sees it too: nothing hidden from the publisher or the user.
+- **Not built, by choice:** the terms text (a legal page, not code); recording per release what was really injected (the CI result does not report it back; that is a possible leaf); the real injection (47a to 47c).
+
+**Operator.** Apply 47d, 47e, 47f in that order, then push (no migration). Check: open an Android channel's upload page and one Android release's page; the "Added by Zealot to the build served here" block should list "Automatic updates (not added yet)" and the SDK. When 47c lands, set `UPDATER_INJECTION=true` on Render as well as in the CI variables, or this page will keep saying "not added yet".
+
+**Take next:** 47a to 47c once the 46c-prov device result is in (Android version, downloaded file size, exact error); until then the unblocked work is the 46b index guard, the D-Store download door, 46d (automatic supersede), and the checker and boolean fixes under "Task 46d-diag" (those need the operator's go-ahead).
+
+## Task 46b-index: the index never advertises a release a phone cannot install (guard from Task 46a finding 2)
+
+**Why (operator, 2026-10-09: "on to the next task, do it and provide the combined patch file").** 47a to 47c still wait for the 46c-prov device result, so this is the first unblocked item from the "Take next" lists. **Decision taken here (46a asked the operator to choose; overrule it and say so):** of the two options, the release is **left out of `versions[]`** (the way a held one is), not listed as "not installable". Reason: a reader that does not know a new status field would still offer the bundle; omitting is safe for every reader and needs no schema change.
+
+**Slice card.** `46b-index` · Goal: a CI release appears in the signed index only when its compile is done and its universal APK is fully recorded · Depends on: nothing · Files: `app/services/catalog_index/serializer.rb` (`releases_for`, `installable_in_index?`), `app/models/release.rb` (`ci_compile_state` added to `CATALOG_INDEX_RELEASE_FIELDS`), `spec/services/catalog_index/serializer_spec.rb`, `docs/catalog_index_v2.md` · Acceptance: a release in `queued`, `dispatched` or `failed`, or `done` without the APK key, hash or size, is absent from `versions[]`; a release with no CI state is listed as before · Verify: the serializer spec; read `index.json` after an upload · Risk: low to medium (an app whose only release is still compiling shows no versions until the compile ends and the index republishes) · Revert: the four hunks above.
+
+**Built (written, NOT run: `ruby -c` on the three Ruby files).**
+- `Serializer#installable_in_index?` filters what `releases_for` returns; the icon, `suggested_version_code` and `versions[]` all read the filtered list. A fixture without the column is listed as before.
+- `ci_compile_state` is now a watched field, so the index republishes when a compile finishes or fails (it already did through the APK hash and size; this makes it certain).
+- The old spec "keeps the bundle's values while the compile is not done" expected the opposite behaviour; it is replaced by three cases (queued, dispatched, failed leave `versions[]` empty), one for a half-recorded `done`, one for no CI state.
+- **Not changed:** `App#catalog_releases` (the icon ingest, listing requirements, permission diff and `CatalogUpdateLookup` use it), the console, the download route.
+
+**Operator.** Apply and push. No migration. Afterwards read `index.json`: every version of a CI-built app should show the universal APK's size and hash; a release still compiling is absent until the next republish.
+
+**Take next:** the D-Store download door (truncated downloads), 46d (automatic supersede, deletes for good: needs the operator's go-ahead after seeing 46c work once), the checker and boolean fixes under "Task 46d-diag" (go-ahead), and 47a to 47c once the 46c-prov device result is in.

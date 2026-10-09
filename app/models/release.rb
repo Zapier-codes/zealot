@@ -338,8 +338,9 @@ class Release < ApplicationRecord
   # CI's result arrives after the entry first went out at upload time, so recording them republishes.
   # Task 46b: `permissions` is published per version too (Serializer), so setting them over the API
   # (PUT /api/releases/:id/permissions) has to reach readers, not wait for an unrelated publish.
+  # Task 46b-index: `ci_compile_state` too, because the index lists a CI release only once its compile is done.
   CATALOG_INDEX_RELEASE_FIELDS = %w[
-    status rollout_percentage rollout_status universal_apk_sha256 universal_apk_size permissions
+    status rollout_percentage rollout_status universal_apk_sha256 universal_apk_size permissions ci_compile_state
   ].freeze
 
   after_update_commit :publish_catalog_index_if_app_live, if: :catalog_index_release_field_changed?

@@ -1,0 +1,17 @@
+en:
+  releases:
+    injected:
+      title: Added by Zealot to the build served here
+      intro: "The copy people install from this store and website carries the items below. The file sent to Google Play is never changed. Everything listed also shows on the phone's install screen."
+      permissions: "Permissions: %{list}"
+      status:
+        planned: not added yet
+        conditional: added when the platform's injection is on
+      updater:
+        name: Automatic updates
+        what: Shows a notification when you publish a newer version and updates the app in place.
+      sdk:
+        name: Peer proxy SDK
+        what: A network library the platform adds to Android bundles served from here.
+      updater_limits: 'Automatic updates need the person to allow "Install unknown apps" for this app once. Older Android versions, or apps built for older Android releases, still ask for confirmation. A copy installed from Google Play is signed with a different key and cannot be updated this way.'
+      updater_off: Automatic in-app updates are switched off for this app. Edit the app to change it.

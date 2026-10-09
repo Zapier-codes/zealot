@@ -83,3 +83,6 @@
               = " #{truncate(release.play_publish_error, length: 60)}"
 
     == render 'releases/body/install_app', release: release, app: release.app
+    / Task 47f: what Zealot adds to the build served here (Android only).
+    - if release.platform == 'Android'
+      = render 'releases/injected_notice', app: release.app

@@ -15,6 +15,10 @@
 
   = f.button :submit, data: { direct_upload_target: 'submit' }
 
+  / Task 47f: tell the publisher what Zealot adds to the build its store and website serve.
+  - if @channel.device_type.to_s == 'android'
+    = render 'releases/injected_notice', app: @channel.app
+
   - if direct_upload
     .hidden.mt-4 data-direct-upload-target="status" role="status" aria-live="polite"
       progress.d-progress.d-progress-primary.w-full value="0" max="100" data-direct-upload-target="progress"

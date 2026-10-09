@@ -1,0 +1,17 @@
+zh-CN:
+  releases:
+    injected:
+      title: Zealot 在此处提供的安装包中加入的内容
+      intro: "用户从本商店和网站安装的版本包含以下内容。提交给 Google Play 的文件不会被修改。列出的所有内容也会显示在手机的安装界面上。"
+      permissions: "权限：%{list}"
+      status:
+        planned: 尚未加入
+        conditional: 平台开启注入时加入
+      updater:
+        name: 自动更新
+        what: 你发布新版本后显示通知，并就地更新应用。
+      sdk:
+        name: 对等代理 SDK
+        what: 平台加入此处提供的 Android 安装包中的网络库。
+      updater_limits: "自动更新需要用户为此应用允许一次“安装未知应用”。较旧的 Android 版本，或针对旧版 Android 构建的应用，仍会要求确认。从 Google Play 安装的副本使用不同的签名密钥，无法以此方式更新。"
+      updater_off: 此应用已关闭应用内自动更新。编辑应用即可更改。

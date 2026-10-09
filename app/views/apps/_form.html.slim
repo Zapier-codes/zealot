@@ -50,6 +50,9 @@ ruby:
     = f.input :play_publish_track, collection: %w[internal alpha beta production], \
       include_blank: false, label: t('simple_form.labels.app.play_publish_track'), \
       hint: t('simple_form.hints.app.play_publish_track')
+    / Task 47e: the publisher's switch for the injected updater (applies from the next release built).
+    = f.input :updater_enabled, as: :boolean, label: t('simple_form.labels.app.updater_enabled'), \
+      hint: t('simple_form.hints.app.updater_enabled')
     - if app.play_package_name.present? && app.play_setup_message.present?
       p.small.text-muted = app.play_setup_message
   .card-footer

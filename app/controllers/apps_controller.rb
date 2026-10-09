@@ -211,7 +211,7 @@ class AppsController < ApplicationController
   def app_params
     # Task 24: publisher_alias is only accepted from someone allowed to set
     # it; for everyone else it is silently not permitted (never mass-assigned).
-    permitted = [:name, :play_package_name, :play_publish_track, :category]
+    permitted = [:name, :play_package_name, :play_publish_track, :category, :updater_enabled]
     permitted << :publisher_alias if policy(@app || App.new).set_publisher_alias?
 
     @app_params ||= params.require(:app)

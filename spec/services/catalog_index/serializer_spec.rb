@@ -142,15 +142,31 @@ RSpec.describe CatalogIndex::Serializer do
         expect(version[:size_bytes]).to eq(4321)
       end
 
-      it 'keeps the bundle\'s values while the compile is not done' do
-        app, release = build_app_with_release(file_contents: 'aab bytes', original_size: 999,
-                                              file_sha256: Digest::SHA256.hexdigest('aab bytes'))
-        release.update_columns(ci_compile_state: 'dispatched', universal_apk_sha256: apk_sha, universal_apk_size: 4321)
+      # Task 46b-index: before the compile is done the entry would serve the bundle, which a phone cannot install.
+      %w[queued dispatched failed].each do |state|
+        it "leaves the release out of versions[] while the compile is #{state}" do
+          app, release = build_app_with_release(file_contents: 'aab bytes', original_size: 999,
+                                                file_sha256: Digest::SHA256.hexdigest('aab bytes'))
+          release.update_columns(ci_compile_state: state, universal_apk_sha256: apk_sha, universal_apk_size: 4321)
 
-        version = described_class.call(app, generated_at: Time.utc(2026, 9, 24, 12))[:apps].first[:versions].first
+          versions = described_class.call(app, generated_at: Time.utc(2026, 9, 24, 12))[:apps].first[:versions]
 
-        expect(version[:sha256]).to eq(Digest::SHA256.hexdigest('aab bytes'))
-        expect(version[:size_bytes]).to eq(999)
+          expect(versions).to eq([])
+        end
+      end
+
+      it 'leaves a done release out when its universal APK is not fully recorded' do
+        app, release = build_app_with_release(file_contents: 'aab bytes')
+        release.update_columns(ci_compile_state: 'done', universal_apk_sha256: apk_sha, universal_apk_size: 4321,
+                               universal_apk_storage_key: nil)
+
+        expect(described_class.call(app)[:apps].first[:versions]).to eq([])
+      end
+
+      it 'still lists a release that has no CI state' do
+        app, = build_app_with_release(file_contents: 'aab bytes')
+
+        expect(described_class.call(app)[:apps].first[:versions].size).to eq(1)
       end
     end
 

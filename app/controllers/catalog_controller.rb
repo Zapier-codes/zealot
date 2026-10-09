@@ -21,6 +21,22 @@ class CatalogController < ApplicationController
     serve(:signature, 'text/plain; charset=utf-8')
   end
 
+  # Task 47d: GET /catalog/updates/:package_name -- the newest version of an app a device can install in place
+  # (see CatalogUpdateLookup for every rule). Public and unauthenticated: it is what the injected updater
+  # library calls, and it carries no device id or account. The answer is the same for every caller, so it is
+  # cacheable; the request's query string is never read. 404 (empty body) for an unknown package, an app that
+  # is not live, or one with nothing installable, so a library treats every 404 as "no update".
+  def latest
+    answer = CatalogUpdateLookup.call(params[:package_name])
+    return head(:not_found) unless answer
+
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    expires_in 5.minutes, public: true
+    return unless stale?(etag: Digest::SHA256.hexdigest(answer.to_json), public: true)
+
+    render json: answer
+  end
+
   private
 
   def serve(column, content_type)

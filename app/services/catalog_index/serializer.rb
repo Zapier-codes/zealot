@@ -339,13 +339,28 @@ module CatalogIndex
     # versions[] instead of the full history. Anything answering neither
     # gets an empty versions[] rather than raising.
     def releases_for(app)
-      if app.respond_to?(:catalog_releases)
-        Array(app.catalog_releases)
-      elsif app.respond_to?(:recently_release)
-        [ app.recently_release ].compact
-      else
-        []
-      end
+      releases =
+        if app.respond_to?(:catalog_releases)
+          Array(app.catalog_releases)
+        elsif app.respond_to?(:recently_release)
+          [ app.recently_release ].compact
+        else
+          []
+        end
+      releases.select { |release| installable_in_index?(release) }
+    end
+
+    # Task 46b-index (decision recorded in handover.md): a release that goes through the CI compile is listed
+    # only once the compile is done and the signed universal APK is fully recorded
+    # (`Release#serves_universal_apk?`). Before that its `download_url` would serve the bundle itself, which a
+    # phone cannot install ("problem parsing the package"), so the release is left out of `versions[]` the
+    # same way a held one is, and appears at the republish that follows the compile (`ci_compile_state` and
+    # the APK hash and size are watched fields). A release with no CI state (uploaded before the pipeline, or
+    # an APK) and a fixture without the column are listed as before.
+    def installable_in_index?(release)
+      return true unless release.respond_to?(:ci_compile_state) && release.ci_compile_state.present?
+
+      release.respond_to?(:serves_universal_apk?) ? release.serves_universal_apk? : true
     end
 
     # Task 27d-e1: the app's stored listing graphics (docs/store_listing_graphics.md). Only a graphic
