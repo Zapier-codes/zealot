@@ -8898,3 +8898,12 @@ Termux, on the real file: `ls -l`, `sha256sum` (expect 31,238,330 and `a5ec9fef.
 **Operator.** Apply and push. No migration. Afterwards read `index.json`: every version of a CI-built app should show the universal APK's size and hash; a release still compiling is absent until the next republish.
 
 **Take next:** the D-Store download door (truncated downloads), 46d (automatic supersede, deletes for good: needs the operator's go-ahead after seeing 46c work once), the checker and boolean fixes under "Task 46d-diag" (go-ahead), and 47a to 47c once the 46c-prov device result is in.
+
+## Session 2026-10-09 (docs only): the D-Store download door is done; what is still gated here
+
+**Operator's ask (2026-10-09, "continue to the next task"), cross-repo with Storeapp and D-Store.** Read this file's "Take next" lists: every remaining Zealot item is gated, so **no Zealot code was written** and this entry is the only change here.
+- **Gated on the operator's 46c-prov device result (Android version, size of the downloaded file, exact error):** 47a, 47b, 47c (and 47g, 47h, 47i after them).
+- **Gated on the operator's go-ahead:** the checker and boolean fixes under "Task 46d-diag" (`check-manifest-resource-ids.py` by element name, `exported` as a boolean item in `ManifestPatch.java`), and 46d (the automatic supersede; it deletes for good, so it waits until 46c's `supersede_previous` has been seen working once).
+- **Done in the other repos in this delivery:** D-Store's download door no longer lets a short, compressed or non-file answer look like a finished APK (item 1 of the "Take next" after Task 46c): `checkUpstream` before streaming, `lengthGuard` on the stream, the proxy kept (the 302 alternative was not taken because the operator wants the store's own host in the downloads list). Storeapp's leaf `h.i.zi` (a pure self-update planner, not wired) rode in the same delivery; it reads the index fields `version_code` and `status` that Task 46b-index and 27f already publish, so it needs nothing from Zealot.
+- **Not changed:** the signed index, the update endpoint (47d), the injection, any spec. Nothing was run.
+- **Take next (unchanged order):** the 46c-prov device result, then 47a to 47c; on the go-ahead, the checker and boolean fixes; then 46d.
