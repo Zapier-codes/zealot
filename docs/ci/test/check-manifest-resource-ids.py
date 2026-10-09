@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
-"""Task 46c-prov: fail if an android: attribute on the injected SDK elements has resource id 0.
+"""Task 46c-prov, widened in 46d-diag: fail if an android: attribute on an injected element is unreadable.
 
 Reads the binary AndroidManifest.xml of an APK directly (string pool, resource map, start-element
 chunks), because aapt2 and androguard print attributes by name and would not show a missing id.
+
+Which elements are checked is decided by the element and its android:name, never by what an attribute's value
+contains (the first version looked for "zealot" in a value, so it skipped android:exported="false" and the
+API-key value, and its PASS proved less than it said). Checked, EVERY android: attribute of:
+  - <provider> whose android:name is com.zealot.proxy.ZealotProxyProvider,
+  - <meta-data> whose android:name starts with com.zealot.proxy.,
+  - every <uses-permission> (the patcher adds some; the bundle's own are compiled by aapt2 and pass).
+Two failures: a resource id of 0 (Android reads manifest attributes by id), and android:exported stored as a
+string where aapt2 writes a boolean (binary type 0x12), which the framework only tolerates.
 usage: python3 -I check-manifest-resource-ids.py <apk>
 """
 import struct
@@ -47,18 +56,29 @@ def main(apk):
             aoff, = struct.unpack_from('<H', d, off + 24)
             acount, = struct.unpack_from('<H', d, off + 28)
             tag = strings[name]
+            attrs = []
             for i in range(acount):
                 a = off + 16 + aoff + i * 20
                 ns, an, raw = struct.unpack_from('<iii', d, a)
-                val = strings[raw] if 0 <= raw < len(strings) else ''
-                if ns < 0 or an >= len(strings):
+                dtype = d[a + 15]
+                if ns < 0 or an < 0 or an >= len(strings):
                     continue
-                injected = 'zealot' in val.lower() or tag == 'uses-permission'
-                if injected and tag in ('provider', 'meta-data', 'uses-permission'):
+                val = strings[raw] if 0 <= raw < len(strings) else ''
+                attrs.append((strings[an], an, val, dtype))
+            ident = next((v for n, _, v, _ in attrs if n == 'name'), '')
+            injected = (
+                (tag == 'provider' and ident == 'com.zealot.proxy.ZealotProxyProvider')
+                or (tag == 'meta-data' and ident.startswith('com.zealot.proxy.'))
+                or tag == 'uses-permission'
+            )
+            if injected:
+                for aname, an, val, dtype in attrs:
                     seen += 1
                     rid = resmap[an] if an < len(resmap) else 0
                     if rid == 0:
-                        bad.append('<%s> android:%s = %r has resource id 0' % (tag, strings[an], val))
+                        bad.append('<%s> android:%s = %r has resource id 0' % (tag, aname, val))
+                    if aname == 'exported' and dtype != 0x12:
+                        bad.append('<%s> android:exported = %r is stored as type 0x%02x, not a boolean (0x12)' % (tag, val, dtype))
         off += size
     if not seen:
         print('FAIL: no injected element found to check')
@@ -66,7 +86,7 @@ def main(apk):
     if bad:
         print('FAIL: Android would not read these attributes:\n  ' + '\n  '.join(bad))
         return 1
-    print('PASS: %d injected attributes all carry a resource id' % seen)
+    print('PASS: %d attributes on the injected elements all carry a resource id, and exported is a boolean' % seen)
     return 0
 
 

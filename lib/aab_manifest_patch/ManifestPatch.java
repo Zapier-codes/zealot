@@ -19,6 +19,8 @@
 import com.android.aapt.Resources.XmlNode;
 import com.android.aapt.Resources.XmlElement;
 import com.android.aapt.Resources.XmlAttribute;
+import com.android.aapt.Resources.Item;
+import com.android.aapt.Resources.Primitive;
 import java.io.*;
 import java.nio.file.*;
 
@@ -63,7 +65,7 @@ public class ManifestPatch {
                 .setName("provider")
                 .addAttribute(attr("name", "com.zealot.proxy.ZealotProxyProvider"))
                 .addAttribute(attr("authorities", packageName(manifestBuilder) + ".zealot-proxy"))
-                .addAttribute(attr("exported", "false"))
+                .addAttribute(boolAttr("exported", false))
                 .addChild(XmlNode.newBuilder().setElement(metaDataEl).build())
                 .build();
             appBuilder.addChild(XmlNode.newBuilder().setElement(providerEl).build());
@@ -117,6 +119,19 @@ public class ManifestPatch {
     private static XmlAttribute attr(String name, String value) {
         return XmlAttribute.newBuilder().setNamespaceUri(ANDROID_NS).setName(name)
             .setResourceId(resId(name)).setValue(value).build();
+    }
+
+    // Task 46d-diag (boolean fix): aapt2 compiles android:exported="false" to a typed boolean (binary type
+    // 0x12), not to the text "false". An attribute that has only the text value ends up as a string (type
+    // 0x03) in the binary manifest. The framework tolerates a string there with a warning, from memory and not
+    // verified on a device, so write the same typed item aapt2 would: `compiled_item` with a boolean primitive,
+    // beside the text value (kept, as aapt2 keeps it, for readers that look at the text).
+    private static XmlAttribute boolAttr(String name, boolean value) {
+        Item item = Item.newBuilder()
+            .setPrim(Primitive.newBuilder().setBooleanValue(value).build())
+            .build();
+        return XmlAttribute.newBuilder().setNamespaceUri(ANDROID_NS).setName(name)
+            .setResourceId(resId(name)).setValue(Boolean.toString(value)).setCompiledItem(item).build();
     }
 
     // The bundle's manifest is already merged, so ${applicationId} would never be replaced: use its package.

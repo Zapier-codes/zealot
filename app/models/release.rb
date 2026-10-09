@@ -345,6 +345,16 @@ class Release < ApplicationRecord
 
   after_update_commit :publish_catalog_index_if_app_live, if: :catalog_index_release_field_changed?
 
+  # Task 46d: Zealot keeps ONE version per app, so the moment a release becomes available and installable it
+  # replaces the older releases of its channel (ReleaseSuperseder, which refuses until the release can really be
+  # installed and destroys for good). The work runs in ReleaseSupersedeJob after the commit; this callback only
+  # decides whether to enqueue it. A save counts when it creates the release or changes one of the fields that
+  # can make a release installable: the status (held to available), the CI result (compile done, APK recorded)
+  # or the stored file key. Switch it off with AUTO_SUPERSEDE=false.
+  SUPERSEDE_TRIGGER_FIELDS = %w[status ci_compile_state universal_apk_sha256 file_storage_key].freeze
+
+  after_commit :enqueue_supersede_previous, on: %i[create update], if: :supersede_candidate?
+
   delegate :scheme, to: :channel
   delegate :app, to: :scheme
 
@@ -719,6 +729,20 @@ class Release < ApplicationRecord
   end
 
   private
+
+  # Task 46d: see SUPERSEDE_TRIGGER_FIELDS. Only an `available` release can supersede anything.
+  def supersede_candidate?
+    return false unless status_available?
+
+    saved_change_to_id? || SUPERSEDE_TRIGGER_FIELDS.any? { |field| saved_change_to_attribute?(field) }
+  end
+
+  # Housekeeping: a queue problem must never turn a saved release into an error.
+  def enqueue_supersede_previous
+    ReleaseSupersedeJob.perform_later(id)
+  rescue StandardError => e
+    Rails.logger&.error("[Release] release #{id}: could not queue the supersede job: #{e.class}: #{e.message}")
+  end
 
   # The instance is frozen but still readable at this point (after_destroy
   # runs before Rails freezes it for writes, and after_commit callbacks still
