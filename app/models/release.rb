@@ -706,6 +706,18 @@ class Release < ApplicationRecord
     play_approval_pending? && play_approval_expires_at.present? && play_approval_expires_at < Time.current
   end
 
+  # Task 30: record the compile outcome, set on every path of `AnthropicAssetDeliveryJob` and by the CI
+  # callback (`Api::CiCompileController`). `error` is truncated and must be safe to show (never a path or
+  # a secret); a `done` or `skipped` write clears any earlier error. A missing record leaves the state
+  # NULL, which is how a release the compile never reached is told apart from one it finished.
+  def record_asset_delivery!(state, error: nil)
+    update_columns(
+      asset_delivery_state: state,
+      asset_delivery_error: error.to_s.presence&.truncate(500),
+      asset_delivery_state_at: Time.current
+    )
+  end
+
   private
 
   # The instance is frozen but still readable at this point (after_destroy
@@ -856,18 +868,6 @@ class Release < ApplicationRecord
     else
       AnthropicAssetDeliveryJob.perform_later(id)
     end
-  end
-
-  # Task 30: record the compile outcome, set on every path of `AnthropicAssetDeliveryJob` and by the CI
-  # callback (`Api::CiCompileController`). `error` is truncated and must be safe to show (never a path or
-  # a secret); a `done` or `skipped` write clears any earlier error. A missing record leaves the state
-  # NULL, which is how a release the compile never reached is told apart from one it finished.
-  def record_asset_delivery!(state, error: nil)
-    update_columns(
-      asset_delivery_state: state,
-      asset_delivery_error: error.to_s.presence&.truncate(500),
-      asset_delivery_state_at: Time.current
-    )
   end
 
   # Only fires when the uploader explicitly flagged this release as bound
