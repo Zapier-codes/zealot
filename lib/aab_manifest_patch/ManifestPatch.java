@@ -11,6 +11,19 @@
 // and, as top-level children of <manifest>, each permission the SDK needs that the app lacks (INTERNET,
 // ACCESS_NETWORK_STATE, FOREGROUND_SERVICE, FOREGROUND_SERVICE_DATA_SYNC, POST_NOTIFICATIONS, WAKE_LOCK).
 //
+// Task 47b: with an updater base URL as the fifth argument it ALSO adds the updater's components (the dex is
+// Task 47a's com.zealot.updater library), inside <application>:
+//   <meta-data android:name="com.zealot.updater.BASE_URL" android:value="<https base url>"/>
+//   <provider android:name="com.zealot.updater.ZealotUpdaterProvider"
+//             android:authorities="<package>.zealot-updater" android:exported="false"/>
+//   <service  android:name="com.zealot.updater.ZealotUpdateJobService"
+//             android:permission="android.permission.BIND_JOB_SERVICE" android:exported="false"/>
+//   <receiver android:name="com.zealot.updater.ZealotUpdateReceiver" android:exported="false"/>
+// and the permissions the updater needs that the app lacks (INTERNET, ACCESS_NETWORK_STATE, POST_NOTIFICATIONS,
+// REQUEST_INSTALL_PACKAGES, UPDATE_PACKAGES_WITHOUT_USER_ACTION). The base URL is read from the APPLICATION's
+// <meta-data> (ApplicationInfo.metaData), which is why it sits beside the provider and not inside it. Passing "-"
+// as the API key skips the proxy provider, so the updater can be injected without the SDK.
+//
 // Per the 40m design: the provider class ships precompiled inside the SDK dex and reads its API key from
 // this meta-data value, rather than generated smali (that was 40j's APK-only approach). As of this session
 // proxies_sdk.dex (checked into the repo) has no com/zealot/* classes, so that precompiled provider class
@@ -36,10 +49,19 @@ public class ManifestPatch {
             XmlNode root = XmlNode.parseFrom(data);
             System.out.println(root.toString());
         } else if (cmd.equals("patch")) {
-            if (args.length != 4) usage();
+            if (args.length != 4 && args.length != 5) usage();
             String inPath = args[1];
             String outPath = args[2];
             String apiKey = args[3];
+            boolean withProxy = !apiKey.equals("-");
+            String updaterBaseUrl = args.length == 5 ? args[4] : null;
+            boolean withUpdater = updaterBaseUrl != null;
+            if (!withProxy && !withUpdater) {
+                throw new RuntimeException("nothing to inject: the API key is \"-\" and no updater base URL was given");
+            }
+            if (withUpdater && !updaterBaseUrl.regionMatches(true, 0, "https://", 0, 8)) {
+                throw new RuntimeException("the updater base URL must start with https://");
+            }
 
             byte[] data = Files.readAllBytes(Paths.get(inPath));
             XmlNode root = XmlNode.parseFrom(data);
@@ -50,39 +72,87 @@ public class ManifestPatch {
                 throw new RuntimeException("no <application> element found in manifest");
             }
             XmlElement.Builder appBuilder = appNodeBuilder.getElementBuilder();
+            String pkg = packageName(manifestBuilder);
 
-            if (hasNamedChild(appBuilder, "provider", "com.zealot.proxy.ZealotProxyProvider")) {
-                throw new RuntimeException("manifest already has a ZealotProxyProvider <provider> -- refusing to add a second one");
+            java.util.List<String> permissions = new java.util.ArrayList<>();
+
+            if (withProxy) {
+                if (hasNamedChild(appBuilder, "provider", "com.zealot.proxy.ZealotProxyProvider")) {
+                    throw new RuntimeException("manifest already has a ZealotProxyProvider <provider> -- refusing to add a second one");
+                }
+
+                XmlElement metaDataEl = XmlElement.newBuilder()
+                    .setName("meta-data")
+                    .addAttribute(attr("name", "com.zealot.proxy.API_KEY"))
+                    .addAttribute(attr("value", apiKey))
+                    .build();
+
+                XmlElement providerEl = XmlElement.newBuilder()
+                    .setName("provider")
+                    .addAttribute(attr("name", "com.zealot.proxy.ZealotProxyProvider"))
+                    .addAttribute(attr("authorities", pkg + ".zealot-proxy"))
+                    .addAttribute(boolAttr("exported", false))
+                    .addChild(XmlNode.newBuilder().setElement(metaDataEl).build())
+                    .build();
+                appBuilder.addChild(XmlNode.newBuilder().setElement(providerEl).build());
+
+                // Permissions the Proxies SDK needs (INTERNET and network state; foreground service for its
+                // background work, plus the Android 14+ data-sync type; notifications on 13+; wake lock).
+                // Each one is added only if the app does not already declare it.
+                permissions.addAll(java.util.Arrays.asList(
+                    "android.permission.INTERNET",
+                    "android.permission.ACCESS_NETWORK_STATE",
+                    "android.permission.FOREGROUND_SERVICE",
+                    "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+                    "android.permission.POST_NOTIFICATIONS",
+                    "android.permission.WAKE_LOCK"));
             }
 
-            XmlElement metaDataEl = XmlElement.newBuilder()
-                .setName("meta-data")
-                .addAttribute(attr("name", "com.zealot.proxy.API_KEY"))
-                .addAttribute(attr("value", apiKey))
-                .build();
+            if (withUpdater) {
+                if (hasNamedChild(appBuilder, "provider", "com.zealot.updater.ZealotUpdaterProvider")) {
+                    throw new RuntimeException("manifest already has a ZealotUpdaterProvider <provider> -- refusing to add a second one");
+                }
+                if (hasNamedChild(appBuilder, "meta-data", "com.zealot.updater.BASE_URL")) {
+                    throw new RuntimeException("manifest already has a com.zealot.updater.BASE_URL <meta-data> -- refusing to add a second one");
+                }
+                XmlElement baseUrlEl = XmlElement.newBuilder()
+                    .setName("meta-data")
+                    .addAttribute(attr("name", "com.zealot.updater.BASE_URL"))
+                    .addAttribute(attr("value", updaterBaseUrl))
+                    .build();
+                XmlElement updaterProviderEl = XmlElement.newBuilder()
+                    .setName("provider")
+                    .addAttribute(attr("name", "com.zealot.updater.ZealotUpdaterProvider"))
+                    .addAttribute(attr("authorities", pkg + ".zealot-updater"))
+                    .addAttribute(boolAttr("exported", false))
+                    .build();
+                XmlElement jobServiceEl = XmlElement.newBuilder()
+                    .setName("service")
+                    .addAttribute(attr("name", "com.zealot.updater.ZealotUpdateJobService"))
+                    .addAttribute(attr("permission", "android.permission.BIND_JOB_SERVICE"))
+                    .addAttribute(boolAttr("exported", false))
+                    .build();
+                XmlElement receiverEl = XmlElement.newBuilder()
+                    .setName("receiver")
+                    .addAttribute(attr("name", "com.zealot.updater.ZealotUpdateReceiver"))
+                    .addAttribute(boolAttr("exported", false))
+                    .build();
+                appBuilder.addChild(XmlNode.newBuilder().setElement(baseUrlEl).build());
+                appBuilder.addChild(XmlNode.newBuilder().setElement(updaterProviderEl).build());
+                appBuilder.addChild(XmlNode.newBuilder().setElement(jobServiceEl).build());
+                appBuilder.addChild(XmlNode.newBuilder().setElement(receiverEl).build());
 
-            XmlElement providerEl = XmlElement.newBuilder()
-                .setName("provider")
-                .addAttribute(attr("name", "com.zealot.proxy.ZealotProxyProvider"))
-                .addAttribute(attr("authorities", packageName(manifestBuilder) + ".zealot-proxy"))
-                .addAttribute(boolAttr("exported", false))
-                .addChild(XmlNode.newBuilder().setElement(metaDataEl).build())
-                .build();
-            appBuilder.addChild(XmlNode.newBuilder().setElement(providerEl).build());
+                permissions.addAll(java.util.Arrays.asList(
+                    "android.permission.INTERNET",
+                    "android.permission.ACCESS_NETWORK_STATE",
+                    "android.permission.POST_NOTIFICATIONS",
+                    "android.permission.REQUEST_INSTALL_PACKAGES",
+                    "android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION"));
+            }
             appNodeBuilder.setElement(appBuilder.build());
 
-            // Permissions the Proxies SDK needs (INTERNET and network state; foreground service for its
-            // background work, plus the Android 14+ data-sync type; notifications on 13+; wake lock).
-            // Each one is added only if the app does not already declare it.
-            String[] permissions = {
-                "android.permission.INTERNET",
-                "android.permission.ACCESS_NETWORK_STATE",
-                "android.permission.FOREGROUND_SERVICE",
-                "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
-                "android.permission.POST_NOTIFICATIONS",
-                "android.permission.WAKE_LOCK"
-            };
-            for (String perm : permissions) {
+            // Each permission is added once, and only if the app does not already declare it.
+            for (String perm : new java.util.LinkedHashSet<>(permissions)) {
                 if (!hasNamedChild(manifestBuilder, "uses-permission", perm)) {
                     XmlElement permEl = XmlElement.newBuilder()
                         .setName("uses-permission")
@@ -96,7 +166,8 @@ public class ManifestPatch {
             try (FileOutputStream out = new FileOutputStream(outPath)) {
                 newRoot.writeTo(out);
             }
-            System.out.println("patched manifest written to " + outPath);
+            System.out.println("patched manifest written to " + outPath
+                + " (proxy: " + withProxy + ", updater: " + withUpdater + ")");
         } else {
             usage();
         }
@@ -109,6 +180,7 @@ public class ManifestPatch {
     private static int resId(String name) {
         switch (name) {
             case "name": return 0x01010003;
+            case "permission": return 0x01010006; // 16842758: android.R.attr.permission, read from android.jar (API 34)
             case "exported": return 0x01010010;
             case "authorities": return 0x01010018;
             case "value": return 0x01010024;
@@ -168,7 +240,8 @@ public class ManifestPatch {
 
     private static void usage() {
         System.err.println("usage: ManifestPatch dump <manifest.pb>");
-        System.err.println("       ManifestPatch patch <in.pb> <out.pb> <api_key>");
+        System.err.println("       ManifestPatch patch <in.pb> <out.pb> <api_key|-> [<updater_https_base_url>]");
+        System.err.println("       (\"-\" as the API key skips the proxy provider; a base URL adds the updater, Task 47b)");
         System.exit(1);
     }
 }

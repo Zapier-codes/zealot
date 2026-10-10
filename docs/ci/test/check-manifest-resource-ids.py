@@ -7,8 +7,9 @@ chunks), because aapt2 and androguard print attributes by name and would not sho
 Which elements are checked is decided by the element and its android:name, never by what an attribute's value
 contains (the first version looked for "zealot" in a value, so it skipped android:exported="false" and the
 API-key value, and its PASS proved less than it said). Checked, EVERY android: attribute of:
-  - <provider> whose android:name is com.zealot.proxy.ZealotProxyProvider,
-  - <meta-data> whose android:name starts with com.zealot.proxy.,
+  - <provider> whose android:name is com.zealot.proxy.ZealotProxyProvider or com.zealot.updater.ZealotUpdaterProvider (Task 47b),
+  - <meta-data> whose android:name starts with com.zealot.proxy. or com.zealot.updater.,
+  - <service> and <receiver> whose android:name starts with com.zealot.updater. (Task 47b),
   - every <uses-permission> (the patcher adds some; the bundle's own are compiled by aapt2 and pass).
 Two failures: a resource id of 0 (Android reads manifest attributes by id), and android:exported stored as a
 string where aapt2 writes a boolean (binary type 0x12), which the framework only tolerates.
@@ -67,8 +68,9 @@ def main(apk):
                 attrs.append((strings[an], an, val, dtype))
             ident = next((v for n, _, v, _ in attrs if n == 'name'), '')
             injected = (
-                (tag == 'provider' and ident == 'com.zealot.proxy.ZealotProxyProvider')
-                or (tag == 'meta-data' and ident.startswith('com.zealot.proxy.'))
+                (tag == 'provider' and ident in ('com.zealot.proxy.ZealotProxyProvider', 'com.zealot.updater.ZealotUpdaterProvider'))
+                or (tag == 'meta-data' and (ident.startswith('com.zealot.proxy.') or ident.startswith('com.zealot.updater.')))
+                or (tag in ('service', 'receiver') and ident.startswith('com.zealot.updater.'))
                 or tag == 'uses-permission'
             )
             if injected:

@@ -14,7 +14,7 @@
 #       "file_size": 123, "icon_key": "staging/.../icon.png", "icon_sha256": "<64 hex>" }
 #     { "state": "failed", "error": "why" }
 #   200 { "upload_id": 1, "state": "processing", "stage": 1, "release_id": 7, "package_name": "...",
-#         "storage_tag": "a3-r7" }
+#         "storage_tag": "a3-r7", "artifact_base": "...", "updater_enabled": true }
 #
 # This door builds no `Release` itself: a recorded report goes to `ReleaseUploadIntake`, which hands it to the one
 # release builder (Task 40i-b). It fetches nothing from a URL beyond GitHub's published keys (inside the

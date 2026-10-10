@@ -36,7 +36,8 @@ RSpec.describe ReleaseUploadIntake do
     expect(@result.payload).to include(upload_id: upload.id, state: 'processing', stage: 1, release_id: release.id,
                                        package_name: 'com.example.app',
                                        storage_tag: "a#{app.id}-r#{release.id}",
-                                       artifact_base: ReleaseArtifactName.for(release))
+                                       artifact_base: ReleaseArtifactName.for(release),
+                                       updater_enabled: true)
     expect(release.status).to eq('held')
     upload.reload
     expect(upload.state).to eq('processing')
@@ -44,6 +45,12 @@ RSpec.describe ReleaseUploadIntake do
     expect(upload.stage1_at).to be_present
     expect(upload.metadata).to include('package_name' => 'com.example.app', 'version_code' => 12,
                                        'file_sha256' => sha, 'icon_key' => icon_key)
+  end
+
+  it "answers updater_enabled: false when the publisher switched the injected updater off (Task 47c)" do
+    app.update!(updater_enabled: false)
+
+    expect(intake.payload).to include(updater_enabled: false)
   end
 
   it 'answers the same report again with 200, the same release, and creates no second one' do

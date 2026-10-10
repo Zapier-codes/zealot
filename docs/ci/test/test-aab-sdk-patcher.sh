@@ -93,4 +93,31 @@ echo "[*] checking every injected attribute carries its Android resource id (Tas
 python3 -I "$REPO_ROOT/docs/ci/test/check-manifest-resource-ids.py" "$APK_PATH" \
   || { echo "FAIL: an injected attribute lacks a resource id, or android:exported is not a boolean; Android may report a parse error"; exit 1; }
 
+echo "[*] Task 47b: the same bundle with the UPDATER injected alone (api key '-', base URL given)"
+# proxies_sdk.dex stands in for the updater's dex here: this test proves the MANIFEST edit survives bundletool
+# and carries resource ids; the real updater dex is javac + d8 in CI (read-upload.yml, "Compile the updater").
+UPD_AAB="$WORK/patched-updater.aab"
+BUNDLETOOL_JAR="$BUNDLETOOL_JAR" python3 "$REPO_ROOT/lib/aab_sdk_patcher.py" \
+  "$SAMPLE_AAB" "$UPD_AAB" "$REPO_ROOT/proxies_sdk.dex" "-" --updater-base-url https://zealot.example --verify \
+  | tee "$WORK/patch-updater.log"
+UPD_APK="$(grep 'succeeded' "$WORK/patch-updater.log" | sed -E 's/.*succeeded: //')"
+test -f "$UPD_APK" || { echo "FAIL: no universal.apk for the updater-only bundle"; exit 1; }
+NEW_SHA2="$(sha256sum "$SAMPLE_AAB" | cut -d' ' -f1)"
+[[ "$ORIG_SHA" == "$NEW_SHA2" ]] || { echo "FAIL: input .aab changed (updater run)"; exit 1; }
+python3 -I "$REPO_ROOT/docs/ci/test/check-manifest-resource-ids.py" "$UPD_APK" \
+  || { echo "FAIL: an updater attribute lacks a resource id, or android:exported is not a boolean"; exit 1; }
+UPD_TEXT="$(python3 -I - "$UPD_APK" <<'PY'
+import sys, zipfile
+print(zipfile.ZipFile(sys.argv[1]).read('AndroidManifest.xml').decode('utf-16le', 'ignore').replace(chr(0), ''))
+PY
+)"
+for needle in com.zealot.updater.ZealotUpdaterProvider com.zealot.updater.ZealotUpdateJobService \
+              com.zealot.updater.ZealotUpdateReceiver com.zealot.updater.BASE_URL \
+              android.permission.BIND_JOB_SERVICE android.permission.REQUEST_INSTALL_PACKAGES \
+              android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION; do
+  grep -q "$needle" <<<"$UPD_TEXT" || { echo "FAIL: the built manifest lacks $needle"; exit 1; }
+done
+grep -q "ZealotProxyProvider" <<<"$UPD_TEXT" && { echo "FAIL: the updater-only bundle must not carry the proxy provider"; exit 1; }
+echo "[PASS] updater-only bundle: components, base URL and permissions are in the built manifest; no proxy provider"
+
 echo "[*] all checks passed (manifest-content check: $([[ $MANIFEST_OK == 1 ]] && echo ran && echo || echo skipped))"

@@ -103,14 +103,17 @@ class ReleaseUploadIntake
     { upload_id: upload.id, state: upload.state, error: reason }
   end
 
-  # What stage 2 needs: the release id, the storage tag its files go under and (Task 41b) the base name its
-  # files are stored as.
+  # What stage 2 needs: the release id, the storage tag its files go under, (Task 41b) the base name its
+  # files are stored as and (Task 47c) whether the publisher allows the injected updater.
   def answer(release)
     payload = { upload_id: upload.id, state: upload.state, stage: 1, release_id: release&.id,
                 package_name: upload.metadata['package_name'] }
     if release
       payload[:storage_tag] = ReleaseStorage.new(release, adapter: nil).tag
       payload[:artifact_base] = ReleaseArtifactName.for(release)
+      # Task 47c: the publisher's switch (47e). Stage 2 injects the updater only when it is true; a missing key
+      # (an older Zealot answering a newer workflow) is read by the workflow as false, so nothing is injected.
+      payload[:updater_enabled] = release.app.updater_enabled == true
     end
     payload
   end

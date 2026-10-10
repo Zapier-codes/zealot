@@ -57,13 +57,14 @@ def _ensure_manifest_patch_compiled(bundletool_jar):
     )
 
 
-def _patch_manifest(manifest_pb_path, output_pb_path, api_key, bundletool_jar):
+def _patch_manifest(manifest_pb_path, output_pb_path, api_key, bundletool_jar, updater_base_url=None):
     _ensure_manifest_patch_compiled(bundletool_jar)
     cp = os.pathsep.join([MANIFEST_PATCH_BUILD_DIR, bundletool_jar])
-    subprocess.run(
-        ['java', '-cp', cp, 'ManifestPatch', 'patch', manifest_pb_path, output_pb_path, api_key],
-        check=True,
-    )
+    cmd = ['java', '-cp', cp, 'ManifestPatch', 'patch', manifest_pb_path, output_pb_path, api_key]
+    if updater_base_url:
+        # Task 47b/47c: the updater's provider, service, receiver, base-URL meta-data and permissions.
+        cmd.append(updater_base_url)
+    subprocess.run(cmd, check=True)
 
 
 def _next_free_dex_name(aab_zip):
@@ -83,9 +84,17 @@ def _next_free_dex_name(aab_zip):
     return f'classes{n}.dex'
 
 
-def patch(input_aab, output_aab, sdk_dex_paths, api_key, bundletool_jar):
+def patch(input_aab, output_aab, sdk_dex_paths, api_key, bundletool_jar, updater_base_url=None):
     """Produces output_aab as a patched copy of input_aab. Raises on any failure; never writes to
-    input_aab. Accepts a list of DEX files to inject."""
+    input_aab. Accepts a list of DEX files to inject.
+
+    Task 47c: `api_key` of "-" skips the proxy SDK's provider (the updater can be injected alone), and
+    `updater_base_url` (https, no trailing path) adds the updater's manifest entries; the caller passes the
+    updater's compiled dex in `sdk_dex_paths` like any other. Refuses when there is nothing to inject."""
+    if api_key == '-' and not updater_base_url:
+        raise ValueError('nothing to inject: no API key and no updater base URL')
+    if updater_base_url and not updater_base_url.lower().startswith('https://'):
+        raise ValueError('the updater base URL must start with https://')
     if not os.path.exists(input_aab):
         raise FileNotFoundError(input_aab)
     if not isinstance(sdk_dex_paths, list):
@@ -111,7 +120,7 @@ def patch(input_aab, output_aab, sdk_dex_paths, api_key, bundletool_jar):
         with open(manifest_in, 'wb') as f:
             f.write(manifest_data)
 
-        _patch_manifest(manifest_in, manifest_out, api_key, bundletool_jar)
+        _patch_manifest(manifest_in, manifest_out, api_key, bundletool_jar, updater_base_url)
 
         new_dex_mappings = []
         for dex_path in sdk_dex_paths:
@@ -169,6 +178,9 @@ def main():
     ap.add_argument('sdk_dex_paths', nargs='+')
     ap.add_argument('api_key')
     ap.add_argument('--bundletool-jar', default=os.environ.get('BUNDLETOOL_JAR'))
+    ap.add_argument('--updater-base-url', default=None,
+                    help='Task 47c: https base URL of Zealot; adds the updater components to the manifest. '
+                         'Pass "-" as api_key to inject the updater without the proxy SDK.')
     ap.add_argument('--verify', action='store_true',
                      help='also run bundletool build-apks --mode=universal on the result (unsigned)')
     args = ap.parse_args()
@@ -177,7 +189,8 @@ def main():
         print('error: --bundletool-jar or $BUNDLETOOL_JAR must point at a bundletool-all-*.jar', file=sys.stderr)
         sys.exit(1)
 
-    result = patch(args.input_aab, args.output_aab, args.sdk_dex_paths, args.api_key, args.bundletool_jar)
+    result = patch(args.input_aab, args.output_aab, args.sdk_dex_paths, args.api_key, args.bundletool_jar,
+                   args.updater_base_url)
     print(f"[*] patched bundle written to {args.output_aab} (SDK dexes added: {result['dexes_added']})")
 
     if args.verify:
