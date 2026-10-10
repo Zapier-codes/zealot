@@ -468,6 +468,12 @@ en:
         access_denied: "Google Play refused the service account (%{email}) access to %{package}. Check its permissions under Users and permissions in Play Console and that the Google Play Android Developer API is still enabled for its project."
         auth_failed: "Google rejected the Play service-account credential (%{detail}). Upload a valid key at admin/play_credential and make sure the Google Play Android Developer API is enabled for its project."
         error: "The Play import failed unexpectedly: %{detail}"
+        reviews:
+          no_package_name: "No Play applicationId is set for this app yet, so there are no reviews to read from Play."
+          package_not_found: "Google Play has no app for %{package} yet, so it has no reviews. An applicationId is only registered by the first bundle uploaded to Play Console."
+        vitals:
+          no_package_name: "No Play applicationId is set for this app yet, so there are no crash or ANR metrics to read."
+          package_not_found: "Google Play has no app for %{package} yet, so it reports no crash or ANR metrics for it."
     apple_teams:
       edit:
         title: Edit team metadata

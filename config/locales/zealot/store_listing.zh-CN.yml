@@ -241,6 +241,24 @@ zh-CN:
         track_status: 状态
         track_versions: 版本号
         back: 返回应用
+        reviews_title: Play 中的评价
+        reviews_intro: 人们发布在 Google Play 上的评价，以及 Play 已保存的开发者回复。此处只读；暂不支持从 Zealot 回复。
+        reviews_count: "共 %{count} 条评价，最新在前"
+        anonymous: Play 用户
+        rating: "%{count}★"
+        no_text: （无文字）
+        developer_reply: "开发者回复 · %{when}"
+        no_reviews: Play 中该应用还没有评价。
+        vitals_title: 崩溃与 ANR
+        vitals_intro: 来自 Play 的最近 %{days} 天崩溃率与 ANR 率，以及每个比率覆盖的用户数。仅供只读参考；Zealot 自己的崩溃上报是独立功能。
+        vitals_metric: 指标
+        vitals_latest: 最新比率
+        vitals_users: 用户数
+        vitals_kinds:
+          crashRate: 崩溃率
+          anrRate: ANR 率
+        vitals_percent: "%{value}%"
+        not_measured: 未测量
       create:
         staged: "已从 Play 暂存。请到商店文字编辑器检查后再发布。"
         unchanged: 线上上架信息与 Play 的内容一致。

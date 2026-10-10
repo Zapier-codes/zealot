@@ -74,10 +74,15 @@ class Apps::PlayImportsController < ApplicationController
   # returns the same Result both times and writes nothing.
   def load_page
     @language = params[:locale].to_s.strip.presence || 'en-US'
-    @result = Anthropic::PlayImportService.new.fetch(@app.play_package_name)
+    service = Anthropic::PlayImportService.new
+    @result = service.fetch(@app.play_package_name)
     @tracks = @result.tracks || []
     @listing = @result.listings&.find { |l| l.language == @language } || @result.preferred_listing
     @values = @listing ? @listing.to_h.stringify_keys.slice(*IMPORTABLE.values.map(&:to_s)) : {}
+    # Reviews and vitals are independent reads on separate APIs, each degrading on its own: a package with
+    # no Play reviews yet, or a deployment without the reporting gem, still shows the listing import.
+    @reviews_result = service.fetch_reviews(@app.play_package_name)
+    @vitals_result = service.fetch_vitals(@app.play_package_name)
     @title = t('apps.play_imports.show.title')
   end
 

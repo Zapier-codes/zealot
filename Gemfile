@@ -24,6 +24,7 @@ gem 'graphql', '~> 2.6.10'
 gem 'health_check', '~> 3.1.0'
 gem 'tiny_appstore_connect', '~> 0.1.12'
 gem 'google-apis-androidpublisher_v3', '~> 0.36.0'
+gem 'google-apis-playdeveloperreporting_v1beta1', '~> 0.43.0'
 
 # View
 gem 'view_component', '~> 4.15.0'

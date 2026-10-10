@@ -408,6 +408,24 @@ above: D-P1/D-P2/D-P3/D-P4/D-P5/D-P6/D-P7/D-P8 (web) and S-P1/S-P2 (client). No 
     **export/import** counterpart to the reverse-engineered read-side catalog adapter (which is a *visitor*
     read of public store data); reviews and vitals are a deliberate follow-on. The card still stays `[~]`
     because its other open item -- a real canary against a vendored backend -- is an operator action.
+  - **§2 reviews + vitals built 2026-10-10 (twelfth session).** The §2 follow-on the previous session named
+    ("extend the import bridge to reviews/vitals/reports") is now closed for two of the three rows.
+    `Anthropic::PlayImportService` gains `fetch_reviews` (the official gem's `reviews.list`, flattened
+    `Review -> Comment -> UserComment` into a `ReviewInfo`, including the developer reply Play already
+    holds; a `LoadError` guard and the same never-raises `Result` contract, `:ok`/`:no_package_name`/
+    `:not_configured`/`:package_not_found`/`:access_denied`/`:auth_failed`/`:error`) and `fetch_vitals`
+    (the **Play Developer Reporting API** -- a separate gem `google-apis-playdeveloperreporting_v1beta1`
+    and scope `playdeveloperreporting` -- reading `crashRateMetricSet`/`anrRateMetricSet` `:query` over a
+    trailing 30-day `TimelineSpec`, into a `VitalInfo` per interval with the rate and its normalising
+    `distinctUsers` count; a missing datapoint stays `nil`, never `0`). `Apps::PlayImportsController#show`
+    makes both reads, each independently degrading on its own API, so one being refused does not blank the
+    listing import; the view gains a Reviews card and a Crashes/ANRs card (read-only -- copying Play
+    reviews into Zealot's own inbox with replies synced back remains a deliberate follow-on). `Gemfile` +
+    lock gain `google-apis-playdeveloperreporting_v1beta1 ~> 0.43.0`; en/zh-CN locales extended. The
+    **reporting gem was actually installed in-sandbox** and a harness drove the *real, unmodified* service
+    against the *real* gem classes (33/33), so the field mapping against Google's own generated classes is
+    verified, not guessed. The §2 "reports" row (error-count / performance metric sets) remains open. The
+    card stays `[~]` (the canary item is still an operator action).
   - **Self-hosted token dispenser built 2026-10-10 (this session, rule 4).** `Play::TokenDispenser`
     (`app/services/play/token_dispenser.rb`) reads the anonymous AAS token from an operator-run dispenser
     instead of a third party's host. It follows `marzzzello/playstoreapi`'s `TokenDispenser` shape (a GET

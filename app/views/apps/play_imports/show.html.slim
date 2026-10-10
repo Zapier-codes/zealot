@@ -72,3 +72,62 @@
             span = @result.message
           div class="flex flex-wrap items-center gap-3"
             = link_to t('.back'), app_path(@app), class: 'd-link', data: { turbo_frame: '_top' }
+
+.row
+  .col-md-12
+    .card
+      .card-header
+        h3.card-title = t('.reviews_title')
+      .card-body class="space-y-3"
+        p.text-sm.opacity-70 = t('.reviews_intro')
+        - if @reviews_result.ok? && @reviews_result.reviews.any?
+          p.text-xs.opacity-65 = t('.reviews_count', count: @reviews_result.reviews.size)
+          .space-y-3
+            - @reviews_result.reviews.each do |review|
+              .border-b.border-base-300.pb-3
+                div class="flex flex-wrap items-center gap-2"
+                  span.font-semibold = review.author_name.presence || t('.anonymous')
+                  span.text-xs.opacity-65 = t('.rating', count: review.rating) if review.rating
+                  span.text-xs.opacity-65 = review.last_modified if review.last_modified
+                  - if review.app_version_name.present?
+                    span.text-xs.opacity-65 = review.app_version_name
+                p.text-sm class="whitespace-pre-line" = review.text.presence || t('.no_text')
+                - if review.developer_reply.present?
+                  .mt-2.pl-3.border-l-2.border-primary
+                    p.text-xs.opacity-70 = t('.developer_reply', when: review.replied_at)
+                    p.text-sm class="whitespace-pre-line" = review.developer_reply
+        - elsif @reviews_result.ok?
+          .d-alert.d-alert-info role="status"
+            span = t('.no_reviews')
+        - else
+          .d-alert.d-alert-warning role="alert"
+            span = @reviews_result.message
+
+.row
+  .col-md-12
+    .card
+      .card-header
+        h3.card-title = t('.vitals_title')
+      .card-body class="space-y-3"
+        p.text-sm.opacity-70 = t('.vitals_intro', days: Anthropic::PlayImportService::VITALS_WINDOW_DAYS)
+        - if @vitals_result.ok? && @vitals_result.vitals.any?
+          table.table.table-sm
+            thead
+              tr
+                th = t('.vitals_metric')
+                th = t('.vitals_latest')
+                th = t('.vitals_users')
+            tbody
+              - [ @vitals_result.crash, @vitals_result.anr ].each do |series|
+                - next if series.nil?
+                - latest = series.value
+                tr
+                  td = t(".vitals_kinds.#{series.kind}")
+                  td = latest.nil? ? t('.not_measured') : t('.vitals_percent', value: latest)
+                  td = series.user_count.nil? ? t('.empty') : number_with_delimiter(series.user_count)
+        - elsif @vitals_result.ok?
+          .d-alert.d-alert-info role="status"
+            span = t('.no_vitals')
+        - else
+          .d-alert.d-alert-warning role="alert"
+            span = @vitals_result.message

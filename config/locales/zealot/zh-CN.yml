@@ -465,6 +465,12 @@ zh-CN:
         access_denied: "Google Play 拒绝了服务账号（%{email}）访问 %{package}。请在 Play Console 的「用户和权限」中检查其权限，并确认其所属项目仍已启用 Google Play Android Developer API。"
         auth_failed: "Google 拒绝了 Play 服务账号凭据（%{detail}）。请在 admin/play_credential 上传有效的密钥，并确认其所属项目已启用 Google Play Android Developer API。"
         error: "Play 导入意外失败：%{detail}"
+        reviews:
+          no_package_name: "该应用尚未设置 Play 的 applicationId，无法从 Play 读取评价。"
+          package_not_found: "Google Play 中还没有 %{package} 对应的应用，因此没有评价。applicationId 只会在第一个安装包上传到 Play Console 时注册。"
+        vitals:
+          no_package_name: "该应用尚未设置 Play 的 applicationId，无法读取崩溃率或 ANR 指标。"
+          package_not_found: "Google Play 中还没有 %{package} 对应的应用，因此不会返回其崩溃率或 ANR 指标。"
     apple_teams:
       edit:
         title: 更新苹果开发者名称

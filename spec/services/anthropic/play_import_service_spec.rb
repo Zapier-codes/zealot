@@ -130,4 +130,141 @@ RSpec.describe Anthropic::PlayImportService do
     expect(result).to be_ok
     expect(result.listings.first.title).to eq('A')
   end
+
+  describe '#fetch_reviews' do
+    let(:review_client) { double('AndroidPublisherService') }
+
+    before { allow(service).to receive(:build_client).and_return(review_client) }
+
+    it 'reports no_package_name without calling Google when the package is blank' do
+      expect(service).not_to receive(:build_client)
+
+      expect(service.fetch_reviews('  ').code).to eq(:no_package_name)
+    end
+
+    it 'reports not_configured when there is no credential' do
+      expect(described_class.new(credential: nil).fetch_reviews(package).code).to eq(:not_configured)
+    end
+
+    it 'flattens Review -> Comment -> UserComment, keeping the developer reply' do
+      user = double('UserComment', star_rating: 5, text: 'wonderful', original_text: nil,
+                                   reviewer_language: 'en', device: 'Pixel', app_version_name: '1.2',
+                                   thumbs_up_count: 3, thumbs_down_count: 0,
+                                   last_modified: double(seconds: 1_700_000_000))
+      developer = double('DeveloperComment', text: 'thanks!', last_modified: double(seconds: 1_700_100_000))
+      review = double('Review', review_id: 'r1', author_name: 'Ada',
+                      comments: [double(user_comment: user, developer_comment: developer)])
+      allow(review_client).to receive(:list_reviews)
+        .with(package, max_results: described_class::REVIEWS_PAGE_SIZE, translation_language: nil)
+        .and_return(double(reviews: [review]))
+
+      result = service.fetch_reviews(package)
+
+      expect(result).to be_ok
+      expect(result.package_name).to eq(package)
+      info = result.reviews.first
+      expect(info.review_id).to eq('r1')
+      expect(info.author_name).to eq('Ada')
+      expect(info.rating).to eq(5)
+      expect(info.text).to eq('wonderful')
+      expect(info.developer_reply).to eq('thanks!')
+      expect(info.thumbs_up).to eq(3)
+      expect(info.last_modified).to eq(Time.zone.at(1_700_000_000).to_date)
+      expect(info.replied_at).to eq(Time.zone.at(1_700_100_000).to_date)
+    end
+
+    it 'falls back to original_text and reports no reply' do
+      user = double('UserComment', star_rating: 3, text: nil, original_text: 'original',
+                                   reviewer_language: nil, device: nil, app_version_name: nil,
+                                   thumbs_up_count: nil, thumbs_down_count: nil, last_modified: nil)
+      review = double('Review', review_id: 'r2', author_name: 'Bo',
+                      comments: [double(user_comment: user, developer_comment: nil)])
+      allow(review_client).to receive(:list_reviews).and_return(double(reviews: [review]))
+
+      info = service.fetch_reviews(package).reviews.first
+
+      expect(info.text).to eq('original')
+      expect(info.developer_reply).to be_nil
+      expect(info.last_modified).to be_nil
+    end
+
+    it 'passes a translation language through to Play when given one' do
+      allow(review_client).to receive(:list_reviews)
+        .with(package, max_results: anything, translation_language: 'en')
+        .and_return(double(reviews: []))
+
+      expect(service.fetch_reviews(package, translation_language: 'en')).to be_ok
+    end
+
+    it 'maps Play errors to Result codes rather than raising' do
+      allow(review_client).to receive(:list_reviews)
+        .and_raise(Google::Apis::ClientError.new('nope', status_code: 404))
+      expect(service.fetch_reviews(package).code).to eq(:package_not_found)
+
+      allow(review_client).to receive(:list_reviews)
+        .and_raise(Google::Apis::AuthorizationError.new('bad key'))
+      expect(service.fetch_reviews(package).code).to eq(:auth_failed)
+    end
+  end
+
+  describe '#fetch_vitals' do
+    let(:reporting_client) { double('PlaydeveloperreportingService') }
+
+    before { allow(service).to receive(:build_reporting_client).and_return(reporting_client) }
+
+    def row(kind:, day:, rate: nil, users: nil)
+      metrics = []
+      metrics << double(metric: kind, decimal_value: double(value: rate)) unless rate.nil?
+      metrics << double(metric: 'distinctUsers', decimal_value: double(value: users)) unless users.nil?
+      double(start_time: double(year: 2026, month: 10, day: day), aggregation_period: 'DAILY', metrics: metrics)
+    end
+
+    it 'reports no_package_name without calling Google when the package is blank' do
+      expect(service).not_to receive(:build_reporting_client)
+
+      expect(service.fetch_vitals('  ').code).to eq(:no_package_name)
+    end
+
+    it 'reports not_configured when there is no credential' do
+      expect(described_class.new(credential: nil).fetch_vitals(package).code).to eq(:not_configured)
+    end
+
+    it 'reads crash and ANR rate, keeping the latest interval per kind' do
+      allow(reporting_client).to receive(:query_vital_crashrate).and_return(double(rows: [
+        row(kind: 'crashRate', day: 8, rate: '0.42', users: '1234'),
+        row(kind: 'crashRate', day: 9, rate: '0.55')
+      ]))
+      allow(reporting_client).to receive(:query_vital_anrrate).and_return(double(rows: [
+        row(kind: 'anrRate', day: 9, rate: '0.10')
+      ]))
+
+      result = service.fetch_vitals(package)
+
+      expect(result).to be_ok
+      expect(result.vitals.size).to eq(3)
+      expect(result.crash.start_time).to eq('2026-10-09')
+      expect(result.crash.value).to eq('0.55')
+      expect(result.anr.start_time).to eq('2026-10-09')
+      expect(result.anr.value).to eq('0.10')
+      expect(result.vitals.find { |v| v.start_time == '2026-10-08' }.user_count).to eq('1234')
+    end
+
+    it 'leaves a rate nil when Play measured no datapoint (never 0)' do
+      allow(reporting_client).to receive(:query_vital_crashrate)
+        .and_return(double(rows: [row(kind: 'crashRate', day: 9)]))
+      allow(reporting_client).to receive(:query_vital_anrrate).and_return(double(rows: []))
+
+      result = service.fetch_vitals(package)
+
+      expect(result.crash.value).to be_nil
+      expect(result.anr).to be_nil
+    end
+
+    it 'maps Play errors to Result codes rather than raising' do
+      allow(reporting_client).to receive(:query_vital_crashrate)
+        .and_raise(Google::Apis::ClientError.new('nope', status_code: 403))
+
+      expect(service.fetch_vitals(package).code).to eq(:access_denied)
+    end
+  end
 end

@@ -255,6 +255,8 @@ GEM
       multi_json (~> 1.11)
       representable (~> 3.0)
       retriable (>= 3.1, < 5.0)
+    google-apis-playdeveloperreporting_v1beta1 (0.43.0)
+      google-apis-core (>= 0.15.0, < 2.a)
     google-cloud-env (2.4.0)
       base64 (~> 0.2)
       faraday (>= 1.0, < 3.a)
@@ -809,6 +811,7 @@ DEPENDENCIES
   gitlab_omniauth-ldap (~> 2.3.0)
   good_job (~> 4.19.2)
   google-apis-androidpublisher_v3 (~> 0.36.0)
+  google-apis-playdeveloperreporting_v1beta1 (~> 0.43.0)
   graphiql-rails
   graphql (~> 2.6.10)
   health_check (~> 3.1.0)

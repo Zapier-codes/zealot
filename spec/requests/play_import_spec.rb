@@ -42,7 +42,17 @@ RSpec.describe 'Import from Play', type: :request do
   end
 
   def stub_fetch(result)
+    stub_reads
     allow_any_instance_of(Anthropic::PlayImportService).to receive(:fetch).and_return(result)
+  end
+
+  # Reviews and vitals are independent reads the page also makes; stub them empty by
+  # default so a listing test is not affected by them, and let individual tests override.
+  def stub_reads
+    allow_any_instance_of(Anthropic::PlayImportService).to receive(:fetch_reviews)
+      .and_return(Anthropic::PlayImportService::ReviewsResult.new(code: :ok, package_name: 'com.example.app', reviews: []))
+    allow_any_instance_of(Anthropic::PlayImportService).to receive(:fetch_vitals)
+      .and_return(Anthropic::PlayImportService::VitalsResult.new(code: :ok, package_name: 'com.example.app', vitals: []))
   end
 
   def draft
@@ -90,6 +100,57 @@ RSpec.describe 'Import from Play', type: :request do
       expect(response).to have_http_status(:ok)
       expect(response.body).to include('No Play API credential')
       expect(app.listing_edits.count).to eq(0)
+    end
+
+    it 'renders Play reviews, including the developer reply' do
+      stub_fetch(ok_result)
+      allow_any_instance_of(Anthropic::PlayImportService).to receive(:fetch_reviews).and_return(
+        Anthropic::PlayImportService::ReviewsResult.new(code: :ok, package_name: 'com.example.app', reviews: [
+          Anthropic::PlayImportService::ReviewInfo.new(author_name: 'Ada', rating: 5, text: 'wonderful',
+                                                       developer_reply: 'thanks!', replied_at: Date.new(2026, 10, 8))
+        ])
+      )
+
+      get app_play_import_path(app)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('Ada', 'wonderful', 'thanks!')
+    end
+
+    it 'says so when Play has no reviews' do
+      stub_fetch(ok_result)
+
+      get app_play_import_path(app)
+
+      expect(response.body).to include(I18n.t('apps.play_imports.show.no_reviews'))
+    end
+
+    it 'renders crash and ANR rates, and "not measured" when a datapoint is missing' do
+      stub_fetch(ok_result)
+      allow_any_instance_of(Anthropic::PlayImportService).to receive(:fetch_vitals).and_return(
+        Anthropic::PlayImportService::VitalsResult.new(code: :ok, package_name: 'com.example.app', vitals: [
+          Anthropic::PlayImportService::VitalInfo.new(kind: 'crashRate', start_time: '2026-10-09', value: '0.55', user_count: '1234'),
+          Anthropic::PlayImportService::VitalInfo.new(kind: 'anrRate', start_time: '2026-10-09', value: nil)
+        ])
+      )
+
+      get app_play_import_path(app)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('0.55%', 'Crash rate', 'ANR rate', '1,234')
+      expect(response.body).to include(I18n.t('apps.play_imports.show.not_measured'))
+    end
+
+    it 'shows the reviews problem without blanking the listing when only reviews fail' do
+      stub_fetch(ok_result(title: 'Play name'))
+      allow_any_instance_of(Anthropic::PlayImportService).to receive(:fetch_reviews).and_return(
+        Anthropic::PlayImportService::ReviewsResult.new(code: :access_denied, message: 'Reviews access denied')
+      )
+
+      get app_play_import_path(app)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('Play name', 'Reviews access denied')
     end
   end
 

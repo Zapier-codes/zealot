@@ -241,6 +241,24 @@ en:
         track_status: Status
         track_versions: Version codes
         back: Back to the app
+        reviews_title: Reviews in Play
+        reviews_intro: What people have written on Google Play, with any developer reply Play already holds. Read-only here; replying from Zealot is not wired up yet.
+        reviews_count: "%{count} reviews, newest first"
+        anonymous: A Play user
+        rating: "%{count}★"
+        no_text: (no text)
+        developer_reply: "Developer reply · %{when}"
+        no_reviews: Play has no reviews for this app yet.
+        vitals_title: Crashes and ANRs
+        vitals_intro: Crash and ANR rate from Play over the last %{days} days, with the number of users each rate covers. Read-only reference; Zealot's own crash reporting is separate.
+        vitals_metric: Metric
+        vitals_latest: Latest rate
+        vitals_users: Users
+        vitals_kinds:
+          crashRate: Crash rate
+          anrRate: ANR rate
+        vitals_percent: "%{value}%"
+        not_measured: not measured
       create:
         staged: "Staged from Play. Review it on the store listing text editor, then publish."
         unchanged: The live listing already matches what Play holds.
