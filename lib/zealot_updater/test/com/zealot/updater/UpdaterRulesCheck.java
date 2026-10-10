@@ -97,6 +97,16 @@ public final class UpdaterRulesCheck {
         ok(!UpdaterRules.isStoreInstaller("com.android.vending", "com.vythera.vyxelapps"), "Google Play is not a store that checks for us");
         ok(!UpdaterRules.isStoreInstaller(null, "a") && !UpdaterRules.isStoreInstaller("", "a"), "no installer: not a store");
 
+        // update ownership (Task 47i)
+        String S = "com.vythera.vyxelapps";
+        ok(UpdaterRules.shouldStayQuiet(S, null, S, "com.x"), "store installer, no owner: quiet");
+        ok(UpdaterRules.shouldStayQuiet("com.browser", S, S, "com.x"), "another package owns updates: quiet");
+        ok(UpdaterRules.shouldStayQuiet(null, "com.android.vending", S, "com.x"), "Play owns updates: quiet");
+        ok(!UpdaterRules.shouldStayQuiet("com.browser", null, S, "com.x"), "no owner, browser installer: speak");
+        ok(!UpdaterRules.shouldStayQuiet("com.browser", "", S, "com.x"), "empty owner: speak");
+        ok(!UpdaterRules.shouldStayQuiet("com.browser", "com.x", S, "com.x"), "the app owns its own updates: speak");
+        ok(!UpdaterRules.shouldStayQuiet(null, null, null, "com.x"), "nothing known: speak");
+
         // notification id: stable, in its own range
         ok(UpdaterRules.notificationId("com.example.app") == UpdaterRules.notificationId("com.example.app"), "notification id is stable");
         ok((UpdaterRules.notificationId("com.example.app") & 0xff000000) == 0x5a000000, "notification id is in the 0x5a range");

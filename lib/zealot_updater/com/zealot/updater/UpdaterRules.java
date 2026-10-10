@@ -108,6 +108,20 @@ final class UpdaterRules {
         return false;
     }
 
+    /**
+     * Task 47i. Should this library say nothing at all for this install? Yes when a store that checks updates itself
+     * is the installer of record (47a), and also when ANOTHER package holds the app's update ownership (Android 14,
+     * {@code InstallSourceInfo.getUpdateOwnerPackageName()}): that package updates the app, and an install started
+     * by anyone else makes Android ask the person to confirm, so a notification from here would only compete with
+     * the owner's. An owner equal to the app's own package (it installed itself) is not "another". A null or empty
+     * owner (older Android, or none set) changes nothing.
+     */
+    static boolean shouldStayQuiet(String installer, String updateOwner, String commaSeparatedStorePackages, String ownPackage) {
+        if (isStoreInstaller(installer, commaSeparatedStorePackages)) return true;
+        if (updateOwner == null || updateOwner.isEmpty()) return false;
+        return !updateOwner.equals(ownPackage);
+    }
+
     /** One stable notification id per package, in a range of its own. */
     static int notificationId(String packageName) {
         return 0x5a000000 | (packageName.hashCode() & 0x00ffffff);

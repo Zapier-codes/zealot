@@ -139,7 +139,7 @@ public final class ZealotUpdater {
             Log.w(TAG, "no https base URL in the manifest meta-data; no check");
             return;
         }
-        if (UpdaterRules.isStoreInstaller(installerOfRecord(ctx), storePackages(ctx))) return;
+        if (UpdaterRules.shouldStayQuiet(installerOfRecord(ctx), updateOwner(ctx), storePackages(ctx), ctx.getPackageName())) return;
 
         String pkg = ctx.getPackageName();
         String body;
@@ -474,6 +474,16 @@ public final class ZealotUpdater {
             PackageManager pm = ctx.getPackageManager();
             if (Build.VERSION.SDK_INT >= 30) return pm.getInstallSourceInfo(ctx.getPackageName()).getInstallingPackageName();
             return pm.getInstallerPackageName(ctx.getPackageName());
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Android 14+: the package that owns this app's updates (Task 47i), or null when none is set or Android is older. */
+    private static String updateOwner(Context ctx) {
+        if (Build.VERSION.SDK_INT < 34) return null;
+        try {
+            return ctx.getPackageManager().getInstallSourceInfo(ctx.getPackageName()).getUpdateOwnerPackageName();
         } catch (Exception e) {
             return null;
         }
