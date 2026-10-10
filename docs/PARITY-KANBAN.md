@@ -298,8 +298,24 @@ above: D-P1/D-P2/D-P3/D-P4/D-P5/D-P6/D-P7/D-P8 (web) and S-P1/S-P2 (client). No 
   Python `playstoreapi`, two implementations so one can fail over), pinned + vendored, a daily canary marks
   it `degraded` and the UI hides the Play panel, self-hosted dispenser, hard cache, catalogue-only fallback,
   optional per deployment and off by default for tenants. **Never the only path.** Owner **Z**.
-- [ ] **Z-P26 · Silent-install backends in the client** — Shizuku/Sui, Dhizuku (Device Owner), root
+- [x] **Z-P26 · Silent-install backends in the client** — Shizuku/Sui, Dhizuku (Device Owner), root
   (Magisk/KernelSU/APatch) as opt-in next to the existing 47i update-ownership. Owner **S**.
+  Built 2026-10-10 (Storeapp): `silent/` — `SilentInstallBackend` (Shizuku/Dhizuku/Root), `SilentInstallStatus`,
+  `SilentInstallRules.plan` (pure: off by default → nothing; a pin uses only that backend and never falls
+  through to a different privilege; otherwise Shizuku→Dhizuku→Root, first *ready* one), `SilentInstallCommand`
+  (one `pm install -r --user 0 -S <size>` form; result read from both exit code and the printed "Success"),
+  `SilentInstaller` (probes each backend, drives the chosen one; every cross-process call is IO-dispatched and
+  timeout-bounded), `DhizukuBridge` (isolates `io.github.iamr0s:Dhizuku-API 2.5.3` and catches `Throwable`, so
+  an absent Dhizuku degrades cleanly instead of crashing on `NoClassDefFoundError`), `SilentInstallSetup`
+  (each backend's own app, opened to set it up), `SilentInstallService` (foreground `specialUse` service with a
+  progress/completion notification, so an in-flight install survives backgrounding). Manifest: Dhizuku
+  `permission.API`, `FOREGROUND_SERVICE_SPECIAL_USE`, the service. Both shells' Settings get the opt-in switch,
+  a per-backend row (Ready/Grant/Set up/Check) and a "prefer" pin; the install + uninstall paths in the
+  Expressive VM and Classic `downloadAndInstall` route through it, and the "install unknown apps" gate is
+  skipped only when a backend will do the install. **Not compiled or run in the sandbox** for the Zealot half
+  (nothing to build here); the Storeapp half was compiled and its APK assembled. `SilentInstallRulesTest`
+  (11) + `SilentInstallCommandTest` (7) pass. Per the operator's 2026-10-10 directive, initialization offers the
+  setup but the store never downloads or bundles a backend: it drives the services the phone already runs.
 - [x] **S-P3 · Management API / managed config (enterprise)** — Android RestrictionsManager in the client.
   Owner **S**. Built 2026-10-10: `enterprise/ManagedConfig.kt` (`ManagedConfig` + `ManagedConfigRules`
   parse `enabled_sources` / `show_desktop_sources` / `hidden_packages`; a key that is unset or unparseable
