@@ -1,0 +1,51 @@
+/ Z-P3: the automated-review policy status. Play shows the machine verdict on the app before a person looks;
+/ this is that page. It reports the verdict, the reasons and the third-party SDKs found (Z-P4) for each
+/ release that has been checked. Nothing here blocks or unpublishes a release.
+- content_for :title do
+  = @title
+
+- content_for :section_title do
+  = @title
+  small class="pl-2 text-sm"
+    = @app.name
+
+.row
+  .col-md-12
+    .card
+      .card-header
+        h3.card-title = t('.card_title')
+      .card-body class="space-y-4"
+        p.text-sm.opacity-70 = t('.intro')
+
+        - if @current
+          div class="flex flex-wrap items-center gap-4 text-sm opacity-80"
+            span.badge = t(".verdict.#{@current.automated_review_verdict}", default: @current.automated_review_verdict)
+            span = t('.checked', when: time_ago_in_words(@current.automated_reviewed_at))
+            - @counts.each do |verdict, count|
+              span = t('.tally', verdict: t(".verdict.#{verdict}", default: verdict), count: count)
+
+        - if @releases.empty?
+          p.opacity-70 = t('.empty')
+        - else
+          - @releases.each do |release|
+            .border.border-base-300.rounded.p-4.space-y-2
+              div class="flex items-center justify-between gap-2"
+                div class="flex items-center gap-2"
+                  span.font-semibold = "v#{release.version}"
+                  - verdict = release.automated_review_verdict
+                  span.badge = verdict ? t(".verdict.#{verdict}", default: verdict) : t('.status.' + release.automated_review_status, default: release.automated_review_status)
+                span.text-xs.opacity-60 = release.automated_reviewed_at ? time_ago_in_words(release.automated_reviewed_at) : ''
+              - Array(release.automated_review_reasons).each do |reason|
+                p.text-sm
+                  span.badge class="mr-2" = reason['severity']
+                  = reason['message']
+              - trackers = Array(release.automated_review_trackers)
+              - if trackers.any?
+                div
+                  p.text-xs.font-semibold = t('.trackers_title')
+                  ul.text-sm class="list-disc pl-5"
+                    - trackers.each do |t|
+                      li = t['category'].present? ? "#{t['name']} (#{t['category']})" : t['name']
+
+        div class="pt-2"
+          = link_to t('.back'), app_path(@app), class: 'd-link', data: { turbo_frame: '_top' }

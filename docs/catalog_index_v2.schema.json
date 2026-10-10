@@ -4,11 +4,23 @@
   "title": "Zealot catalog index v2",
   "description": "Task 29a. Supersedes catalog_index_v1.schema.json. Read docs/catalog_index_v2.md and app/services/catalog_index/serializer.rb (once 29b lands) alongside this file -- all three are kept in sync by hand.",
   "type": "object",
-  "required": [ "schema_version", "generated_at", "sequence", "expires_at", "apps", "collections" ],
+  "required": [
+    "schema_version",
+    "generated_at",
+    "sequence",
+    "expires_at",
+    "apps",
+    "collections"
+  ],
   "additionalProperties": false,
   "properties": {
-    "schema_version": { "const": 2 },
-    "generated_at": { "type": "string", "format": "date-time" },
+    "schema_version": {
+      "const": 2
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
     "sequence": {
       "type": "integer",
       "minimum": 0,
@@ -21,12 +33,16 @@
     },
     "apps": {
       "type": "array",
-      "items": { "$ref": "#/$defs/app" }
+      "items": {
+        "$ref": "#/$defs/app"
+      }
     },
     "collections": {
       "type": "array",
       "description": "Task 31a: the top-level registry an app's own `collections[]` (an array of slugs, see $defs/app) resolves against. A slug appearing in an app's list with no matching entry here is not itself schema-invalid (this array can be extended independently) but a reader should treat it as unresolvable.",
-      "items": { "$ref": "#/$defs/collection" }
+      "items": {
+        "$ref": "#/$defs/collection"
+      }
     }
   },
   "$defs": {
@@ -34,88 +50,223 @@
       "description": "Full Play-parity vocabulary -- see docs/catalog_index_v2.md's 'Category vocabulary' section and App::APP_CATEGORIES/App::GAME_CATEGORIES, the source of truth this list is kept in sync with by hand. `game_*` values mirror Play's own GAME_* category enum naming.",
       "enum": [
         null,
-        "art_and_design", "auto_and_vehicles", "beauty", "books_and_reference",
-        "business", "comics", "communications", "dating", "education",
-        "entertainment", "events", "finance", "food_and_drink",
-        "health_and_fitness", "house_and_home", "libraries_and_demo",
-        "lifestyle", "maps_and_navigation", "medical", "music_and_audio",
-        "news_and_magazines", "parenting", "personalization", "photography",
-        "productivity", "shopping", "social", "sports", "tools",
-        "travel_and_local", "video_players_and_editors", "weather",
-        "game_action", "game_adventure", "game_arcade", "game_board",
-        "game_card", "game_casino", "game_casual", "game_educational",
-        "game_music", "game_puzzle", "game_racing", "game_role_playing",
-        "game_simulation", "game_sports", "game_strategy", "game_trivia",
+        "art_and_design",
+        "auto_and_vehicles",
+        "beauty",
+        "books_and_reference",
+        "business",
+        "comics",
+        "communications",
+        "dating",
+        "education",
+        "entertainment",
+        "events",
+        "finance",
+        "food_and_drink",
+        "health_and_fitness",
+        "house_and_home",
+        "libraries_and_demo",
+        "lifestyle",
+        "maps_and_navigation",
+        "medical",
+        "music_and_audio",
+        "news_and_magazines",
+        "parenting",
+        "personalization",
+        "photography",
+        "productivity",
+        "shopping",
+        "social",
+        "sports",
+        "tools",
+        "travel_and_local",
+        "video_players_and_editors",
+        "weather",
+        "game_action",
+        "game_adventure",
+        "game_arcade",
+        "game_board",
+        "game_card",
+        "game_casino",
+        "game_casual",
+        "game_educational",
+        "game_music",
+        "game_puzzle",
+        "game_racing",
+        "game_role_playing",
+        "game_simulation",
+        "game_sports",
+        "game_strategy",
+        "game_trivia",
         "game_word"
       ]
     },
     "sha256_or_null": {
-      "type": [ "string", "null" ],
+      "type": [
+        "string",
+        "null"
+      ],
       "pattern": "^[0-9a-f]{64}$"
     },
     "iso_date_time_or_null": {
-      "type": [ "string", "null" ],
+      "type": [
+        "string",
+        "null"
+      ],
       "format": "date-time"
     },
     "collection": {
       "type": "object",
-      "required": [ "slug", "name", "description" ],
+      "required": [
+        "slug",
+        "name",
+        "description"
+      ],
       "additionalProperties": false,
       "properties": {
-        "slug": { "type": "string" },
-        "name": { "type": "string" },
-        "description": { "type": [ "string", "null" ] }
+        "slug": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
       }
     },
     "app": {
       "type": "object",
       "required": [
-        "id", "package_name", "listing_status", "publisher", "listing",
-        "slug", "summary", "category", "license", "links",
-        "available_regions", "created_at", "updated_at",
-        "editorial", "base_stats", "reviews", "sponsored_slots", "collections", "suggested_version_code", "versions"
+        "id",
+        "package_name",
+        "listing_status",
+        "publisher",
+        "listing",
+        "slug",
+        "summary",
+        "category",
+        "license",
+        "links",
+        "available_regions",
+        "created_at",
+        "updated_at",
+        "editorial",
+        "verification",
+        "base_stats",
+        "reviews",
+        "sponsored_slots",
+        "collections",
+        "suggested_version_code",
+        "versions"
       ],
       "additionalProperties": false,
       "properties": {
-        "id": { "type": "integer" },
-        "package_name": { "type": [ "string", "null" ] },
+        "id": {
+          "type": "integer"
+        },
+        "package_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "listing_status": {
           "type": "string",
-          "enum": [ "draft", "awaiting_payment", "live", "suspended" ]
+          "enum": [
+            "draft",
+            "awaiting_payment",
+            "live",
+            "suspended"
+          ]
         },
         "publisher": {
           "type": "object",
-          "required": [ "name", "verified", "bio", "profile_url", "joined_at" ],
+          "required": [
+            "name",
+            "verified",
+            "bio",
+            "profile_url",
+            "joined_at"
+          ],
           "additionalProperties": false,
           "properties": {
-            "name": { "type": [ "string", "null" ] },
-            "verified": { "type": "boolean" },
-            "bio": { "type": [ "string", "null" ] },
-            "profile_url": { "type": [ "string", "null" ], "format": "uri" },
-            "joined_at": { "$ref": "#/$defs/iso_date_time_or_null" }
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "verified": {
+              "type": "boolean"
+            },
+            "bio": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "profile_url": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uri"
+            },
+            "joined_at": {
+              "$ref": "#/$defs/iso_date_time_or_null"
+            }
           }
         },
         "listing": {
           "type": "object",
           "required": [
-            "title", "description", "icon", "screenshots", "feature_graphic", "video",
-            "content_rating", "data_safety", "contains_ads", "has_in_app_purchases"
+            "title",
+            "description",
+            "icon",
+            "screenshots",
+            "feature_graphic",
+            "video",
+            "content_rating",
+            "privacy_policy_url",
+            "data_safety",
+            "contains_ads",
+            "has_in_app_purchases"
           ],
           "additionalProperties": false,
           "properties": {
-            "title": { "type": "string" },
+            "title": {
+              "type": "string"
+            },
             "description": {
               "description": "The full description (Task 27e-a): plain text, paragraphs separated by a blank line (\"\\n\\n\"), at most 4000 characters (Play's limit; see app/services/listing_text.rb). null when the owner has written none.",
-              "type": [ "string", "null" ],
+              "type": [
+                "string",
+                "null"
+              ],
               "maxLength": 4000
             },
             "icon": {
               "type": "object",
-              "required": [ "url", "sha256" ],
+              "required": [
+                "url",
+                "sha256"
+              ],
               "additionalProperties": false,
               "properties": {
-                "url": { "type": [ "string", "null" ], "format": "uri" },
-                "sha256": { "$ref": "#/$defs/sha256_or_null" }
+                "url": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "uri"
+                },
+                "sha256": {
+                  "$ref": "#/$defs/sha256_or_null"
+                }
               }
             },
             "screenshots": {
@@ -123,52 +274,152 @@
               "description": "Phone screenshots in display order (Task 27d-e1). Only graphics that are stored and hashed are listed. alt, width and height were added in 27d-e1 and are optional for a reader.",
               "items": {
                 "type": "object",
-                "required": [ "url", "sha256" ],
+                "required": [
+                  "url",
+                  "sha256"
+                ],
                 "additionalProperties": false,
                 "properties": {
-                  "url": { "type": "string", "format": "uri" },
-                  "sha256": { "$ref": "#/$defs/sha256_or_null" },
-                  "alt": { "type": [ "string", "null" ], "maxLength": 140 },
-                  "width": { "type": "integer", "minimum": 1 },
-                  "height": { "type": "integer", "minimum": 1 }
+                  "url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "sha256": {
+                    "$ref": "#/$defs/sha256_or_null"
+                  },
+                  "alt": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 140
+                  },
+                  "width": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "height": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
                 }
               }
             },
             "feature_graphic": {
               "description": "The 1024 x 500 feature graphic, or null when the app has none (Task 27d-e1).",
-              "type": [ "object", "null" ],
-              "required": [ "url", "sha256" ],
+              "type": [
+                "object",
+                "null"
+              ],
+              "required": [
+                "url",
+                "sha256"
+              ],
               "additionalProperties": false,
               "properties": {
-                "url": { "type": "string", "format": "uri" },
-                "sha256": { "$ref": "#/$defs/sha256_or_null" },
-                "alt": { "type": [ "string", "null" ], "maxLength": 140 }
+                "url": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "sha256": {
+                  "$ref": "#/$defs/sha256_or_null"
+                },
+                "alt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 140
+                }
               }
             },
             "video": {
               "description": "The app's promo video: one YouTube video ID, or null (Task 27d-e1). An external link, so it carries no hash.",
-              "type": [ "object", "null" ],
-              "required": [ "youtube_id" ],
+              "type": [
+                "object",
+                "null"
+              ],
+              "required": [
+                "youtube_id"
+              ],
               "additionalProperties": false,
               "properties": {
-                "youtube_id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{11}$" }
+                "youtube_id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_-]{11}$"
+                }
               }
             },
-            "content_rating": { "type": [ "string", "null" ] },
+            "content_rating": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "privacy_policy_url": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uri",
+              "description": "Z-P6: the app's store privacy-policy URL, or null when the owner has set none."
+            },
             "data_safety": {
               "type": "object",
-              "required": [ "collects_data", "data_types", "shared_with_third_parties", "encrypted_in_transit", "deletion_request_url" ],
+              "required": [
+                "collects_data",
+                "data_types",
+                "shared_with_third_parties",
+                "encrypted_in_transit",
+                "deletion_request_url"
+              ],
               "additionalProperties": false,
               "properties": {
-                "collects_data": { "type": [ "boolean", "null" ] },
-                "data_types": { "type": "array", "items": { "type": "string" } },
-                "shared_with_third_parties": { "type": [ "boolean", "null" ] },
-                "encrypted_in_transit": { "type": [ "boolean", "null" ] },
-                "deletion_request_url": { "type": [ "string", "null" ], "format": "uri" }
+                "collects_data": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "data_types": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "shared_with_third_parties": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "encrypted_in_transit": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "deletion_request_url": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "uri"
+                }
               }
             },
-            "contains_ads": { "type": [ "boolean", "null" ] },
-            "has_in_app_purchases": { "type": [ "boolean", "null" ] }
+            "contains_ads": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "has_in_app_purchases": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
           }
         },
         "slug": {
@@ -178,52 +429,157 @@
         },
         "summary": {
           "description": "The short description (Task 27e-b): one line of plain text, at most 80 characters (Play's limit; see app/services/listing_text.rb). null when the owner has written none. Distinct from listing.description.",
-          "type": [ "string", "null" ],
+          "type": [
+            "string",
+            "null"
+          ],
           "maxLength": 80
         },
-        "category": { "$ref": "#/$defs/category" },
-        "license": { "type": [ "string", "null" ] },
+        "category": {
+          "$ref": "#/$defs/category"
+        },
+        "license": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "links": {
           "type": "object",
-          "required": [ "site", "source", "tracker", "donate" ],
+          "required": [
+            "site",
+            "source",
+            "tracker",
+            "donate"
+          ],
           "additionalProperties": false,
           "properties": {
-            "site": { "type": [ "string", "null" ], "format": "uri" },
-            "source": { "type": [ "string", "null" ], "format": "uri" },
-            "tracker": { "type": [ "string", "null" ], "format": "uri" },
-            "donate": { "type": [ "string", "null" ], "format": "uri" }
+            "site": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uri"
+            },
+            "source": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uri"
+            },
+            "tracker": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uri"
+            },
+            "donate": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uri"
+            }
           }
         },
         "available_regions": {
-          "type": [ "array", "null" ],
+          "type": [
+            "array",
+            "null"
+          ],
           "description": "null = all regions.",
-          "items": { "type": "string", "pattern": "^[A-Z]{2}$" }
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          }
         },
-        "created_at": { "type": "string", "format": "date-time" },
-        "updated_at": { "type": "string", "format": "date-time" },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
         "editorial": {
           "type": "object",
-          "required": [ "featured", "editors_pick" ],
+          "required": [
+            "featured",
+            "editors_pick"
+          ],
           "additionalProperties": false,
           "properties": {
-            "featured": { "type": "boolean" },
-            "editors_pick": { "type": "boolean" }
+            "featured": {
+              "type": "boolean"
+            },
+            "editors_pick": {
+              "type": "boolean"
+            }
+          }
+        },
+        "verification": {
+          "type": "object",
+          "description": "Z-P7: Android developer-verification readiness (Google enforced from 2026-09-30 in BR/ID/SG/TH, global 2027). All false/null until an admin records a real check; a reader must not treat false as \"registered\".",
+          "required": [
+            "developer_verified",
+            "package_registered",
+            "signing_key_registered",
+            "checked_at"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "developer_verified": {
+              "type": "boolean"
+            },
+            "package_registered": {
+              "type": "boolean"
+            },
+            "signing_key_registered": {
+              "type": "boolean"
+            },
+            "checked_at": {
+              "$ref": "#/$defs/iso_date_time_or_null"
+            }
           }
         },
         "base_stats": {
           "description": "Task 45a/45e. null, or {downloads, rating}. Downloads and ratings an app earned before it was listed here (real history entered by an admin; the source note stays in the backend). Task 45e: downloads is the carried-over figure PLUS the count GitHub keeps for each release's installable file. A reader shows one total, formatted like Play Store (5.8M), and adds no counter of its own for these apps.",
-          "type": [ "object", "null" ],
-          "required": [ "downloads", "rating" ],
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "downloads",
+            "rating"
+          ],
           "additionalProperties": false,
           "properties": {
-            "downloads": { "type": "integer", "minimum": 0 },
+            "downloads": {
+              "type": "integer",
+              "minimum": 0
+            },
             "rating": {
-              "type": [ "object", "null" ],
-              "required": [ "average", "count" ],
+              "type": [
+                "object",
+                "null"
+              ],
+              "required": [
+                "average",
+                "count"
+              ],
               "additionalProperties": false,
               "properties": {
-                "average": { "type": "number", "minimum": 1, "maximum": 5 },
-                "count": { "type": "integer", "minimum": 1 }
+                "average": {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 5
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 1
+                }
               }
             }
           }
@@ -233,14 +589,54 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": [ "author_name", "rating", "body", "commented_on", "helpful_count" ],
+            "required": [
+              "author_name",
+              "rating",
+              "body",
+              "commented_on",
+              "helpful_count",
+              "developer_reply",
+              "developer_replied_at"
+            ],
             "additionalProperties": false,
             "properties": {
-              "author_name": { "type": "string" },
-              "rating": { "type": "integer", "minimum": 1, "maximum": 5 },
-              "body": { "type": [ "string", "null" ] },
-              "commented_on": { "type": "string", "format": "date-time" },
-              "helpful_count": { "type": "integer", "minimum": 0 }
+              "author_name": {
+                "type": "string"
+              },
+              "rating": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5
+              },
+              "body": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "commented_on": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "helpful_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "developer_reply": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Z-P8. The app's reply to this review, or null when there is none. Shown set-in under the review, the way Play shows a developer reply."
+              },
+              "developer_replied_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "Z-P8. When the developer reply was last written; null when there is no reply."
+              }
             }
           }
         },
@@ -248,68 +644,185 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": [ "starts_at", "ends_at" ],
+            "required": [
+              "starts_at",
+              "ends_at"
+            ],
             "additionalProperties": false,
             "properties": {
-              "starts_at": { "type": "string", "format": "date-time" },
-              "ends_at": { "type": "string", "format": "date-time" }
+              "starts_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "ends_at": {
+                "type": "string",
+                "format": "date-time"
+              }
             }
           }
         },
         "collections": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "suggested_version_code": {
           "description": "Task 27f-c: the version_code of the version a client should offer: the highest version_code among versions[] whose status is 'available' (compared as versions, not strings), or null when none is. Halting or pulling the newest release moves it to the previous available one. Additive: no schema_version bump; a reader that does not know the key ignores it.",
-          "type": [ "string", "null" ]
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "versions": {
           "type": "array",
-          "items": { "$ref": "#/$defs/version" }
+          "items": {
+            "$ref": "#/$defs/version"
+          }
         }
       }
     },
     "version": {
       "type": "object",
       "required": [
-        "release_id", "version_name", "version_code", "download_url",
-        "sha256", "size_bytes", "signing_fingerprint", "changelog",
-        "released_at", "status", "compatibility", "rollout"
+        "release_id",
+        "version_name",
+        "version_code",
+        "download_url",
+        "sha256",
+        "size_bytes",
+        "signing_fingerprint",
+        "changelog",
+        "released_at",
+        "status",
+        "compatibility",
+        "rollout"
       ],
       "additionalProperties": false,
       "properties": {
-        "release_id": { "type": "integer" },
-        "version_name": { "type": [ "string", "null" ] },
-        "version_code": { "type": [ "string", "null" ] },
-        "download_url": { "type": "string", "format": "uri" },
-        "sha256": { "$ref": "#/$defs/sha256_or_null" },
-        "size_bytes": { "type": [ "integer", "null" ] },
-        "signing_fingerprint": { "type": [ "string", "null" ] },
-        "changelog": { "type": [ "string", "null" ], "description": "Release#changelog is jsonb internally (an array of {message} entries), rendered here as newline-joined '- message' lines via Release#text_changelog(default_template: false) -- never the raw jsonb. Empty string, not the default-template placeholder, when the release has no changelog entries; D-store's reader (5.g.i.zi, already built against this) supplies its own 'No changelog provided.' text for that case. Fixed to a plain string this session (29b/29d) after cross-repo review found D-store's reader already committed to reading it as one and calling .trim() on it directly." },
-        "released_at": { "type": "string", "format": "date-time" },
-        "status": { "enum": [ "available", "halted", "pulled" ] },
+        "release_id": {
+          "type": "integer"
+        },
+        "version_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "download_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256_or_null"
+        },
+        "size_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "signing_fingerprint": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "changelog": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Release#changelog is jsonb internally (an array of {message} entries), rendered here as newline-joined '- message' lines via Release#text_changelog(default_template: false) -- never the raw jsonb. Empty string, not the default-template placeholder, when the release has no changelog entries; D-store's reader (5.g.i.zi, already built against this) supplies its own 'No changelog provided.' text for that case. Fixed to a plain string this session (29b/29d) after cross-repo review found D-store's reader already committed to reading it as one and calling .trim() on it directly."
+        },
+        "released_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "status": {
+          "enum": [
+            "available",
+            "halted",
+            "pulled"
+          ]
+        },
         "compatibility": {
           "type": "object",
-          "required": [ "min_sdk", "target_sdk", "abis", "screen_densities", "required_features", "permissions" ],
+          "required": [
+            "min_sdk",
+            "target_sdk",
+            "abis",
+            "screen_densities",
+            "required_features",
+            "permissions"
+          ],
           "additionalProperties": false,
           "properties": {
-            "min_sdk": { "type": [ "integer", "null" ] },
-            "target_sdk": { "type": [ "integer", "null" ] },
-            "abis": { "type": "array", "items": { "type": "string" } },
-            "screen_densities": { "type": "array", "items": { "type": "string" } },
-            "required_features": { "type": "array", "items": { "type": "string" } },
-            "permissions": { "type": "array", "items": { "type": "string" } }
+            "min_sdk": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "target_sdk": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "abis": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "screen_densities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "required_features": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "permissions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
           }
         },
         "rollout": {
           "type": "object",
           "description": "Task 32a: staged rollout, Play-Console parity. percentage is 0-100 (100 = fully available, the default for every release that has never had a rollout narrowed). status is the admin-controlled ramp state, distinct from the sibling `status` field on this same version object (which tracks the release's overall lifecycle, not the rollout ramp). A reader deciding whether to offer this version to one specific device computes bucket = first 8 bytes of sha256(\"<device_id>:<release_id>\") as a big-endian uint64, mod 100, and offers the update only if bucket < percentage -- the same deterministic, sticky bucketing Play itself uses, so a given device's inclusion never flips as the percentage climbs.",
-          "required": [ "percentage", "status" ],
+          "required": [
+            "percentage",
+            "status"
+          ],
           "additionalProperties": false,
           "properties": {
-            "percentage": { "type": "integer", "minimum": 0, "maximum": 100 },
-            "status": { "enum": [ "active", "halted", "complete" ] }
+            "percentage": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "status": {
+              "enum": [
+                "active",
+                "halted",
+                "complete"
+              ]
+            }
           }
         }
       }

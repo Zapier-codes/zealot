@@ -1,0 +1,51 @@
+/ Z-P22: the deep-link verification checker. Android verifies an https App Link by fetching
+/ https://<host>/.well-known/assetlinks.json and matching the app's package + signing certificate. This page
+/ shows, per host the app's deep links declare, whether that file currently associates them. Read-only.
+- content_for :title do
+  = @title
+
+- content_for :section_title do
+  = @title
+  small class="pl-2 text-sm"
+    = @app.name
+
+.row
+  .col-md-12
+    .card
+      .card-header
+        h3.card-title = t('.card_title')
+      .card-body class="space-y-4"
+        p.text-sm.opacity-70 = t('.intro')
+
+        div class="flex flex-wrap items-center gap-4 text-sm opacity-80"
+          span = t('.package', value: @result.package_name.presence || t('.missing'))
+          span = t('.certificate', value: @result.sha256.present? ? t('.present') : t('.missing'))
+
+        - unless @result.runnable?
+          .card.card-outline.card-warning
+            .card-body
+              p = t(".blocked.#{blocked_reason}")
+
+        - if @result.declared_hosts.any?
+          table.d-table.w-full
+            thead
+              tr
+                th = t('.host')
+                th = t('.status')
+            tbody
+              - checked_by_host = @result.hosts.index_by(&:host)
+              - @result.declared_hosts.each do |host|
+                - entry = checked_by_host[host]
+                tr
+                  td.text-wrap.break-all = host
+                  td
+                    - if entry
+                      span class="d-badge d-badge-sm #{entry.verified? ? 'd-badge-success' : 'd-badge-ghost'}"
+                        = t(".state.#{entry.state}", default: entry.state)
+                    - else
+                      span class="d-badge d-badge-sm d-badge-ghost" = t('.state.not_checked')
+        - else
+          p.opacity-70 = t('.no_hosts')
+
+      .card-footer
+        = button_link_to t('.recheck'), app_deep_link_verification_path(@app), 'rotate', base_fa: 'fa-solid'

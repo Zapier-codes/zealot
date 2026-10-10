@@ -112,9 +112,140 @@ zh-CN:
       destroy:
         discarded: 草稿已放弃，上架信息未改变。
         nothing: 没有可放弃的草稿。
+    app_contents:
+      show:
+        title: 应用内容
+        card_title: 内容与声明
+        intro: 声明内容分级、应用收集的数据以及商店标记。保存后更改会作为草稿保留；发布前商店不会有任何变化。Play 会在上架信息的“数据安全”和“关于此应用”中显示这些内容。
+        data_safety_title: 数据安全
+        flags_title: 商店声明
+        policy_title: 隐私政策
+        availability_title: 国家/地区可用性
+        availability_note: 若一个国家/地区都不勾选，则应用在所有地方都提供。勾选国家/地区可限制上架信息的可用范围；阅读端仅用它向访客提示，不用于阻止下载。
+        reviewer_title: 审核方访问
+        reviewer_note: 仅你的团队和 Zealot 可见。它绝不会发布到商店或签名的目录索引。如果你的应用需要登录，请为 Google 的审核人员提供一个账号。
+        reviewer_saved: 审核方访问信息已保存。
+        draft_notice: "你有一个未发布的草稿，更改了：%{fields}。"
+        live_now: "当前线上：%{text}"
+        empty: 无
+        save: 保存草稿
+        back: 返回应用
+        publish_hint: 发布会将草稿立即写入上架信息。放弃会丢弃草稿并保持上架信息不变。
+        publish: 发布草稿
+        discard: 放弃草稿
+        confirm_publish: 将此草稿发布到商店上架信息？
+        confirm_discard: 放弃此草稿？未发布的更改将丢失。
+        bounded_by: "适用于此分级及以下的所有用户：%{rating}。"
+        fields:
+          content_rating: 内容分级
+          data_safety_collects: 收集或共享用户数据
+          data_safety_types: 收集的数据类型
+          data_safety_shared: 与第三方共享
+          data_safety_encrypted: 传输中加密
+          data_safety_deletion_url: 数据删除请求网址
+          contains_ads: 包含广告
+          has_in_app_purchases: 应用内购买
+          privacy_policy_url: 隐私政策网址
+          reviewer_access_instructions: 审核方访问说明
+        hints:
+          content_rating: Play 会为此应用显示的分级。可以保留为“未分级”；客户端不会按你未设置的分级进行过滤。
+          data_safety_collects: 仅当应用完全不收集任何数据时才回答“否”。
+          data_safety_types: 选择应用收集或共享的每个类别。
+          data_safety_shared: 收集的任何数据是否会提供给第三方。
+          data_safety_encrypted: 数据在传输中是否加密（TLS）。
+          data_safety_deletion_url: 用户可以请求删除其数据的页面。可选。
+          contains_ads: 应用是否显示广告。
+          has_in_app_purchases: 应用是否在其内部销售数字商品。
+          privacy_policy_url: 说明你隐私做法的公开页面。Play 对大多数应用要求提供。
+          reviewer_access_instructions: 审核人员测试应用所需的登录信息或步骤。
+        choices:
+          unknown: 未回答
+          yes: 是
+          no: 否
+      update:
+        saved: 草稿已保存，尚未上架。
+        unchanged: 没有更改。
+        refused: "内容未保存：%{reasons}。"
+      commit:
+        published: 草稿已发布。上架信息现在会显示这些声明。
+        nothing: 没有可发布的草稿。
+        nothing_staged: 草稿没有任何更改，无需发布。
+        refused: "草稿未发布：%{reasons}。"
+        unknown: 无法更新上架信息
+      destroy:
+        discarded: 草稿已放弃，上架信息未改变。
+        nothing: 没有可放弃的草稿。
+    reviews:
+      index:
+        title: 评价
+        card_title: 收件箱
+        intro: 查看用户对应用的评论，并以开发者身份回复。保存后回复立即公开。清空输入框并保存即可删除回复。
+        average: "平均评分：%{rating}"
+        count: "%{count} 条评价"
+        replied: "已回复 %{count} 条"
+        stars: "%{count}★"
+        helpful: "%{count} 人觉得有用"
+        empty: 暂无评价。
+        reply_label: "开发者回复 · %{when}"
+        ago: 前
+        ago_unknown: 更早
+        reply_placeholder: 撰写回复（最多 350 个字符）
+        reply_save: 回复
+        reply_update: 更新回复
+        reply_clear_hint: 清空输入框并保存即可删除回复。
+        back: 返回应用
+      update:
+        saved: 回复已保存。
+        refused: "回复未保存：%{reasons}。"
+    policy_statuses:
+      show:
+        title: 政策状态
+        card_title: 自动审核
+        intro: 每次发布都会自动检查——声明的权限、目标 API、签名，以及扫描器发现的第三方 SDK。这是无需人工阅读构建即可得到的机器结论。标记或拒绝只是信息，不是阻断；此处不会从你的分发中移除任何发布。
+        checked: "%{when}前检查"
+        tally: "%{verdict}：%{count}"
+        empty: 尚无发布经过检查。发布上传时会自动检查。
+        clean: 自动检查未发现问题。
+        trackers_title: 发现的第三方 SDK / 跟踪器
+        back: 返回应用
+        status:
+          running: 检查中……
+          failed: 无法完成检查
+        verdict:
+          pass: 通过
+          flag: 需要关注
+          reject: 已拒绝
     show:
       store_listing: 商店上架
       listing_text: 商店文字
+      app_content: 应用内容
+      reviews: 评价
+      policy_status: 政策状态
+      deep_link_verification: 深层链接验证
+    deep_link_verifications:
+      title: 深层链接验证
+      show:
+        card_title: 应用链接
+        intro: "https 应用链接由站点上的 /.well-known/assetlinks.json 校验。此页读取应用深层链接声明的域名，并逐一检查该文件是否列出本应用的包名和签名证书。这里不会修改你的站点。"
+        package: "包名：%{value}"
+        certificate: "签名证书：%{value}"
+        present: 已找到
+        missing: 未找到
+        host: 域名
+        status: 状态
+        recheck: 重新检查
+        no_hosts: 应用的深层链接未声明任何域名，因此没有可检查的对象。
+        blocked:
+          no_package: "没有包名：请先设置应用的包名或上传 Android 版本。"
+          no_certificate: "没有签名证书：请上传 Android 版本以便读取其证书。"
+          no_hosts: "没有可检查的已声明域名。"
+        state:
+          verified: 已验证
+          not_associated: 未关联
+          unreachable: 无法访问
+          invalid: 文件无效
+          no_certificate: 无证书
+          not_checked: 未检查
       listing_graphics:
         title: 商店图片
         intro: 这是商店访客看到的截图和宣传图。修改会在下次发布目录时同步到商店。
@@ -217,3 +348,63 @@ zh-CN:
       mark_paid:
         notice: 已标记为已付款，应用现已上架。
         not_available: 此应用当前不在等待付款状态。
+
+  revenues:
+    show:
+      title: 收入
+      earnings_title: 收入
+      earnings_label: 累计收入
+      payments_label: 付款笔数
+      paid_out_label: 已打款
+      outstanding_label: 可打款金额
+      by_period_title: 按月份
+      by_app_title: 按应用
+      by_purpose_title: 按类型
+      purpose_line: "%{purpose}：%{amount}（%{count}）"
+      purpose:
+        listing_fee: 上架费
+        maintenance: 维护费
+      period: 月份
+      app: 应用
+      amount: 金额
+      count: 笔数
+      no_earnings: 暂无成功的付款记录，无数据可显示。
+      payouts_title: 打款
+      not_configured: 本实例尚未配置打款（未设置 B-Pay-backend 密钥）。上方报表仍然准确。
+      amount_label: 金额（美元）
+      connector_label: 支付渠道
+      method_label: 打款方式 ID（可选）
+      request_payout: 申请打款
+      payout_hint: 支付渠道指由哪家支付服务商打款（例如 adyen）。打款方式是你已在 B-Pay 设置好的收款目的地；Zealot 不会保存你的银行信息。
+      need_profile: 请先创建发布者资料，然后才能收款。
+      when: 时间
+      status: 状态
+      cancel: 取消
+      refresh: 刷新
+      no_payouts: 尚未申请过打款。
+      status:
+        created: 已创建
+        requires_confirmation: 待确认
+        initiated: 已发起
+        pending: 处理中
+        succeeded: 成功
+        failed: 失败
+        cancelled: 已取消
+      back: 返回控制台首页
+
+  payouts:
+    create:
+      created: 已提交打款申请。
+      need_profile: 请先创建发布者资料，然后才能收款。
+      not_configured: 本实例尚未配置打款。
+      bad_amount: 请输入大于零的打款金额。
+      need_connector: 请选择打款的支付渠道。
+      failed: "无法发起打款：%{reason}"
+    cancel:
+      cancelled: 打款已取消。
+      already: 该打款已取消。
+      failed: "无法取消打款：%{reason}"
+    refresh:
+      refreshed: 已刷新打款状态。
+      failed: "无法读取打款状态：%{reason}"
+    missing: 未找到该打款记录。

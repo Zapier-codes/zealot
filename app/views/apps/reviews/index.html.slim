@@ -1,0 +1,55 @@
+/ Z-P8: the reviews inbox. Each review shows its author, stars, body, date and helpful count; the reply box
+/ sits under it and PATCHes the nested review route. A saved reply is public at once (no draft), so the form
+/ targets _top. Reviews are carried-over rows today (MigratedComment); live user reviews join the same list.
+- content_for :title do
+  = @title
+
+- content_for :section_title do
+  = @title
+  small class="pl-2 text-sm"
+    = @app.name
+
+.row
+  .col-md-12
+    .card
+      .card-header
+        h3.card-title = t('.card_title')
+      .card-body class="space-y-4"
+        p.text-sm.opacity-70 = t('.intro')
+
+        div class="flex flex-wrap items-center gap-4 text-sm opacity-80"
+          - if @average_rating
+            span = t('.average', rating: @average_rating)
+          span = t('.count', count: @reviews.size)
+          span = t('.replied', count: @replied_count)
+
+        - if @reviews.empty?
+          p.opacity-70 = t('.empty')
+        - else
+          - @reviews.each do |review|
+            .border.border-base-300.rounded.p-4.space-y-2
+              div class="flex items-center justify-between gap-2"
+                div class="flex items-center gap-2"
+                  span.font-semibold = review.author_name
+                  span.badge = t('.stars', count: review.rating)
+                span.text-xs.opacity-60 = review.commented_on
+              - if review.body.present?
+                p.text-sm.whitespace-pre-line = review.body
+              p.text-xs.opacity-60 = t('.helpful', count: review.helpful_count)
+
+              - if review.replied?
+                .d-alert.d-alert-info class="mt-2"
+                  p.text-xs.font-semibold = t('.reply_label', when: review.developer_replied_at ? "#{time_ago_in_words(review.developer_replied_at)} #{t('.ago')}" : t('.ago_unknown'))
+                  p.text-sm.whitespace-pre-line = review.developer_reply
+
+              = form_with scope: :migrated_comment, url: app_review_path(@app, review), method: :patch, \
+                html: { class: 'space-y-2 mt-2' }, data: { turbo_frame: '_top' } do |f|
+                = f.text_area :developer_reply, value: review.developer_reply, rows: 3, maxlength: MigratedComment::MAX_REPLY_LENGTH, \
+                  class: 'd-textarea w-full', placeholder: t('.reply_placeholder')
+                div class="flex items-center gap-2"
+                  = f.submit(review.replied? ? t('.reply_update') : t('.reply_save'), class: 'd-btn d-btn-sm d-btn-primary')
+                  - if review.replied?
+                    span.text-xs.opacity-60 = t('.reply_clear_hint')
+
+        div class="pt-2"
+          = link_to t('.back'), app_path(@app), class: 'd-link', data: { turbo_frame: '_top' }

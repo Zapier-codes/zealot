@@ -79,11 +79,19 @@ zh-CN:
         title: 新建网络钩子
       edit:
         title: 编辑网络钩子
+        signing_title: 投递签名
+        signing_on: "签名已开启。密钥末尾为 %{last4}。"
+        signing_off: 目前以未签名方式投递。创建签名密钥后，接收方可验证投递来源。
+        signing_hint: 每次投递都会携带 webhook-id、webhook-timestamp 和 webhook-signature 头（Standard Webhooks）。可用 Svix 库或对 "<id>.<timestamp>.<body>" 做 HMAC-SHA256 来校验。
+        signing_rotate: 创建签名密钥
+        signing_confirm: 创建新的签名密钥？旧密钥将不再用于新的投递。
       messages:
         success:
           enable: 网络钩子已经成功启用
           disable: 网络钩子已经取消启用
           test: 网络钩子请求测试已发送
+      rotate_signing_secret:
+        notice: "签名密钥已创建。请立即复制，仅显示一次：%{secret}"
     apple_keys:
       title: 苹果开发者
       new:
@@ -339,6 +347,30 @@ zh-CN:
           per_app: 各应用评分
           count: 评分数
           average_col: 平均
+    # Z-P18 (audit-log slice)：审计日志（Play Console 的“更改日志”）。
+    audit_entries:
+      title: 审计日志
+      index:
+        title: :admin.audit_entries.title
+        intro: "控制台、API 和后台任务记录的每一次更改：谁、改了什么、何时改的。只可追加——此处的内容无法编辑或删除。"
+        when: 时间
+        who: 操作人
+        action: 操作
+        subject: 对象
+        detail: 详情
+        system: 系统
+        any_subject: 任意对象
+        any_action: 任意操作
+        search: 搜索详情
+        filter: 筛选
+        empty: 没有符合条件的记录。
+        actions:
+          created: 已创建
+          updated: 已更新
+          destroyed: 已移除
+        summary:
+          app_api_token: "创建或撤销了一个应用 API 令牌。"
+          android_signing_key: "创建或移除了 Android 签名密钥。"
     sponsored_slots:
       title: 赞助位
       index:
@@ -527,6 +559,24 @@ zh-CN:
       title: 数据库分析
       index:
         title: :'admin.database_analytics.title'
+    reports:
+      title: 报表
+      index:
+        title: :'admin.reports.title'
+        site_views_title: 站点访问统计
+        site_views_intro: "配置后会在公开页面上加载。此处不采集任何安装或应用遥测数据。"
+        tool: 工具
+        status: 状态
+        configured_with: 配置值
+        on: 已启用
+        off: 未启用
+        bi_title: 报表与导出
+        bi_intro: "可将 BI 工具指向 Zealot 自身的 Postgres 获取数据；Zealot 不保存其凭据，也不做代理。"
+        open_metabase: 打开 Metabase
+        open_superset: 打开 Superset
+        bi_none: 尚未配置 BI 工具（可设置 METABASE_URL 或 SUPERSET_URL）。
+        warehouse: 浏览数据库（pgHero）
+        csv_hint: "CSV 与数仓导出由 BI 工具完成；Zealot 不单独提供导出接口。"
     logs:
       title: 服务日志
       index:

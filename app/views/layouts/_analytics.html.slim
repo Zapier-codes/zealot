@@ -16,3 +16,19 @@
         t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
         y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
     })(window, document, "clarity", "script", "#{Setting.clarity_analytics_id}");
+
+/ Z-P16: site views via Plausible (cookie-less, self-hostable) and Matomo.
+- if Setting.plausible_domain.present?
+  script defer=true data-domain="#{Setting.plausible_domain}" src="#{Setting.plausible_script_url}"
+
+- if Setting.matomo_url.present? && Setting.matomo_site_id.present?
+  javascript:
+    var _paq = window._paq = window._paq || [];
+    _paq.push(['trackPageView']); _paq.push(['enableLinkTracking']);
+    (function() {
+      var u = "#{Setting.matomo_url}".replace(/\/$/, '') + "/";
+      _paq.push(['setTrackerUrl', u + 'matomo.php']);
+      _paq.push(['setSiteId', "#{Setting.matomo_site_id}"]);
+      var d = document, g = d.createElement('script'), s = d.getElementsByTagName('script')[0];
+      g.async = true; g.src = u + 'matomo.js'; s.parentNode.insertBefore(g, s);
+    })();

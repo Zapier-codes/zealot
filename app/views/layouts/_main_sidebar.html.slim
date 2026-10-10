@@ -8,6 +8,7 @@ aside.app-sidebar.bg-body-secondary.shadow
         = sidebar_link_to('fa-brands fa-adn', apps_path, text: t('apps.title'))
         = sidebar_link_to('fa-solid fa-archive', archived_apps_path, text: t('apps.archives.title'))
         = sidebar_link_to('fa-solid fa-bug', debug_files_path, text: t('debug_files.title'))
+        = sidebar_link_to('fa-solid fa-sack-dollar', revenue_path, text: t('revenues.show.title'))
 
         li.nav-header = t('toolbox_section')
         = sidebar_link_to('fa-solid fa-layer-group', teardowns_path, text: t('teardowns.title'))
@@ -35,3 +36,5 @@ aside.app-sidebar.bg-body-secondary.shadow
           = sidebar_link_to('fa-solid fa-file-contract', admin_logs_path, text: t('admin.logs.title'))
           = sidebar_link_to('fa-solid fa-bars-progress', admin_background_jobs_path, text: t('admin.background_jobs.title'))
           = sidebar_link_to('fa-solid fa-database', admin_database_analytics_path, text: t('admin.database_analytics.title'))
+          = sidebar_link_to('fa-solid fa-chart-line', admin_reports_path, text: t('admin.reports.title'))
+          = sidebar_link_to('fa-solid fa-clipboard-list', admin_audit_entries_path, text: t('admin.audit_entries.title'))

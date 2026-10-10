@@ -89,6 +89,7 @@ RSpec.describe CatalogIndex::Serializer do
       )
       expect(entry[:listing][:contains_ads]).to be_nil
       expect(entry[:listing][:has_in_app_purchases]).to be_nil
+      expect(entry[:listing][:privacy_policy_url]).to be_nil
       expect(entry[:summary]).to be_nil
       expect(entry[:category]).to be_nil
       expect(entry[:license]).to be_nil
@@ -97,6 +98,10 @@ RSpec.describe CatalogIndex::Serializer do
       expect(entry[:created_at]).to eq(app.created_at.utc.iso8601)
       expect(entry[:updated_at]).to eq(app.updated_at.utc.iso8601)
       expect(entry[:editorial]).to eq(featured: false, editors_pick: false)
+      expect(entry[:verification]).to eq(
+        developer_verified: false, package_registered: false,
+        signing_key_registered: false, checked_at: nil
+      )
       expect(entry[:sponsored_slots]).to eq([])
       expect(entry[:collections]).to eq([])
       expect(entry[:versions].size).to eq(1)
@@ -114,6 +119,74 @@ RSpec.describe CatalogIndex::Serializer do
         min_sdk: nil, target_sdk: nil, abis: [], screen_densities: [],
         required_features: [], permissions: []
       )
+    end
+
+    it 'publishes the App content columns: content rating, Data Safety and the two store flags (Z-P5/Z-P6)' do
+      app, = build_app_with_release
+      app.update!(
+        content_rating: 'Teen',
+        data_safety_collects: true,
+        data_safety_types: %w[location app_activity],
+        data_safety_shared: false,
+        data_safety_encrypted: true,
+        data_safety_deletion_url: 'https://example.com/delete',
+        contains_ads: false,
+        has_in_app_purchases: true,
+      )
+
+      listing = described_class.call(app)[:apps].first[:listing]
+
+      expect(listing[:content_rating]).to eq('Teen')
+      expect(listing[:data_safety]).to eq(
+        collects_data: true, data_types: %w[location app_activity], shared_with_third_parties: false,
+        encrypted_in_transit: true, deletion_request_url: 'https://example.com/delete'
+      )
+      expect(listing[:contains_ads]).to be(false)
+      expect(listing[:has_in_app_purchases]).to be(true)
+    end
+
+    it 'publishes the store privacy-policy URL and the developer-verification block (Z-P6/Z-P7)' do
+      app, = build_app_with_release
+      app.update!(
+        privacy_policy_url: 'https://example.com/privacy',
+        reviewer_access_instructions: 'test account: reviewer / hunter2 -- never published',
+        developer_verified: true,
+        verification_package_registered: true,
+        verification_key_registered: false,
+        verification_checked_at: Time.utc(2026, 10, 10, 6),
+      )
+
+      entry = described_class.call(app)[:apps].first
+
+      expect(entry[:listing][:privacy_policy_url]).to eq('https://example.com/privacy')
+      expect(entry[:verification]).to eq(
+        developer_verified: true, package_registered: true,
+        signing_key_registered: false, checked_at: '2026-10-10T06:00:00Z'
+      )
+      # The reviewer access instructions must never reach the public signed index -- only the backend holds them.
+      expect(entry[:listing]).not_to have_key(:reviewer_access_instructions)
+    end
+
+    it 'publishes the owner country availability as an upper-cased alpha-2 list, null when unrestricted (Z-P20)' do
+      app, = build_app_with_release
+      expect(described_class.call(app)[:apps].first[:listing][:available_regions]).to be_nil
+
+      app.update!(available_regions: %w[us gb de])
+      expect(described_class.call(app)[:apps].first[:listing][:available_regions]).to eq(%w[US GB DE])
+    end
+
+    it 'leaves every App content field null/empty when the owner has answered nothing, never guessing (Z-P5/Z-P6)' do
+      app, = build_app_with_release
+
+      listing = described_class.call(app)[:apps].first[:listing]
+
+      expect(listing[:content_rating]).to be_nil
+      expect(listing[:data_safety]).to eq(
+        collects_data: nil, data_types: [], shared_with_third_parties: nil,
+        encrypted_in_transit: nil, deletion_request_url: nil
+      )
+      expect(listing[:contains_ads]).to be_nil
+      expect(listing[:has_in_app_purchases]).to be_nil
     end
 
     it 'renders a real changelog as the joined text_changelog string, not the raw jsonb (Task 29d finding)' do

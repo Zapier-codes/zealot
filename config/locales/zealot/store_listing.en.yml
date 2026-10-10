@@ -112,9 +112,141 @@ en:
       destroy:
         discarded: Draft discarded. The listing was not changed.
         nothing: There is no draft to discard.
+    app_contents:
+      show:
+        title: App content
+        card_title: Content and declarations
+        intro: Declare the content rating, the data your app collects and the store flags. Saving keeps your changes as a draft; nothing on the store changes until you publish. Play shows these on the store listing's "Data safety" and "About this app" sections.
+        data_safety_title: Data safety
+        flags_title: Store declarations
+        policy_title: Privacy policy
+        availability_title: Country availability
+        availability_note: "Leave every country unticked to offer the app everywhere. Tick countries to restrict the store listing's availability; a reader uses this only to warn a visitor, not to block the download."
+        reviewer_title: Reviewer access
+        reviewer_note: "Only your team and Zealot see this. It is never published to the store or the signed catalog index. Give Google's reviewers an account to sign in with, if your app needs one."
+        reviewer_saved: Reviewer access saved.
+        draft_notice: "You have an unpublished draft that changes: %{fields}."
+        live_now: "Live now: %{text}"
+        empty: none
+        save: Save draft
+        back: Back to the app
+        publish_hint: "Publish writes your draft to the listing now. Discard throws the draft away and keeps the listing as it is."
+        publish: Publish draft
+        discard: Discard draft
+        confirm_publish: Publish this draft to the store listing?
+        confirm_discard: Discard this draft? Your unpublished changes will be lost.
+        bounded_by: "Applied to everyone in this range and below: %{rating}."
+        fields:
+          content_rating: Content rating
+          data_safety_collects: Collects or shares user data
+          data_safety_types: Data types collected
+          data_safety_shared: Shared with third parties
+          data_safety_encrypted: Encrypted in transit
+          data_safety_deletion_url: Data deletion request URL
+          contains_ads: Contains ads
+          has_in_app_purchases: In-app purchases
+          privacy_policy_url: Privacy policy URL
+          reviewer_access_instructions: Reviewer access instructions
+        hints:
+          content_rating: The age rating Play would show for this app. Leaving it Unrated is allowed; the clients will not filter by a rating you have not set.
+          data_safety_collects: Answer "No" only if the app collects nothing at all.
+          data_safety_types: Select every category the app collects or shares.
+          data_safety_shared: Whether any collected data leaves to a third party.
+          data_safety_encrypted: Whether data is encrypted in transit (TLS).
+          data_safety_deletion_url: A page where a person can ask for their data to be deleted. Optional.
+          contains_ads: Whether the app shows ads.
+          has_in_app_purchases: Whether the app sells digital goods inside it.
+          privacy_policy_url: The public page that explains your privacy practices. Required by Play for most apps.
+          reviewer_access_instructions: Sign-in details or steps a reviewer needs to test the app.
+        choices:
+          unknown: "Not answered"
+          yes: "Yes"
+          no: "No"
+      update:
+        saved: Draft saved. It is not on the store yet.
+        unchanged: Nothing was changed.
+        refused: "The content was not saved: %{reasons}."
+      commit:
+        published: Draft published. The listing now shows these declarations.
+        nothing: There is no draft to publish.
+        nothing_staged: The draft had no changes, so there was nothing to publish.
+        refused: "The draft was not published: %{reasons}."
+        unknown: the listing could not be updated
+      destroy:
+        discarded: Draft discarded. The listing was not changed.
+        nothing: There is no draft to discard.
+    reviews:
+      index:
+        title: Reviews
+        card_title: Inbox
+        intro: Read what people say about the app and reply as the developer. A reply is public as soon as you save it. Leaving the box empty clears a reply.
+        average: "Average rating: %{rating}"
+        count: "%{count} reviews"
+        replied: "%{count} replied"
+        stars: "%{count}★"
+        helpful: "%{count} found this helpful"
+        empty: No reviews yet.
+        reply_label: "Developer reply · %{when}"
+        ago: ago
+        ago_unknown: earlier
+        reply_placeholder: Write a reply (up to 350 characters)
+        reply_save: Reply
+        reply_update: Update reply
+        reply_clear_hint: Empty the box and save to remove the reply.
+        back: Back to the app
+      update:
+        saved: Reply saved.
+        refused: "The reply was not saved: %{reasons}."
+    policy_statuses:
+      show:
+        title: Policy status
+        card_title: Automated review
+        intro: Every release is checked automatically — its declared permissions, target API, signing and the third-party SDKs found by the scanner. This is the machine verdict a person would otherwise have to read the build to reach. A flag or a reject is information, not a block; nothing here removes a release from your distribution.
+        checked: "Checked %{when} ago"
+        tally: "%{verdict}: %{count}"
+        empty: No release has been checked yet. The check runs when a release is uploaded.
+        clean: No issues found by the automated checks.
+        trackers_title: Third-party SDKs / trackers found
+        back: Back to the app
+        status:
+          running: Checking…
+          failed: The check could not run
+        verdict:
+          pass: Passed
+          flag: Needs a look
+          reject: Rejected
     show:
       store_listing: Store listing
       listing_text: Store listing text
+      app_content: App content
+      reviews: Reviews
+      policy_status: Policy status
+      deep_link_verification: Deep link verification
+      # Z-P22: the deep-link verification checker page.
+    deep_link_verifications:
+      title: Deep link verification
+      show:
+        card_title: App Links
+        intro: "An https App Link is verified by the site serving /.well-known/assetlinks.json. This reads the hosts your deep links declare and checks, for each one, whether that file names this app's package and signing certificate. Nothing here changes your site."
+        package: "Package: %{value}"
+        certificate: "Signing certificate: %{value}"
+        present: found
+        missing: not found
+        host: Host
+        status: Status
+        recheck: Re-check
+        no_hosts: No host is declared by this app's deep links, so there is nothing to check.
+        blocked:
+          no_package: "No package name: set the app's package name or upload an Android release first."
+          no_certificate: "No signing certificate on file: upload an Android release so its certificate is read."
+          no_hosts: "No declared host to check."
+        state:
+          verified: Verified
+          not_associated: Not associated
+          unreachable: Unreachable
+          invalid: Invalid file
+          no_certificate: No certificate
+          not_checked: Not checked
       listing_graphics:
         title: Store graphics
         intro: These are the screenshots and feature graphic store visitors see. Changes reach the store the next time the catalog is published.
@@ -217,3 +349,63 @@ en:
       mark_paid:
         notice: Marked as paid. The app is now live on the store.
         not_available: This app isn't waiting for payment.
+
+  revenues:
+    show:
+      title: Revenue
+      earnings_title: Earnings
+      earnings_label: Total earned
+      payments_label: Payments
+      paid_out_label: Paid out
+      outstanding_label: Available to pay out
+      by_period_title: By month
+      by_app_title: By app
+      by_purpose_title: By type
+      purpose_line: "%{purpose}: %{amount} (%{count})"
+      purpose:
+        listing_fee: Listing fee
+        maintenance: Maintenance
+      period: Month
+      app: App
+      amount: Amount
+      count: Count
+      no_earnings: No payment has succeeded yet, so there is nothing to report.
+      payouts_title: Payouts
+      not_configured: Payouts aren't configured on this instance yet (B-Pay-backend's key is not set). The report above is still accurate.
+      amount_label: Amount (USD)
+      connector_label: Connector
+      method_label: Payout method ID (optional)
+      request_payout: Request payout
+      payout_hint: The connector is which payment provider pays out (for example adyen). The payout method is the destination you set up with B-Pay; Zealot never stores your bank details.
+      need_profile: Create a publisher profile before you can receive payouts.
+      when: When
+      status: Status
+      cancel: Cancel
+      refresh: Refresh
+      no_payouts: No payout has been requested yet.
+      status:
+        created: Created
+        requires_confirmation: Needs confirmation
+        initiated: Initiated
+        pending: Pending
+        succeeded: Succeeded
+        failed: Failed
+        cancelled: Cancelled
+      back: Back to the dashboard
+
+  payouts:
+    create:
+      created: Payout requested.
+      need_profile: Create a publisher profile before you can receive payouts.
+      not_configured: Payouts aren't configured on this instance yet.
+      bad_amount: Enter a payout amount greater than zero.
+      need_connector: Choose a connector for the payout.
+      failed: "The payout could not be started: %{reason}"
+    cancel:
+      cancelled: Payout cancelled.
+      already: This payout is already cancelled.
+      failed: "The payout could not be cancelled: %{reason}"
+    refresh:
+      refreshed: Payout status refreshed.
+      failed: "The payout status could not be read: %{reason}"
+    missing: That payout could not be found.

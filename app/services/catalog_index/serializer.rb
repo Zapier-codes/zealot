@@ -145,26 +145,22 @@ module CatalogIndex
           screenshots: graphics_for(app, 'screenshot'), # Task 27d-e1
           feature_graphic: feature_graphic_for(app),    # Task 27d-e1
           video: video_for(app),                        # Task 27d-e1
-          content_rating: nil,              # reserved -- vocabulary not decided
-          data_safety: {
-            collects_data: nil,
-            data_types: [],
-            shared_with_third_parties: nil,
-            encrypted_in_transit: nil,
-            deletion_request_url: nil,
-          },
-          contains_ads: nil,
-          has_in_app_purchases: nil,
+          content_rating: content_rating_for(app),   # Z-P5
+          data_safety: data_safety_for(app),         # Z-P6
+          contains_ads: flag_for(app, :contains_ads),          # Z-P5
+          has_in_app_purchases: flag_for(app, :has_in_app_purchases), # Z-P5
+          privacy_policy_url: text_for(app, :privacy_policy_url),     # Z-P6
         },
         slug: slug_for(app),
         summary: text_for(app, :short_description),   # Task 27e-b: the one-line short description (<= 80 characters)
         category: category_for(app),
         license: nil,     # reserved
         links: { site: nil, source: nil, tracker: nil, donate: nil }, # reserved
-        available_regions: nil, # nil = all regions; reserved until an owner/org default exists
+        available_regions: available_regions_for(app), # Z-P20: nil = all regions; the owner's country list when set
         created_at: iso(app.created_at),
         updated_at: iso(app.updated_at),
         editorial: editorial_for(app),
+        verification: verification_for(app),     # Z-P7: Android developer-verification readiness
         base_stats: base_stats_for(app),         # Task 45a: downloads and ratings D-Store adds its own counts to
         reviews: migrated_comments_for(app),     # Task 45d: carried-over comments, shown as ordinary reviews
         sponsored_slots: @editorial ? sponsored_slots_for(app) : [],
@@ -225,6 +221,28 @@ module CatalogIndex
       }
     end
 
+    # Z-P7: Android developer-verification readiness. Duck-typed, and every flag defaults to false (the honest
+    # "not checked yet") so a Struct fixture without the columns reads the same as a real app an admin has not
+    # touched. `checked_at` is nil until a check is recorded.
+    def verification_for(app)
+      {
+        developer_verified: app.respond_to?(:developer_verified) ? !!app.developer_verified : false,
+        package_registered: app.respond_to?(:verification_package_registered) ? !!app.verification_package_registered : false,
+        signing_key_registered: app.respond_to?(:verification_key_registered) ? !!app.verification_key_registered : false,
+        checked_at: app.respond_to?(:verification_checked_at) ? iso(app.verification_checked_at) : nil,
+      }
+    end
+
+    # Z-P20: the countries the app is offered in. The column is an array that is empty when the owner has set
+    # no restriction; the index publishes `null` for that ("all regions"), the same value the reserved field
+    # always said. Duck-typed so a fixture without the column still reads as "all regions".
+    def available_regions_for(app)
+      return nil unless app.respond_to?(:available_regions)
+
+      regions = Array(app.available_regions).map { |code| code.to_s.upcase }.select { |code| code.match?(/\A[A-Z]{2}\z/) }
+      regions.presence
+    end
+
     # Task 45a: the downloads and ratings an app has from before it was listed here, under a neutral name: a
     # reader adds its own counters to these and shows one total. `nil` when the app has none, so most entries
     # are unchanged. Where they came from stays in the backend (`apps.migrated_*`).
@@ -253,7 +271,10 @@ module CatalogIndex
           rating: comment.rating,
           body: comment.body.presence,
           commented_on: iso_date(comment.commented_on),
-          helpful_count: comment.helpful_count }
+          helpful_count: comment.helpful_count,
+          # Z-P8: the developer reply, shown set-in under the review; both null when there is none.
+          developer_reply: comment.respond_to?(:developer_reply) ? comment.developer_reply.presence : nil,
+          developer_replied_at: comment.respond_to?(:developer_replied_at) ? iso(comment.developer_replied_at) : nil }
       end
     end
 
@@ -304,6 +325,30 @@ module CatalogIndex
     # and nothing before this slice ever populated or read it, so there is
     # no legacy fixture shape here to stay compatible with (unlike
     # `releases_for`, which predates this convention).
+    # Z-P5: the app's content/age rating, verbatim, or null when the owner has not set one. Duck-typed like
+    # the rest of the class, so the pre-column Struct fixtures still serialize to a schema-valid null.
+    def content_rating_for(app)
+      app.respond_to?(:content_rating) ? app.content_rating : nil
+    end
+
+    # Z-P5: one of Play's two boolean listing flags. `respond_to?` -> nil (unanswered) for old fixtures.
+    def flag_for(app, attribute)
+      app.respond_to?(attribute) ? app.public_send(attribute) : nil
+    end
+
+    # Z-P6: the Data Safety block, in the exact shape `listing.data_safety` already declares. Every answer is
+    # nullable in the schema, so an app whose owner has filled in nothing serializes to all-null/empty -- the
+    # "not provided" state, never a guessed answer. Duck-typed for the same reason as `flag_for`.
+    def data_safety_for(app)
+      {
+        collects_data: flag_for(app, :data_safety_collects),
+        data_types: app.respond_to?(:data_safety_types) ? Array(app.data_safety_types) : [],
+        shared_with_third_parties: flag_for(app, :data_safety_shared),
+        encrypted_in_transit: flag_for(app, :data_safety_encrypted),
+        deletion_request_url: app.respond_to?(:data_safety_deletion_url) ? app.data_safety_deletion_url : nil,
+      }
+    end
+
     def serialize_collections
       Collection.for_tenant(@tenant).ordered.map do |collection|
         {

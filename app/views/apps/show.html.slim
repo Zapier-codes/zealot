@@ -33,6 +33,26 @@
         = button_link_to '', app_listing_text_path(@app), 'list-alt', \
           class: 'd-join-item d-btn d-tooltip', \
           data: { tip: t('apps.show.listing_text'), turbo_frame: '_top' }
+      - if !@app.archived && policy(ListingEdit.new(app: @app)).update?
+        / Z-P5/Z-P6: the "App content" section (content rating, Data Safety, store flags, privacy policy).
+        = button_link_to '', app_app_content_path(@app), 'clipboard-list', \
+          class: 'd-join-item d-btn d-tooltip', \
+          data: { tip: t('apps.show.app_content'), turbo_frame: '_top' }
+      - if !@app.archived && policy(MigratedComment.new(app: @app)).index?
+        / Z-P8: the reviews inbox (read reviews, write the developer reply).
+        = button_link_to '', app_reviews_path(@app), 'comments', \
+          class: 'd-join-item d-btn d-tooltip', \
+          data: { tip: t('apps.show.reviews'), turbo_frame: '_top' }
+      - if !@app.archived && policy(@app).show?
+        / Z-P2/Z-P3/Z-P4: the automated-review policy status.
+        = button_link_to '', app_policy_status_path(@app), 'shield-halved', \
+          class: 'd-join-item d-btn d-tooltip', \
+          data: { tip: t('apps.show.policy_status'), turbo_frame: '_top' }
+      - if !@app.archived && policy(@app).show?
+        / Z-P22: the deep-link verification checker (App Links / assetlinks.json).
+        = button_link_to '', app_deep_link_verification_path(@app), 'link', \
+          class: 'd-join-item d-btn d-tooltip', \
+          data: { tip: t('apps.show.deep_link_verification'), turbo_frame: '_top' }
       - if !@app.archived && policy(AppApiToken.new(app: @app)).index?
         / Task 34a-7: the owner's API tokens for CI publishing.
         = button_link_to '', app_api_tokens_path(@app), 'key', \

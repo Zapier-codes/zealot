@@ -116,9 +116,16 @@ class Api::AndroidSigningKeysController < Api::BaseController
            status: :unprocessable_entity
   end
 
-  # One log line per change, with who and which key (by its public checksum), never a secret. A stand-in
-  # until the audit log of Task 34c exists.
+  # Z-P18 (audit-log slice): one audit entry per change, with who and which key (by its public checksum), never a secret.
+  # Supersedes the "stand-in until the audit log of Task 34c exists" log line.
   def audit(what)
-    Rails.logger.info("[android_signing_key] #{what} by user=#{current_user.id} checksum=#{@android_signing_key.checksum}")
+    AuditEntry.record(
+      action: what == 'removed' ? 'destroyed' : 'created',
+      subject: ['AndroidSigningKey', @android_signing_key.id],
+      actor: current_user,
+      summary_i18n_key: 'admin.audit_entries.summary.android_signing_key',
+      summary: "android_signing_key #{what} checksum=#{@android_signing_key.checksum}",
+      metadata: { kind: what, checksum: @android_signing_key.checksum }
+    )
   end
 end

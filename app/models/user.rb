@@ -25,6 +25,8 @@ class User < ApplicationRecord
   has_one :publisher_profile, dependent: :destroy
   # Task 32: the payer of record for a listing-fee/maintenance charge.
   has_many :payments, dependent: :destroy
+  # Z-P10 / Task 50: payouts this user asked for (the requester of record).
+  has_many :payouts, dependent: :destroy
   # Task 37b-iii-s7c-0: the tenants this user belongs to (a person may belong to several). A departing
   # user's own memberships go with them; a tenant with members refuses destroy (see `Tenant`). No callers yet.
   has_many :tenant_memberships, dependent: :destroy

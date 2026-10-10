@@ -257,8 +257,18 @@ class App < ApplicationRecord
   # Task 27e-a / 27e-b add `description` (listing.description) and `short_description` (the app's summary).
   # This constant is also the set ListingEdit may stage (see LISTING_FIELDS there), so a field added here
   # becomes editable through the staged editor at the same time it starts republishing the index.
+  # Z-P5/Z-P6 (Play Console parity): the "App content" listing fields -- content/age rating, the Data Safety
+  # answers, and the two store flags -- now have App columns (20261010050000), so they belong here: staging
+  # them through a ListingEdit and republishing the index are both driven by this one list. See
+  # CatalogIndex::Serializer#serialize_app for where each is published.
+  # Z-P6: `privacy_policy_url` is a public listing fact, so it is stageable and republished. The reviewer
+  # access instructions are NOT here -- they hold a reviewer test account and stay backend-only, never in the
+  # public signed index.
   CATALOG_INDEX_LISTING_FIELDS = %w[name publisher_alias play_package_name publisher_profile_id category
-                                    promo_video_youtube_id description short_description].freeze
+                                    promo_video_youtube_id description short_description
+                                    content_rating data_safety_collects data_safety_types data_safety_shared
+                                    data_safety_encrypted data_safety_deletion_url contains_ads
+                                    has_in_app_purchases privacy_policy_url available_regions].freeze
 
   after_commit :publish_catalog_index_if_needed, on: :update
 
@@ -611,6 +621,33 @@ class App < ApplicationRecord
     errors.add(:promo_video_youtube_id, 'must be a plain YouTube video ID, not a URL or playlist')
   end
 
+  # Z-P6: the store privacy-policy URL is a public listing fact (and ends up in the signed index), so it is
+  # held to a real http(s) URL and blank is stored as NULL -- never an empty string a reader would show as a
+  # broken link. Stricter than the Data Safety deletion URL, which Play also allows to be omitted.
+  PRIVACY_POLICY_URL_FORMAT = %r{\Ahttps?://[^\s]+\z}i
+  before_validation :normalize_privacy_policy_url
+  validate :privacy_policy_url_format_valid
+
+  def normalize_privacy_policy_url
+    self.privacy_policy_url = privacy_policy_url.to_s.strip.presence
+  end
+
+  def privacy_policy_url_format_valid
+    return if privacy_policy_url.blank? || privacy_policy_url.match?(PRIVACY_POLICY_URL_FORMAT)
+
+    errors.add(:privacy_policy_url, 'must be a full http(s) URL')
+  end
+
+  # Z-P20: the countries the app is offered in. An array of ISO-3166-1 alpha-2 codes, uppercased and
+  # de-duplicated; an empty array means "all regions". Junk codes are dropped rather than raising, so an
+  # API write cannot wedge the listing.
+  before_validation :normalize_available_regions
+
+  def normalize_available_regions
+    self.available_regions = Array(available_regions).map { |code| code.to_s.upcase }
+                                                    .select { |code| code.match?(/\A[A-Z]{2}\z/) }.uniq
+  end
+
   # Task 27d-d1: one YouTube video ID per app (docs/store_listing_graphics.md, "Video"). Stored as
   # the bare 11-character ID, never a URL -- turning a pasted link into an ID is 27d-e2's job, not
   # this column's. `ListingGraphicRules.youtube_id?` is the single source of truth for the format
@@ -633,8 +670,13 @@ class App < ApplicationRecord
     # Task 45a: the index carries `base_stats` (downloads and ratings carried over), so a change republishes.
     editorial_flag_changed ||= saved_change_to_migrated_downloads? || saved_change_to_migrated_rating_count? ||
                                saved_change_to_migrated_rating_average?
+    # Z-P7: the index carries the `verification` block, so a change to any of its four columns republishes.
+    # These are kept out of CATALOG_INDEX_LISTING_FIELDS the same way the editorial flags are: an owner must
+    # not be able to stage their own verification status.
+    verification_changed = saved_change_to_developer_verified? || saved_change_to_verification_package_registered? ||
+                           saved_change_to_verification_key_registered? || saved_change_to_verification_checked_at?
     return unless saved_change_to_listing_status? || watched_field_changed || editorial_flag_changed ||
-                  saved_change_to_tenant_id?
+                  verification_changed || saved_change_to_tenant_id?
 
     catalog_index_tenants_to_republish.each { |tenant| CatalogIndexPublishJob.enqueue_for(tenant) }
   end

@@ -48,9 +48,8 @@ class AppWebHookJob < ApplicationJob
   private
 
   def send_request
-    response = Faraday.post(@web_hook.url, message_body,
-      { 'Content-Type' => 'application/json' }
-    )
+    headers = { 'Content-Type' => 'application/json' }.merge(signature_headers(message_body))
+    response = Faraday.post(@web_hook.url, message_body, headers)
     logger.debug(log_message("trigger response body: #{response.body}"))
     if response.success?
       logger.info(log_message('trigger successfully'))
@@ -58,6 +57,24 @@ class AppWebHookJob < ApplicationJob
       logger.error(log_message("trigger failed with status: #{response.status}"))
       raise Faraday::Error, "response status: #{response.status}"
     end
+  end
+
+  # Z-P19: when the hook has a signing secret, every delivery carries Standard Webhooks signature headers so
+  # the receiver can prove the body came from Zealot and was not altered. A hook with no secret gets none,
+  # exactly as before. The id and timestamp are also exposed as headers per the Standard Webhooks spec.
+  def signature_headers(body)
+    return {} unless @web_hook.signed?
+
+    webhook_id = SecureRandom.uuid
+    timestamp = Time.current.to_i
+    signature = Webhooks::StandardSignature.header(
+      secret: @web_hook.signing_secret, webhook_id: webhook_id, timestamp: timestamp, body: body
+    )
+    {
+      'webhook-id' => webhook_id,
+      'webhook-timestamp' => timestamp.to_s,
+      'webhook-signature' => signature
+    }
   end
 
   def message_body

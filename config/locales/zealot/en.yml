@@ -81,11 +81,20 @@ en:
         title: New Webhook
       edit:
         title: Edit Webhook
+        signing_title: Delivery signing
+        signing_on: "Signing is on. Secret ends %{last4}."
+        signing_off: Deliveries are sent unsigned. Create a signing secret so your receiver can verify them.
+        signing_hint: Every delivery carries webhook-id, webhook-timestamp and webhook-signature headers (Standard Webhooks). Verify them with the Svix libraries or an HMAC-SHA256 of "<id>.<timestamp>.<body>".
+        signing_rotate: Create signing secret
+        signing_confirm: Create a new signing secret? The old one stops working for new deliveries.
       messages:
         success:
           enable: Enabled the Webhook successfully
           disable: Disabled the Webhook successfully
           test: Test sent successfully
+      # Z-P19: the Standard Webhooks signing secret, shown once when minted.
+      rotate_signing_secret:
+        notice: "Signing secret created. Copy it now, it is shown only once: %{secret}"
     apple_keys:
       title: Apple Developer
       new:
@@ -341,6 +350,30 @@ en:
           per_app: Ratings by app
           count: Ratings
           average_col: Average
+    # Z-P18 (audit-log slice): the audit log (Play Console's "changes log").
+    audit_entries:
+      title: Audit log
+      index:
+        title: :admin.audit_entries.title
+        intro: "Every change the console, the API and the jobs recorded: who, what, and when. Append-only — nothing here can be edited or deleted."
+        when: When
+        who: Who
+        action: Action
+        subject: Subject
+        detail: Detail
+        system: System
+        any_subject: Any subject
+        any_action: Any action
+        search: Search the detail
+        filter: Filter
+        empty: No entries match.
+        actions:
+          created: created
+          updated: updated
+          destroyed: removed
+        summary:
+          app_api_token: "An app API token was created or revoked."
+          android_signing_key: "The Android signing key was created or removed."
     sponsored_slots:
       title: Sponsored Slots
       index:
@@ -533,6 +566,25 @@ en:
       title: Database analytics
       index:
         title: :admin.database_analytics.title
+    # Z-P16: which self-hostable site-view tool is live, plus links to the operator's BI tool over Postgres.
+    reports:
+      title: Reports
+      index:
+        title: :admin.reports.title
+        site_views_title: Site views
+        site_views_intro: "These run on the public pages when configured. Nothing here sends install or app telemetry."
+        tool: Tool
+        status: Status
+        configured_with: Configured with
+        on: On
+        off: Off
+        bi_title: Reports and exports
+        bi_intro: "Point a BI tool at Zealot's own Postgres for the figures below; Zealot holds no credentials for it and never proxies it."
+        open_metabase: Open Metabase
+        open_superset: Open Superset
+        bi_none: No BI tool is configured (set METABASE_URL or SUPERSET_URL).
+        warehouse: Browse the database (pgHero)
+        csv_hint: "CSV and warehouse export are done by the BI tool; Zealot exposes no separate export endpoint."
     logs:
       title: Service logs
       index:

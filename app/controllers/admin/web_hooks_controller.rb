@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 class Admin::WebHooksController < ApplicationController
-  before_action :set_web_hook, only: %i[edit update destroy]
+  before_action :set_web_hook, only: %i[edit update destroy rotate_signing_secret]
 
   def index
     @web_hooks = WebHook.all
@@ -26,6 +26,15 @@ class Admin::WebHooksController < ApplicationController
 
     notice = t('activerecord.success.destroy', key: t('admin.web_hooks.title'))
     redirect_to admin_web_hooks_url, status: :see_other, notice: notice
+  end
+
+  # Z-P19: mint (or replace) the Standard Webhooks signing secret. The raw secret is shown once in the
+  # flash and never again; the edit page then shows only the last four characters.
+  def rotate_signing_secret
+    authorize @web_hook
+
+    secret = @web_hook.rotate_signing_secret!
+    redirect_to edit_admin_web_hook_path(@web_hook), notice: t('.notice', secret: secret)
   end
 
   private

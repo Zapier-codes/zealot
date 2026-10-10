@@ -11,6 +11,8 @@ class PublisherProfile < ApplicationRecord
 
   belongs_to :user
   has_many :apps, dependent: :nullify
+  # Z-P10 / Task 50: payouts made to this publisher.
+  has_many :payouts, dependent: :destroy
 
   enum :kind, { individual: 'individual', company: 'company' }, validate: true
 

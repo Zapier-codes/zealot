@@ -1,0 +1,25 @@
+/ Z-P2/Z-P3/Z-P4: the automated-review verdict for one release, on the release page. Renders nothing until
+/ the check has run, so an unchecked release shows no card. The verdict, its reasons and any third-party SDKs
+/ found are all read off the release's own columns (see ReleaseChecks::AutomatedReview).
+- verdict = release.automated_review_verdict
+- reasons = Array(release.automated_review_reasons)
+- trackers = Array(release.automated_review_trackers)
+
+- if verdict || release.automated_review_status != 'not_run'
+  .card
+    .card-header class="flex items-center justify-between gap-2"
+      h3.card-title = t('apps.policy_statuses.show.card_title')
+      span.badge = verdict ? t("apps.policy_statuses.show.verdict.#{verdict}", default: verdict) : t("apps.policy_statuses.show.status.#{release.automated_review_status}", default: release.automated_review_status)
+    .card-body class="space-y-2"
+      - reasons.each do |reason|
+        p.text-sm
+          span.badge class="mr-2" = reason['severity']
+          = reason['message']
+      - if trackers.any?
+        div
+          p.text-xs.font-semibold = t('apps.policy_statuses.show.trackers_title')
+          ul.text-sm class="list-disc pl-5"
+            - trackers.each do |t|
+              li = t['category'].present? ? "#{t['name']} (#{t['category']})" : t['name']
+      - if reasons.empty? && trackers.empty?
+        p.text-sm.opacity-70 = t('apps.policy_statuses.show.clean')

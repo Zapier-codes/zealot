@@ -97,9 +97,18 @@ class Api::Apps::ApiTokensController < Api::BaseController
     }
   end
 
-  # One log line per change: who, which app, which token (by id and last four), never the secret. A
-  # stand-in until the audit log of Task 34c exists.
+  # Z-P18 (audit-log slice): one audit entry per change: who, which app, which token (by id and last four), never the
+  # secret. Supersedes the "stand-in until the audit log of Task 34c exists" log line; the id/last-four
+  # also make the entry readable after the token is gone.
   def audit(what, token)
-    Rails.logger.info("[app_api_token] #{what} by user=#{current_user.id} app=#{@app.id} token=#{token.id} last_four=#{token.last_four}")
+    AuditEntry.record(
+      action: what == 'revoked' ? 'updated' : 'created',
+      subject: token,
+      actor: current_user,
+      tenant: Current.tenant || @app.tenant,
+      summary_i18n_key: 'admin.audit_entries.summary.app_api_token',
+      summary: "app_api_token #{what} app=#{@app.id} token=#{token.id} last_four=#{token.last_four}",
+      metadata: { kind: what, app_id: @app.id, token_id: token.id, last_four: token.last_four }
+    )
   end
 end

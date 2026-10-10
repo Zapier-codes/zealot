@@ -19,3 +19,18 @@
       = f.association :channels, label_method: :app_name, value_method: :id, as: :check_boxes
     .card-footer
       = f.button :submit
+
+- # Z-P19: the Standard Webhooks signing secret. When set, every delivery carries webhook-id/-timestamp/
+  # -signature headers. The raw secret is shown once at creation; afterwards only the last four characters.
+.card class="mt-3"
+  .card-header
+    h3.card-title = t('.signing_title')
+  .card-body
+    - if @web_hook.signed?
+      p.text-sm = t('.signing_on', last4: @web_hook.signing_secret.to_s.last(4))
+      p.text-xs.opacity-60 = t('.signing_hint')
+    - else
+      p.text-sm.opacity-70 = t('.signing_off')
+  .card-footer
+    = button_to t('.signing_rotate'), signing_secret_admin_web_hook_path(@web_hook), \
+      method: :post, class: 'd-btn d-btn-primary', form: { data: { turbo_confirm: t('.signing_confirm') } }

@@ -1,0 +1,123 @@
+/ Z-P5 / Z-P6: the "App content" screen. The form is filled with what the app's draft would publish
+/ (@values); saving stages a draft and changes nothing on the live listing until the owner publishes
+/ (buttons at the bottom). Forms target _top because the flash notice is outside any turbo frame.
+/ The reviewer-access textarea is on the same form but saves straight to the app (never staged, never
+/ published) -- see Apps::AppContentsController.
+- boolean_fields = %w[data_safety_collects data_safety_shared data_safety_encrypted contains_ads has_in_app_purchases]
+
+- content_for :title do
+  = @title
+
+- content_for :section_title do
+  = @title
+  small class="pl-2 text-sm"
+    = @app.name
+
+.row
+  .col-md-12
+    .card
+      .card-header
+        h3.card-title = t('.card_title')
+      .card-body class="space-y-4"
+        p.text-sm.opacity-70 = t('.intro')
+
+        - if @staged.any?
+          .d-alert.d-alert-info role="status"
+            span = t('.draft_notice', fields: @staged.map { |field| t(".fields.#{field}") }.to_sentence)
+
+        = form_with scope: :app_content, url: app_app_content_path(@app), method: :patch, \
+          html: { class: 'space-y-6' }, data: { turbo_frame: '_top' } do |f|
+
+          / Content rating
+          div
+            = f.label :content_rating, t('.fields.content_rating'), class: 'block text-sm font-semibold mb-1'
+            = f.select :content_rating, Apps::AppContentsController::CONTENT_RATINGS.map { |r| [ r, r ] }, \
+              { include_blank: t('.choices.unknown'), selected: @values['content_rating'] }, class: 'd-select w-full'
+            p.text-xs.opacity-65.mt-1 = t('.hints.content_rating')
+            - if @staged.include?('content_rating')
+              p.text-xs.opacity-65.mt-1 = t('.live_now', text: @live['content_rating'].presence || t('.empty'))
+
+          / Data safety
+          .border-t.border-base-300.pt-4.space-y-4
+            h4.text-sm.font-semibold = t('.data_safety_title')
+
+            - boolean_fields.first(3).each do |field|
+              div
+                = f.label field, t(".fields.#{field}"), class: 'block text-sm font-semibold mb-1'
+                div class="flex flex-wrap items-center gap-4"
+                  - [ [ '', 'unknown' ], [ 'true', 'yes' ], [ 'false', 'no' ] ].each do |value, label|
+                    label class="inline-flex items-center gap-2 text-sm"
+                      = radio_button_tag "app_content[#{field}]", value, @boolean_radio[field] == value, \
+                        id: "app_content_#{field}_#{label}"
+                      span = t(".choices.#{label}")
+                p.text-xs.opacity-65.mt-1 = t(".hints.#{field}")
+                - if @staged.include?(field)
+                  p.text-xs.opacity-65.mt-1 = t('.live_now', text: @live[field].inspect)
+
+            div
+              = f.label :data_safety_types, t('.fields.data_safety_types'), class: 'block text-sm font-semibold mb-1'
+              div class="grid gap-2 sm:grid-cols-2"
+                - Apps::AppContentsController::DATA_SAFETY_TYPES.each do |type|
+                  label class="inline-flex items-center gap-2 text-sm"
+                    = check_box_tag 'app_content[data_safety_types][]', type, Array(@values['data_safety_types']).include?(type), \
+                      id: "app_content_data_safety_types_#{type}"
+                    span = type
+              p.text-xs.opacity-65.mt-1 = t('.hints.data_safety_types')
+
+            div
+              = f.label :data_safety_deletion_url, t('.fields.data_safety_deletion_url'), class: 'block text-sm font-semibold mb-1'
+              = f.url_field :data_safety_deletion_url, value: @values['data_safety_deletion_url'], class: 'd-input w-full'
+              p.text-xs.opacity-65.mt-1 = t('.hints.data_safety_deletion_url')
+
+          / Store flags
+          .border-t.border-base-300.pt-4.space-y-4
+            h4.text-sm.font-semibold = t('.flags_title')
+            - boolean_fields.last(2).each do |field|
+              div
+                = f.label field, t(".fields.#{field}"), class: 'block text-sm font-semibold mb-1'
+                div class="flex flex-wrap items-center gap-4"
+                  - [ [ '', 'unknown' ], [ 'true', 'yes' ], [ 'false', 'no' ] ].each do |value, label|
+                    label class="inline-flex items-center gap-2 text-sm"
+                      = radio_button_tag "app_content[#{field}]", value, @boolean_radio[field] == value, \
+                        id: "app_content_#{field}_#{label}"
+                      span = t(".choices.#{label}")
+                p.text-xs.opacity-65.mt-1 = t(".hints.#{field}")
+
+          / Privacy policy
+          .border-t.border-base-300.pt-4.space-y-4
+            h4.text-sm.font-semibold = t('.policy_title')
+            div
+              = f.label :privacy_policy_url, t('.fields.privacy_policy_url'), class: 'block text-sm font-semibold mb-1'
+              = f.url_field :privacy_policy_url, value: @values['privacy_policy_url'], class: 'd-input w-full'
+              p.text-xs.opacity-65.mt-1 = t('.hints.privacy_policy_url')
+
+          / Country availability (Z-P20)
+          .border-t.border-base-300.pt-4.space-y-2
+            h4.text-sm.font-semibold = t('.availability_title')
+            p.text-xs.opacity-65 = t('.availability_note')
+            div class="grid gap-2 sm:grid-cols-4"
+              - Apps::AppContentsController::REGION_CHOICES.each do |code|
+                label class="inline-flex items-center gap-2 text-sm"
+                  = check_box_tag 'app_content[available_regions][]', code, \
+                    Array(@values['available_regions']).include?(code), id: "app_content_available_regions_#{code}"
+                  span = code
+
+          / Reviewer access (backend-only)
+          .border-t.border-base-300.pt-4.space-y-2
+            h4.text-sm.font-semibold = t('.reviewer_title')
+            p.text-xs.opacity-65 = t('.reviewer_note')
+            = f.text_area :reviewer_access_instructions, value: @reviewer_access, rows: 5, class: 'd-textarea w-full'
+
+          div class="flex flex-wrap items-center gap-3"
+            = f.submit t('.save'), class: 'd-btn d-btn-primary'
+            = link_to t('.back'), app_path(@app), class: 'd-link', data: { turbo_frame: '_top' }
+
+        - if @draft
+          .border-t.border-base-300.pt-4.space-y-2
+            p.text-sm.opacity-70 = t('.publish_hint')
+            div class="flex flex-wrap items-center gap-3"
+              - if @staged.any?
+                = button_to t('.publish'), commit_app_app_content_path(@app), method: :post, class: 'd-btn d-btn-success', \
+                  form: { data: { turbo_frame: '_top', turbo_confirm: t('.confirm_publish') } }
+              = button_to t('.discard'), app_app_content_path(@app), method: :delete, class: 'd-btn d-btn-error d-btn-outline', \
+                form: { data: { turbo_frame: '_top', turbo_confirm: t('.confirm_discard') } }

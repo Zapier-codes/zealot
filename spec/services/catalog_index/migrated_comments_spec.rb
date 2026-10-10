@@ -10,7 +10,8 @@ RSpec.describe CatalogIndex::Serializer, 'reviews (carried-over comments)' do
 
   def comment(overrides = {})
     defaults = { author_name: 'Amina K.', rating: 5, body: 'Picked the right APK first time.',
-                 commented_on: Date.new(2026, 9, 2), helpful_count: 41 }
+                 commented_on: Date.new(2026, 9, 2), helpful_count: 41,
+                 developer_reply: nil, developer_replied_at: nil }
     Struct.new(*defaults.keys).new(*defaults.merge(overrides).values)
   end
 
@@ -35,10 +36,20 @@ RSpec.describe CatalogIndex::Serializer, 'reviews (carried-over comments)' do
     # carried-over reader, which reads it alongside the store's own `created_at` date-times.
     expect(serializer.send(:migrated_comments_for, app_with([older, newer]))).to eq(
       [{ author_name: 'Amina K.', rating: 5, body: 'Picked the right APK first time.',
-         commented_on: '2026-09-02T00:00:00Z', helpful_count: 41 },
+         commented_on: '2026-09-02T00:00:00Z', helpful_count: 41,
+         developer_reply: nil, developer_replied_at: nil },
        { author_name: 'Zainab L.', rating: 3, body: 'Search is slow.',
-         commented_on: '2026-09-18T00:00:00Z', helpful_count: 23 }]
+         commented_on: '2026-09-18T00:00:00Z', helpful_count: 23,
+         developer_reply: nil, developer_replied_at: nil }]
     )
+  end
+
+  it 'publishes the developer reply and when it was written, null when there is none (Z-P8)' do
+    replied = comment(developer_reply: 'Thanks, fixed in 2.1!',
+                      developer_replied_at: Time.utc(2026, 9, 20, 10, 30))
+    result = serializer.send(:migrated_comments_for, app_with([replied]))
+    expect(result.first[:developer_reply]).to eq('Thanks, fixed in 2.1!')
+    expect(result.first[:developer_replied_at]).to eq('2026-09-20T10:30:00Z')
   end
 
   it 'publishes a null body rather than an empty string' do

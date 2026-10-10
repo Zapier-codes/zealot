@@ -1,0 +1,125 @@
+/ Z-P10: the revenue report. Play shows a developer what their apps earned and what has been paid out; this
+/ is that page, assembled by RevenueReport from what Zealot actually charged and paid. Read-only numbers plus
+/ the payout form, which talks to B-Pay-backend through PayoutRunner.
+- content_for :title do
+  = @title
+
+- content_for :section_title do
+  = @title
+
+.row
+  .col-md-12
+    .card
+      .card-header
+        h3.card-title = t('.earnings_title')
+      .card-body class="space-y-4"
+        div class="flex flex-wrap items-baseline gap-6"
+          div
+            p.text-xs.opacity-60 = t('.earnings_label')
+            p.text-2xl.font-semibold = number_to_currency(@report.earnings_cents / 100.0)
+          div
+            p.text-xs.opacity-60 = t('.payments_label')
+            p.text-2xl.font-semibold = @report.earning_count
+          div
+            p.text-xs.opacity-60 = t('.paid_out_label')
+            p.text-2xl.font-semibold = number_to_currency(@report.payouts_cents / 100.0)
+          div
+            p.text-xs.opacity-60 = t('.outstanding_label')
+            p.text-2xl.font-semibold = number_to_currency(@report.outstanding_cents / 100.0)
+
+        - if @report.by_period.any?
+          div
+            p.text-sm.font-semibold = t('.by_period_title')
+            table.table.table-sm
+              thead
+                tr
+                  th = t('.period')
+                  th.text-end = t('.amount')
+                  th.text-end = t('.count')
+              tbody
+                - @report.by_period.each do |cell|
+                  tr
+                    td = cell.period.strftime('%b %Y')
+                    td.text-end = number_to_currency(cell.cents / 100.0)
+                    td.text-end = cell.count
+
+        - if @report.by_app.any?
+          div
+            p.text-sm.font-semibold = t('.by_app_title')
+            table.table.table-sm
+              thead
+                tr
+                  th = t('.app')
+                  th.text-end = t('.amount')
+                  th.text-end = t('.count')
+              tbody
+                - @report.by_app.each do |row|
+                  tr
+                    td = row.label
+                    td.text-end = number_to_currency(row.cents / 100.0)
+                    td.text-end = row.count
+
+        - if @report.by_purpose.any?
+          div
+            p.text-sm.font-semibold = t('.by_purpose_title')
+            ul.text-sm class="list-disc pl-5"
+              - @report.by_purpose.each do |row|
+                li = t('.purpose_line', purpose: t(".purpose.#{row.label}", default: row.label), amount: number_to_currency(row.cents / 100.0), count: row.count)
+
+        - if @report.earnings_cents.zero?
+          p.opacity-70 = t('.no_earnings')
+
+.row
+  .col-md-12
+    .card
+      .card-header
+        h3.card-title = t('.payouts_title')
+      .card-body class="space-y-4"
+        - unless @payouts_configured
+          p.text-sm.opacity-70 = t('.not_configured')
+
+        - if @profile
+          = form_with url: payouts_path, method: :post, local: true, class: 'space-y-3' do |f|
+            div class="grid grid-cols-1 md:grid-cols-4 gap-3"
+              .form-group
+                = f.label :amount, t('.amount_label'), class: 'form-label'
+                = f.number_field 'payout[amount]', step: '0.01', min: '0.01', class: 'form-control'
+              .form-group
+                = f.label :connector, t('.connector_label'), class: 'form-label'
+                = f.text_field 'payout[connector]', placeholder: 'adyen', class: 'form-control'
+              .form-group
+                = f.label :payout_method_id, t('.method_label'), class: 'form-label'
+                = f.text_field 'payout[payout_method_id]', class: 'form-control'
+              .form-group.flex.items-end
+                = f.submit t('.request_payout'), class: 'btn btn-primary'
+            p.text-xs.opacity-60 = t('.payout_hint')
+        - else
+          p.opacity-70 = t('.need_profile')
+
+        - if @report.recent_payouts.any?
+          table.table.table-sm class="mt-3"
+            thead
+              tr
+                th = t('.when')
+                th = t('.amount')
+                th = t('.connector')
+                th = t('.status')
+                th
+            tbody
+              - @report.recent_payouts.each do |payout|
+                tr
+                  td = payout.created_at.strftime('%b %d, %Y')
+                  td = number_to_currency(payout.amount_cents / 100.0)
+                  td = payout.connector
+                  td
+                    span.badge = t(".status.#{payout.status}", default: payout.status)
+                  td class="text-end"
+                    - if payout.cancellable?
+                      = button_to t('.cancel'), cancel_payout_path(payout), method: :post, class: 'btn btn-sm btn-outline-danger'
+                    - if payout.bpay_payout_id.present?
+                      = button_to t('.refresh'), refresh_payout_path(payout), method: :post, class: 'btn btn-sm btn-outline-secondary'
+        - else
+          p.opacity-70 = t('.no_payouts')
+
+        div class="pt-2"
+          = link_to t('.back'), dashboard_path, class: 'd-link'

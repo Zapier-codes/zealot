@@ -145,6 +145,8 @@ class Setting < RailsSettings::Base
   end
 
   UMAMI_SCRIPT_URL = 'https://analytics.us.umami.is/script.js'
+  # Z-P16: sensible defaults for the two other self-hostable site-view tools, used when only the id/domain is set.
+  PLAUSIBLE_SCRIPT_URL = 'https://plausible.io/js/script.js'
   scope :analytics do
     field :umami_script_url, default: (ENV['UMAMI_SCRIPT_URL'] || UMAMI_SCRIPT_URL), type: :string, readonly: true,
       display: (value = ENV['UMAMI_SCRIPT_URL']) && value.present? && value != UMAMI_SCRIPT_URL
@@ -154,6 +156,26 @@ class Setting < RailsSettings::Base
       display: (value = ENV['CLARITY_ANALYTICS_ID']) && value.present?
     field :google_analytics_id, default: ENV['GOOGLE_ANALYTICS_ID'], type: :string, readonly: true,
       display: (value = ENV['GOOGLE_ANALYTICS_ID']) && value.present?
+    # Z-P16: site views via the two self-hostable, cookie-less tools. Plausible needs only the domain it
+    # reports; Matomo needs the instance URL and a site id. Both are read-only env config, like the three above.
+    field :plausible_domain, default: ENV['PLAUSIBLE_DOMAIN'], type: :string, readonly: true,
+      display: (value = ENV['PLAUSIBLE_DOMAIN']) && value.present?
+    field :plausible_script_url, default: (ENV['PLAUSIBLE_SCRIPT_URL'] || PLAUSIBLE_SCRIPT_URL),
+      type: :string, readonly: true,
+      display: (value = ENV['PLAUSIBLE_SCRIPT_URL']) && value.present? && value != PLAUSIBLE_SCRIPT_URL
+    field :matomo_url, default: ENV['MATOMO_URL'], type: :string, readonly: true,
+      display: (value = ENV['MATOMO_URL']) && value.present?
+    field :matomo_site_id, default: ENV['MATOMO_SITE_ID'], type: :string, readonly: true,
+      display: (value = ENV['MATOMO_SITE_ID']) && value.present?
+  end
+
+  # Z-P16: read-only report/BI surface configuration. These are links out to an operator-run service; Zealot
+  # never proxies them or holds their credentials, so nothing here is a secret.
+  scope :reports do
+    field :metabase_url, default: ENV['METABASE_URL'], type: :string, readonly: true,
+      display: (value = ENV['METABASE_URL']) && value.present?
+    field :superset_url, default: ENV['SUPERSET_URL'], type: :string, readonly: true,
+      display: (value = ENV['SUPERSET_URL']) && value.present?
   end
 
   # misc settings

@@ -10,10 +10,28 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_09_040000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_10_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
+
+  create_table "audit_entries", force: :cascade do |t|
+    t.string "action", null: false
+    t.bigint "actor_id"
+    t.datetime "created_at", null: false
+    t.jsonb "metadata", default: {}, null: false
+    t.bigint "subject_id"
+    t.string "subject_type", null: false
+    t.text "summary"
+    t.string "summary_i18n_key"
+    t.bigint "tenant_id"
+    t.datetime "updated_at", null: false
+    t.index ["actor_id"], name: "index_audit_entries_on_actor_id"
+    t.index ["created_at", "id"], name: "index_audit_entries_on_created_at_and_id"
+    t.index ["subject_type", "subject_id"], name: "index_audit_entries_on_subject_type_and_subject_id"
+    t.index ["tenant_id", "created_at"], name: "index_audit_entries_on_tenant_id_and_created_at"
+    t.index ["tenant_id"], name: "index_audit_entries_on_tenant_id"
+  end
 
   create_table "android_package_registrations", force: :cascade do |t|
     t.bigint "app_id"
@@ -115,11 +133,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_09_040000) do
 
   create_table "apps", force: :cascade do |t|
     t.boolean "archived", default: false, null: false
+    t.jsonb "available_regions", default: [], null: false
     t.string "category"
+    t.boolean "contains_ads"
+    t.string "content_rating"
     t.datetime "created_at", null: false
+    t.boolean "data_safety_collects"
+    t.string "data_safety_deletion_url"
+    t.boolean "data_safety_encrypted"
+    t.boolean "data_safety_shared"
+    t.jsonb "data_safety_types", default: [], null: false
+    t.boolean "developer_verified", default: false, null: false
     t.string "description"
     t.boolean "editors_pick", default: false, null: false
     t.boolean "featured", default: false, null: false
+    t.boolean "has_in_app_purchases"
     t.datetime "listed_at"
     t.string "listing_status", default: "draft", null: false
     t.bigint "migrated_downloads", default: 0, null: false
@@ -134,13 +162,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_09_040000) do
     t.datetime "play_setup_checked_at"
     t.text "play_setup_message"
     t.string "play_setup_status", default: "unchecked", null: false
+    t.string "privacy_policy_url"
     t.string "promo_video_youtube_id"
     t.string "publisher_alias"
     t.bigint "publisher_profile_id"
+    t.text "reviewer_access_instructions"
     t.string "short_description"
     t.bigint "tenant_id"
     t.datetime "updated_at", null: false
     t.boolean "updater_enabled", default: true, null: false
+    t.datetime "verification_checked_at"
+    t.boolean "verification_key_registered", default: false, null: false
+    t.boolean "verification_package_registered", default: false, null: false
     t.index ["name"], name: "index_apps_on_name"
     t.index ["play_package_name"], name: "index_apps_on_play_package_name", unique: true, where: "(play_package_name IS NOT NULL)"
     t.index ["publisher_profile_id"], name: "index_apps_on_publisher_profile_id"
@@ -448,6 +481,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_09_040000) do
     t.text "body"
     t.date "commented_on", null: false
     t.datetime "created_at", null: false
+    t.text "developer_reply"
+    t.datetime "developer_replied_at"
     t.integer "helpful_count", default: 0, null: false
     t.integer "rating", null: false
     t.bigint "recorded_by_id"
@@ -480,6 +515,30 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_09_040000) do
     t.index ["hyperswitch_payment_id"], name: "index_payments_on_hyperswitch_payment_id", unique: true
     t.index ["next_charge_at"], name: "index_payments_on_next_charge_at"
     t.index ["user_id"], name: "index_payments_on_user_id"
+  end
+
+  create_table "payouts", force: :cascade do |t|
+    t.integer "amount_cents", null: false
+    t.string "bpay_payout_id"
+    t.datetime "cancelled_at"
+    t.datetime "confirmed_at"
+    t.string "connector"
+    t.datetime "created_at", null: false
+    t.string "currency", default: "usd", null: false
+    t.string "customer_id"
+    t.string "failure_reason"
+    t.datetime "fulfilled_at"
+    t.string "merchant_id"
+    t.string "payout_method_id"
+    t.bigint "publisher_profile_id", null: false
+    t.text "raw_response"
+    t.string "status", default: "created", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["bpay_payout_id"], name: "index_payouts_on_bpay_payout_id", unique: true
+    t.index ["publisher_profile_id"], name: "index_payouts_on_publisher_profile_id"
+    t.index ["status"], name: "index_payouts_on_status"
+    t.index ["user_id"], name: "index_payouts_on_user_id"
   end
 
   create_table "play_credentials", force: :cascade do |t|
@@ -553,6 +612,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_09_040000) do
     t.string "asset_delivery_state"
     t.datetime "asset_delivery_state_at"
     t.string "asset_pack_type"
+    t.jsonb "automated_review_reasons", default: [], null: false
+    t.jsonb "automated_review_trackers", default: [], null: false
+    t.string "automated_review_status", default: "not_run", null: false
+    t.string "automated_review_verdict"
+    t.datetime "automated_reviewed_at"
     t.string "branch"
     t.boolean "brotli_compressed", default: false, null: false
     t.string "build_version"
@@ -621,6 +685,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_09_040000) do
     t.index ["ci_compile_state"], name: "index_releases_on_ci_compile_state"
     t.index ["mtproto_archived_at"], name: "index_releases_on_mtproto_archived_at"
     t.index ["play_approval_expires_at"], name: "index_releases_on_play_approval_expires_at"
+    t.index ["automated_review_status"], name: "index_releases_on_automated_review_status"
+    t.index ["automated_review_verdict"], name: "index_releases_on_automated_review_verdict"
     t.index ["play_approval_status"], name: "index_releases_on_play_approval_status"
     t.index ["play_approved_by_id"], name: "index_releases_on_play_approved_by_id"
     t.index ["play_publish_status"], name: "index_releases_on_play_publish_status"
@@ -792,8 +858,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_09_040000) do
     t.bigint "channel_id"
     t.datetime "created_at", null: false
     t.integer "download_events", limit: 2
-    t.datetime "updated_at", null: false
+    t.text "signing_secret"
+    t.datetime "signing_secret_set_at"
     t.integer "upload_events", limit: 2
+    t.datetime "updated_at", null: false
     t.string "url"
     t.index ["channel_id"], name: "index_web_hooks_on_channel_id"
     t.index ["url"], name: "index_web_hooks_on_url"
@@ -822,6 +890,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_09_040000) do
   add_foreign_key "migrated_comments", "users", column: "recorded_by_id", on_delete: :nullify
   add_foreign_key "payments", "apps"
   add_foreign_key "payments", "users"
+  add_foreign_key "payouts", "publisher_profiles"
+  add_foreign_key "payouts", "users"
   add_foreign_key "publisher_profiles", "users", on_delete: :cascade
   add_foreign_key "release_uploads", "channels", on_delete: :cascade
   add_foreign_key "release_uploads", "releases", on_delete: :nullify

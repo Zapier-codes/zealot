@@ -4,6 +4,15 @@ Rails.application.routes.draw do
   root to: 'home#index'
   get 'dashboard', to: 'dashboards#index', as: :dashboard
 
+  # Z-P10 / Task 50: the publisher's revenue report and the payout actions on it.
+  resource :revenue, only: :show, controller: 'revenues'
+  resources :payouts, only: %i[create] do
+    member do
+      post :cancel
+      post :refresh
+    end
+  end
+
   # Email preferences: reached from a link in every automated email, no login
   # needed (the signed token identifies the user).
   get   'email_preferences/:token', to: 'email_preferences#show',   as: :email_preferences
@@ -70,6 +79,20 @@ Rails.application.routes.draw do
     resource :listing_text, only: %i[show update destroy], module: :apps do
       post :commit
     end
+    # Z-P5/Z-P6: the "App content" section — the content/age rating, the Data Safety answers, the two store
+    # flags and the store privacy-policy URL. Same staged-draft model as listing_text above (GET the form,
+    # PATCH stages, POST commit publishes, DELETE discards); the reviewer-access instructions on the same
+    # page are backend-only and save straight to the app (see Apps::AppContentsController for why).
+    resource :app_content, only: %i[show update destroy], module: :apps do
+      post :commit
+    end
+    # Z-P8: the reviews inbox — read an app's reviews and write the developer reply (one per review).
+    resources :reviews, only: %i[index update], module: :apps
+    # Z-P22: the deep-link verification checker — read the app's declared hosts and check each one's
+    # /.well-known/assetlinks.json against the app's package + signing certificate.
+    resource :deep_link_verification, only: :show, module: :apps
+    # Z-P2/Z-P3/Z-P4: the automated-review policy status — the machine verdict on every release, shown per app.
+    resource :policy_status, only: :show, module: :apps
     resources :listing_graphics, only: %i[create update destroy], module: :apps do
       # Task 27d-e2-c: move a screenshot up or down one place (params: direction=up|down).
       member { patch :move }
@@ -232,13 +255,24 @@ Rails.application.routes.draw do
           delete :unlock
         end
       end
-      resources :web_hooks, except: %i[ show new create ]
+      resources :web_hooks, except: %i[ show new create ] do
+        member do
+          # Z-P19: mint a Standard Webhooks signing secret for this hook (shows it once).
+          post :signing_secret, action: :rotate_signing_secret
+        end
+      end
       resources :apple_teams, only: %i[ edit update ]
       resources :background_jobs, only: :index
       resources :system_info, only: :index
       resources :database_analytics, only: :index
+      # Z-P16: the reports surface — which self-hostable site-view tool is live, and links out to the
+      # operator's BI tool (Metabase/Superset) over Zealot's Postgres.
+      resources :reports, only: :index
       # Task 31b: read-only view of D-store-owned figures (see DstoreStats).
       resources :dstore_stats, only: :index
+      # Z-P18 (audit-log slice): the append-only audit log (Play Console's "changes log"). Read-only here; written by the
+      # code that makes each change.
+      resources :audit_entries, only: :index
       resources :apple_keys, except: %i[ edit update ] do
         member do
           put :sync_devices

@@ -1,0 +1,58 @@
+- content_for :title do
+  = t('.title')
+
+- content_for :section_title do
+  = t('.title')
+
+.card
+  .card-header
+    h3.card-title = t('.site_views_title')
+  .card-body class="space-y-2"
+    p.text-sm.opacity-70 = t('.site_views_intro')
+    table.table.table-sm
+      thead
+        tr
+          th = t('.tool')
+          th = t('.status')
+          th = t('.configured_with')
+      tbody
+        tr
+          td Google Analytics
+          td
+            span class="d-badge d-badge-sm #{Setting.google_analytics_id.present? ? 'd-badge-success' : 'd-badge-ghost'}" = Setting.google_analytics_id.present? ? t('.on') : t('.off')
+          td.text-sm.opacity-70 = Setting.google_analytics_id.presence || '—'
+        tr
+          td Umami
+          td
+            span class="d-badge d-badge-sm #{Setting.umami_website_id.present? ? 'd-badge-success' : 'd-badge-ghost'}" = Setting.umami_website_id.present? ? t('.on') : t('.off')
+          td.text-sm.opacity-70 = Setting.umami_website_id.presence || '—'
+        tr
+          td Plausible
+          td
+            span class="d-badge d-badge-sm #{Setting.plausible_domain.present? ? 'd-badge-success' : 'd-badge-ghost'}" = Setting.plausible_domain.present? ? t('.on') : t('.off')
+          td.text-sm.opacity-70 = Setting.plausible_domain.presence || '—'
+        tr
+          td Matomo
+          td
+            span class="d-badge d-badge-sm #{(Setting.matomo_url.present? && Setting.matomo_site_id.present?) ? 'd-badge-success' : 'd-badge-ghost'}" = (Setting.matomo_url.present? && Setting.matomo_site_id.present?) ? t('.on') : t('.off')
+          td.text-sm.opacity-70 = Setting.matomo_url.presence || '—'
+        tr
+          td Microsoft Clarity
+          td
+            span class="d-badge d-badge-sm #{Setting.clarity_analytics_id.present? ? 'd-badge-success' : 'd-badge-ghost'}" = Setting.clarity_analytics_id.present? ? t('.on') : t('.off')
+          td.text-sm.opacity-70 = Setting.clarity_analytics_id.presence || '—'
+
+.card class="mt-3"
+  .card-header
+    h3.card-title = t('.bi_title')
+  .card-body class="space-y-2"
+    p.text-sm.opacity-70 = t('.bi_intro')
+    - if Setting.metabase_url.present?
+      p = link_to t('.open_metabase'), Setting.metabase_url, class: 'd-link', target: '_blank', rel: 'noopener'
+    - if Setting.superset_url.present?
+      p = link_to t('.open_superset'), Setting.superset_url, class: 'd-link', target: '_blank', rel: 'noopener'
+    - if Setting.metabase_url.blank? && Setting.superset_url.blank?
+      p.opacity-70 = t('.bi_none')
+    div class="pt-2"
+      = link_to t('.warehouse'), admin_database_analytics_path, class: 'd-link'
+    p.text-xs.opacity-60 class="pt-2" = t('.csv_hint')

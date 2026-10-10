@@ -1,0 +1,43 @@
+- content_for :title do
+  = t('.title')
+
+- content_for :section_title do
+  = t('.title')
+
+.card
+  .card-header
+    h3.card-title = t('.title')
+    .card-tools
+      = form_with url: admin_audit_entries_path, method: :get, local: true do |f|
+        .flex.gap-2
+          = select_tag :subject_type, options_for_select(@subject_types, params[:subject_type]), include_blank: t('.any_subject'), class: 'd-select d-select-sm'
+          = select_tag :entry_action, options_for_select(AuditEntry::ACTIONS, params[:entry_action]), include_blank: t('.any_action'), class: 'd-select d-select-sm'
+          = text_field_tag :q, params[:q], placeholder: t('.search'), class: 'd-input d-input-sm'
+          = submit_tag t('.filter'), class: 'd-btn d-btn-sm d-btn-primary'
+  .card-body.p-0
+    p.px-3.pt-3.text-sm.opacity-70 = t('.intro')
+    - if @audit_entries.empty?
+      p.px-3.pb-3.opacity-70 = t('.empty')
+    - else
+      table.table.table-sm.table-hover
+        thead
+          tr
+            th = t('.when')
+            th = t('.who')
+            th = t('.action')
+            th = t('.subject')
+            th = t('.detail')
+        tbody
+          - @audit_entries.each do |entry|
+            tr
+              td.text-nowrap = l(entry.created_at, format: :long)
+              td = entry.actor&.username || t('.system')
+              td
+                span class="d-badge d-badge-sm #{entry.action == 'destroyed' ? 'd-badge-error' : (entry.action == 'created' ? 'd-badge-success' : 'd-badge-ghost')}" = t(".actions.#{entry.action}", default: entry.action)
+              td.text-nowrap
+                = entry.subject_type
+                - if entry.subject_id.present?
+                  = " ##{entry.subject_id}"
+              td = entry.description
+      .px-3.pb-3
+        = paginate @audit_entries

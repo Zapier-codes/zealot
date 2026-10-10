@@ -321,6 +321,10 @@ class Release < ApplicationRecord
   after_create  :retained_build_job
   after_create  :anthropic_asset_delivery_job
   after_create  :request_play_approval_if_targeted
+  # Z-P2/Z-P4: every release is checked by the automated review runner (MobSF trackers + static checks) so a
+  # person never has to read an upload to know it is clean. Best-effort and non-blocking -- the job writes a
+  # verdict, it never refuses the release.
+  after_create  :enqueue_automated_review
   # Task 27c: a new release changes CatalogIndex::Serializer's versions[]
   # for this app (see App#catalog_releases, added in 29b for exactly this
   # list), so the next index has to be regenerated. Only matters for an app
@@ -911,6 +915,14 @@ class Release < ApplicationRecord
     request_play_approval!
     # Adopting a package name already schedules the check (App callback).
     AnthropicPlayPreflightJob.perform_later(app.id) if app.play_package_name.present? && !adopted
+  end
+
+  # Z-P2/Z-P4: kick off the automated review. Best-effort, like the other after_create jobs -- a queue that
+  # is down must not stop the upload, so the failure is swallowed (the review simply stays `not_run`).
+  def enqueue_automated_review
+    AutomatedReviewJob.perform_later(id)
+  rescue StandardError
+    nil
   end
 
   # Task 41d: the generic names a workflow older than Task 41 stored files under. They say nothing about the app,
