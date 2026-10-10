@@ -212,8 +212,9 @@ Rails.application.routes.draw do
       member do
         # Task 27d-b: must stay above ':filename' (which matches anything) or `icon` is read as a filename.
         get :icon, action: :icon
-        get ':filename', action: :download, filename: /.+/, as: 'filename'
+        # Z-P13: a File-by-File update delta, named by the version it patches from.
         get :delta, action: :delta
+        get ':filename', action: :download, filename: /.+/, as: 'filename'
       end
     end
 

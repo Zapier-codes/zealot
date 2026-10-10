@@ -347,6 +347,7 @@ class Release < ApplicationRecord
   # Task 46b-index: `ci_compile_state` too, because the index lists a CI release only once its compile is done.
   CATALOG_INDEX_RELEASE_FIELDS = %w[
     status rollout_percentage rollout_status universal_apk_sha256 universal_apk_size permissions ci_compile_state
+    delta_patches
   ].freeze
 
   after_update_commit :publish_catalog_index_if_app_live, if: :catalog_index_release_field_changed?

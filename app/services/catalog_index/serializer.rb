@@ -512,7 +512,39 @@ module CatalogIndex
         status: version_status_for(release),
         compatibility: compatibility_for(release),
         rollout: rollout_for(release),
+        delta_patches: delta_patches_for(release),
       }
+    end
+
+    # Z-P13: the File-by-File update deltas this version can be reached from. Additive: an empty array for
+    # every release that has none (the overwhelming majority), so a reader without the key is unaffected and
+    # the schema needs no version bump. `download_url` is Zealot's own stable delta endpoint, never a signed
+    # storage URL (those expire). Only the facts a client needs to choose and verify a patch are published.
+    def delta_patches_for(release)
+      raw = release.respond_to?(:delta_patches) ? release.delta_patches : nil
+      return [] unless raw.is_a?(Array)
+
+      raw.filter_map do |patch|
+        next unless patch.is_a?(Hash)
+
+        from_code = patch['from_version_code']
+        storage_key = patch['storage_key']
+        next if from_code.to_s.empty? || storage_key.to_s.empty?
+
+        {
+          from_version_code: from_code.to_s,
+          download_url: release.respond_to?(:delta_download_url) ? release.delta_download_url(from_code) : download_url_fallback(release),
+          size: patch['size'],
+          sha256: patch['sha256'],
+          from_sha256: patch['from_sha256'],
+          to_sha256: patch['to_sha256'],
+          format: patch['format'],
+        }
+      end
+    end
+
+    def download_url_fallback(release)
+      release.respond_to?(:download_url) ? release.download_url : nil
     end
 
     PUBLISHED_VERSION_STATUSES = %w[available halted pulled].freeze

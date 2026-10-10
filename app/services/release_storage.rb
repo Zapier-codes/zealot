@@ -108,6 +108,22 @@ class ReleaseStorage
     key
   end
 
+  # Z-P13: the same, from bytes already in memory (the File-by-File generator produces the patch that way).
+  # `from_version_code` is part of the archive-patcher naming so a path is self-describing; falls back to
+  # the release id when the caller has no code.
+  def store_delta_patch_bytes(patch, from_release:, from_version_code: nil)
+    suffix = from_version_code.to_s.strip
+    suffix = from_release.id.to_s if suffix.empty?
+    suffix = suffix.gsub(/[^A-Za-z0-9._-]/, '_')
+    key = artifact_key("delta-from-#{suffix}.gfb")
+    Dir.mktmpdir('delta-patch-') do |dir|
+      path = File.join(dir, 'patch.gfb')
+      File.binwrite(path, patch.b)
+      adapter.put(key, path)
+    end
+    key
+  end
+
   # @return [String] the storage key an asset pack split was stored under
   def store_asset_pack(local_path, pack_name:)
     key = artifact_key("packs/#{pack_name}.apks")

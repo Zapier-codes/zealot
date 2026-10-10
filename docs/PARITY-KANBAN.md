@@ -127,10 +127,29 @@ above: D-P1/D-P2/D-P3/D-P4/D-P5/D-P6/D-P7/D-P8 (web) and S-P1/S-P2 (client). No 
 
 - [ ] **Z-P12 · Pre-launch report (redroid in CI)** — install the build on a headless Android image, launch,
   `adb shell monkey` N events, no crash → written to the release. Owner **Z**.
-- [ ] **Z-P13 · Delta updates (archive-patcher)** — generate file-by-file patches at publish time on the
+- [~] **Z-P13 · Delta updates (archive-patcher)** — generate file-by-file patches at publish time on the
   signed APK; the client applies them and must match byte for byte. Owner **Z** generate, **S** apply.
-  (Investigated, nothing built: the Storeapp apply path would slot beside `installer/ApkVerifier.kt`'s
-  existing byte-check, and the generator beside Zealot's publish step — no code written for this card yet.)
+  <u>Generator half built 2026-10-10 (the Storeapp</u> **S** <u>apply half is on the D-Store/Storeapp board):</u>
+  `ArchivePatcher::BsDiff` (bsdiff over bzip2), `ArchivePatcher::ZipArchive` (central-directory parse +
+  byte-identical rebuild, deflate level/strategy recovered per entry), and `ArchivePatcher::FileByFile`
+  (the real archive-patcher File-by-File **v1** container: `GFbFv1_0` magic, uncompression/recompression
+  ops naming the changed entries' regions, one bsdiff delta, verify-on-generate). `ArchivePatcher::Generator`
+  runs it from `ReleaseSupersedeJob` *before* the older release's bytes are deleted, stores the patch via
+  `ReleaseStorage#store_delta_patch_bytes` and records a manifest on the new column `releases.delta_patches`;
+  the signed index publishes `delta_patches` per version (additive, `COLLECTION`-safe) and
+  `GET /download/releases/:id/delta?from=<code>` serves the bytes. Off unless `ENABLE_DELTA_PATCHING`
+  (`config.x.anthropic.delta_patching_enabled`); refusals (no local copy, identical pair, unreadable
+  archive) leave the array empty and the client downloads the full APK. Algorithm runtime-verified:
+  `spec/services/archive_patcher/{bsdiff,zip_archive,file_by_file}_spec.rb` (byte-identical round trips; a
+  one-line edit in a 54 KB APK patches in 378 bytes vs 1238 for a naive whole-file bsdiff).
+  <u>**S** apply half built 2026-10-10 too (Storeapp client + the D-Store reader; see each repo's</u>
+  <u>`HANDOVER.md`):</u> the client's Android-free `delta/` package (`DeltaApplier.selectPatch` exact-match on
+  the installed `from_version_code`, `applyPatch` with patch/base/result SHA-256 gates) is wired into
+  `AppData.kt`'s `downloadAndInstall`, which tries the delta before the full APK and falls back to it on any
+  miss; the same `ApkVerifier` gate and installer run on whichever file is produced. **Off-device verified**
+  (the four generator vectors reproduce byte-for-byte through the Kotlin applier; 8 JUnit tests pass on the
+  JVM; the web reader is `tsc`-clean with 727 tests green), **but the client is not yet compiled under Gradle**
+  (no Android toolchain in the sandbox) — so this stays `[~]` until it builds on a machine with the toolchain.
 - [ ] **Z-P15 · F-Droid-compatible repo (fdroidserver)** — publish index-v2 + signed `entry.jar` beside the
   signed Zealot index; the Zealot index stays the trust anchor. Owner **Z**.
 - [x] **Z-P16 · Funnels, exports** — Umami/Plausible/Matomo for site views, Metabase/Superset over Zealot's

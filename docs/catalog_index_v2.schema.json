@@ -715,7 +715,8 @@
         "released_at",
         "status",
         "compatibility",
-        "rollout"
+        "rollout",
+        "delta_patches"
       ],
       "additionalProperties": false,
       "properties": {
@@ -841,6 +842,58 @@
                 "halted",
                 "complete"
               ]
+            }
+          }
+        },
+        "delta_patches": {
+          "type": "array",
+          "description": "Z-P13: File-by-File v1 update deltas, Play-Console parity. Each element is a patch that turns the installed version named by from_version_code into THIS version, so a client downloads only the delta and applies it in place. download_url is Zealot's own stable endpoint (the bytes live under the release's storage, never a signed URL that expires). The client picks the element whose from_version_code equals its installed build_version; when there is none it downloads the full APK. An empty array is the common case (a first release, a pulled previous version, or an identical pair) and means 'download the full file'. Additive: a reader that does not know the key ignores it. Recompression-op offsets are post-apply (each already shifted by the byte-length change of every earlier recompressed region), so an applier works in ascending offset order on a buffer that grows to the archive size.",
+          "items": {
+            "type": "object",
+            "required": [
+              "from_version_code",
+              "download_url",
+              "size",
+              "sha256"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "from_version_code": {
+                "type": "string",
+                "description": "build_version of the release this patch is made from; the client matches its own installed version against this."
+              },
+              "download_url": {
+                "type": "string"
+              },
+              "size": {
+                "type": "integer",
+                "description": "patch size in bytes."
+              },
+              "sha256": {
+                "type": "string",
+                "description": "sha256 of the patch bytes, checked before applying."
+              },
+              "from_sha256": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "sha256 of the base APK the patch expects; the client checks the file it has installed matches."
+              },
+              "to_sha256": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "sha256 of the resulting APK, checked after applying (byte-for-byte acceptance)."
+              },
+              "format": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "patch container magic, e.g. GFbFv1_0."
+              }
             }
           }
         }

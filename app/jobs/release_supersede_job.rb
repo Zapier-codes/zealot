@@ -33,6 +33,10 @@ class ReleaseSupersedeJob < ApplicationJob
     release = Release.find_by(id: release_id)
     return if release.nil?
 
+    # Z-P13: make the update delta *before* the older releases (and their stored bytes) are removed, so a
+    # client can patch in place. Best-effort; the full APK stays the fallback.
+    generate_delta_patch(release)
+
     result = ReleaseSuperseder.new(release).call
     log_result(release, result)
   rescue ReleaseSuperseder::Refused => e
@@ -40,6 +44,15 @@ class ReleaseSupersedeJob < ApplicationJob
   end
 
   private
+
+  def generate_delta_patch(release)
+    previous = release.channel.releases.where('releases.id < ?', release.id).order(id: :desc).first
+    return if previous.nil?
+
+    ArchivePatcher::Generator.new(release).generate_from(previous)
+  rescue StandardError => e
+    logger.warn("[ReleaseSupersedeJob] release #{release.id}: delta patch skipped: #{e.class}: #{e.message}")
+  end
 
   def log_result(release, result)
     return if result.removed.empty? && result.failed.empty?

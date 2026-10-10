@@ -16,6 +16,13 @@ module ReleaseUrl
     icon_download_release_url(id)
   end
 
+  # Z-P13: the update-delta endpoint for a patch made from `from_version_code`. The patch bytes are served
+  # from storage by the same controller that would serve the full file, so a client downloads it the same
+  # way. `to_query` is not used because the value never contains characters a path segment cannot carry.
+  def delta_download_url(from_version_code)
+    delta_download_release_url(id, from: from_version_code)
+  end
+
   def install_url
     return download_url unless platform == 'iOS'
 
