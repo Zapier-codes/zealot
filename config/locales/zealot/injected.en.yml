@@ -15,3 +15,4 @@ en:
         what: A network library the platform adds to Android bundles served from here.
       updater_limits: 'Automatic updates need the person to allow "Install unknown apps" for this app once. Older Android versions, or apps built for older Android releases, still ask for confirmation. A copy installed from Google Play is signed with a different key and cannot be updated this way.'
       updater_off: Automatic in-app updates are switched off for this app. Edit the app to change it.
+      bundles_only: "Only Android App Bundles (.aab) are changed this way. An APK uploaded directly is served exactly as uploaded, with none of the items above. To get them, upload the app as a bundle."

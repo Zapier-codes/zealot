@@ -15,3 +15,4 @@ zh-CN:
         what: 平台加入此处提供的 Android 安装包中的网络库。
       updater_limits: "自动更新需要用户为此应用允许一次“安装未知应用”。较旧的 Android 版本，或针对旧版 Android 构建的应用，仍会要求确认。从 Google Play 安装的副本使用不同的签名密钥，无法以此方式更新。"
       updater_off: 此应用已关闭应用内自动更新。编辑应用即可更改。
+      bundles_only: "只有 Android App Bundle（.aab）会以此方式修改。直接上传的 APK 会原样提供，不含上述任何项目。如需这些项目，请以 bundle 形式上传应用。"

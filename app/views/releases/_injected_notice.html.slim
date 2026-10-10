@@ -1,4 +1,4 @@
-/ Task 47f: what Zealot adds to the build its store and website serve (see InjectedComponents). Local: app.
+/ Task 47f, 47h (bundles only): what Zealot adds to the build its store and website serve (see InjectedComponents). Local: app.
 - components = InjectedComponents.for(app)
 .injected-notice.mt-4.text-sm
   h4.font-semibold = t('releases.injected.title')
@@ -17,3 +17,4 @@
     p.opacity-70 = t('releases.injected.updater_limits')
   - else
     p.opacity-70 = t('releases.injected.updater_off')
+  p.opacity-70 = t('releases.injected.bundles_only')

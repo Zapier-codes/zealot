@@ -40,7 +40,7 @@ RSpec.describe InjectedComponents do
   it 'has an English and a Chinese text for every listed key' do
     %i[en zh-CN].each do |locale|
       I18n.with_locale(locale) do
-        %w[title intro permissions updater_limits updater_off status.planned status.conditional updater.name
+        %w[title intro permissions updater_limits updater_off bundles_only status.planned status.conditional updater.name
            updater.what sdk.name sdk.what].each do |key|
           expect(I18n.exists?("releases.injected.#{key}", locale)).to be(true), "#{locale} #{key}"
         end
