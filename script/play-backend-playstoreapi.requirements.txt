@@ -1,0 +1,11 @@
+# Runtime dependencies for script/play-backend-playstoreapi.py (Z-P25's Python backend).
+#
+# The vendored client is not installed with pip; this file lists what it imports, so a host that runs the
+# backend can prepare in one step:
+#
+#     python3 -m pip install -r script/play-backend-playstoreapi.requirements.txt
+#
+# These are the same pins the vendored project declares in its own setup.py (install_requires).
+requests
+cryptography
+protobuf
