@@ -39,4 +39,7 @@ application.register("globe", GlobeController)
 import DirectUploadController from "./direct_upload_controller"
 application.register("direct-upload", DirectUploadController)
 
+import ServiceWorkerController from "./service_worker_controller"
+application.register("service-worker", ServiceWorkerController)
+
 import "./admin"

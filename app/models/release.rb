@@ -258,6 +258,8 @@ class Release < ApplicationRecord
   belongs_to :play_approved_by, class_name: 'User', optional: true
   belongs_to :play_rejected_by, class_name: 'User', optional: true
   has_one :metadata, class_name: 'Metadatum', dependent: :destroy
+  # Z-P11: a release's mapping / native symbol uploads (at most one of each kind).
+  has_many :debug_symbols, dependent: :destroy
   has_and_belongs_to_many :devices, dependent: :destroy
 
   # Task 37b-iii-s7a: the releases that belong to one tenant's catalog, i.e. the releases of the

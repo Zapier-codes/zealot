@@ -1,0 +1,22 @@
+-# Z-P23 (Play Console parity, docs/PARITY-KANBAN.md): the Web App Manifest. Built from Settings so the
+-# name and theme match this deployment. Served by PwaController at /manifest.webmanifest as
+-# application/manifest+json. `scope` and `start_url` are root so an installed console opens where a
+-# browser tab would. The icons are the same art the browser tab uses, plus maskable variants.
+- icons = [
+-   { src: vite_asset_path('images/pwa-icon-192.png'), sizes: '192x192', type: 'image/png' },
+-   { src: vite_asset_path('images/pwa-icon-512.png'), sizes: '512x512', type: 'image/png' },
+-   { src: vite_asset_path('images/pwa-icon-maskable-192.png'), sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+-   { src: vite_asset_path('images/pwa-icon-maskable-512.png'), sizes: '512x512', type: 'image/png', purpose: 'maskable' }
+- ]
+== {
+    name: site_title,
+    short_name: site_title,
+    description: t('pwa.description'),
+    start_url: root_path,
+    scope: '/',
+    display: 'standalone',
+    orientation: 'any',
+    background_color: '#ffffff',
+    theme_color: '#ffffff',
+    icons: icons
+  }.to_json

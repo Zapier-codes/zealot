@@ -11,6 +11,13 @@ html lang="#{I18n.locale}" data-theme=active_theme
     == favicon_link_tag vite_asset_path('images/zealot-icon.png')
     == favicon_link_tag vite_asset_path('images/zealot-icon-dark.png'), media: "(prefers-color-scheme: dark)"
 
+    / Z-P23 (Play Console parity): make the console installable. The manifest is served by PwaController
+    / from Settings; the apple-touch-icon above already covers iOS's add-to-home-screen.
+    link[rel="manifest" href="#{pwa_manifest_path}"]
+    meta[name="theme-color" content="#ffffff"]
+    meta[name="apple-mobile-web-app-capable" content="yes"]
+    meta[name="mobile-web-app-capable" content="yes"]
+
     == vite_stylesheet_tag 'application', 'data-turbolinks-track': 'reload'
     == vite_javascript_tag 'application', defer: true, type: :module, 'data-turbolinks-track': 'reload'
     == yield :header_tags
@@ -46,4 +53,6 @@ html lang="#{I18n.locale}" data-theme=active_theme
 
     == render 'layouts/notifications'
     == render 'layouts/analytics'
+    / Z-P23: register the console's service worker (inert where unsupported). A data attribute carries the URL.
+    div[data-controller="service-worker" data-service-worker-url-value=pwa_service_worker_path hidden]
     == turbo_frame_tag :modal

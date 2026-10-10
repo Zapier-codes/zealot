@@ -114,8 +114,14 @@ above: D-P1/D-P2/D-P3/D-P4/D-P5/D-P6/D-P7/D-P8 (web) and S-P1/S-P2 (client). No 
   (`GET /revenue`) + `PayoutsController` (`POST /payouts`, `.../cancel`, `.../refresh`) + view + en/zh-CN
   locales + sidebar link. Written, not run (no bundle in-sandbox); refused calls leave the row `failed` with
   the reason rather than lost.
-- [ ] **Z-P11 · Trained-upgrade mapping / native symbol upload** — mapping-file handling for the vitals
-  route below. Owner **Z**.
+- [x] **Z-P11 · Trained-upgrade mapping / native symbol upload** — mapping-file handling for the vitals
+  route below. Owner **Z**. Built 2026-10-10: `DebugSymbol` (one row per (release, kind): `mapping`,
+  `native_symbols`; checksum + 300 MB cap; `DebugSymbolUploader` under the app/release store dir) with
+  `DebugSymbolPolicy` riding on the release. Console upload/replace/remove from the release page
+  (`Channels::DebugSymbolsController` + the "Deobfuscation files" card in `releases/body/_debug_symbols`),
+  the API twin `POST /api/releases/:id/debug_symbols` (user token, `Api::DebugSymbolsController`), and
+  the public download `Download::DebugSymbolsController`. Migration + schema; en/zh-CN; migration and
+  model written-not-run in the sandbox (no Postgres/bundle) — see `spec/requests/debug_symbols_spec.rb`.
 
 ### Console — scale, enterprise, reach
 
@@ -165,7 +171,15 @@ above: D-P1/D-P2/D-P3/D-P4/D-P5/D-P6/D-P7/D-P8 (web) and S-P1/S-P2 (client). No 
   to the app's own sites. `spec/services/asset_links/verifier_spec.rb` + `spec/services/deep_link_check_spec.rb`;
   algorithm runtime-verified (24 checks, no Faraday in the sandbox). Two bugs this found and fixed:
   `Array(target)` turned the assetlinks target Hash into pairs; `uri` was not required.
-- [ ] **Z-P23 · Console mobile app** — installable web app or a Bubblewrap TWA. Owner **Z**.
+- [x] **Z-P23 · Console mobile app** — installable web app or a Bubblewrap TWA. Owner **Z**. Built
+  2026-10-10: the installable-web-app half. `PwaController` serves `/manifest.webmanifest` (built from
+  `Setting.site_title`, standalone display, 192/512 + maskable icons) and `/service-worker.js`; the
+  layout links the manifest and registers the worker through a `service-worker` Stimulus controller
+  (inert where the browser refuses). The worker is cache-first for static shell assets only and never
+  caches `/api/` or `/download/`, so a signed or per-user response can never be replayed; navigations
+  go to the network with a static `public/offline.html` fallback. en/zh-CN locale; `spec/requests/pwa_spec.rb`;
+  cache rule runtime-verified (node harness, 10 checks). No Bubblewrap TWA (needs a signing key + a Play
+  listing — a separate decision, Z-P24).
 - [ ] **Z-P24 · Enterprise device management** — Headwind MDM + Android RestrictionsManager managed config
   (+ the Android Management API). Separate project. Owner **Z**.
 - [ ] **Z-P25 · Development-assistant / Play import bridge (PlayCatalogSource adapter)** — ONE adapter in

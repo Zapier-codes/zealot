@@ -1,5 +1,8 @@
 en:
   announcement: Version 7.0 introduces a brand new theme, with more exciting features in development!
+  # Z-P23 (Play Console parity): the installable console's manifest description.
+  pwa:
+    description: 'Install this app distribution console on your device. It opens in its own window and works offline.'
   toolbox_section: Toolbox
   admin_section: Admin
   monitors_section: Monitor
@@ -910,6 +913,21 @@ en:
         status_change_not_allowed: "A %{from} release can not be changed to %{to}."
         play_package_name_mismatch: "applicationId %{got} in this bundle does not match this app's Play applicationId %{expect}. Upload the matching bundle, or correct the app's Play applicationId if it was entered wrongly."
         play_version_code_not_newer: "This bundle's versionCode (%{got}) is not higher than %{latest}, which was already approved for Google Play. Google only accepts an update whose versionCode is higher — raise it (android.defaultConfig.versionCode) and upload again."
+  # Z-P11 (Play Console parity): a release's deobfuscation files.
+  debug_symbols:
+    title: Deobfuscation files
+    uploaded: Debug symbol uploaded.
+    removed: Debug symbol removed.
+    upload: Upload
+    replace: Replace
+    download: Download
+    remove: Remove
+    confirm_remove: Remove this debug symbol?
+    uploaded_badge: Uploaded
+    missing_badge: Missing
+    kinds:
+      mapping: R8/ProGuard mapping
+      native_symbols: Native debug symbols
   debug_files:
     title: Debug files
     index:
@@ -1271,6 +1289,10 @@ en:
     debug_files:
       show:
         not_found: Not found debug file
+    # Z-P11 (Play Console parity): the mapping / native-symbol download.
+    debug_symbols:
+      show:
+        not_found: Not found debug symbol
   api:
     app_token_wrong_app: This API token does not belong to that app
     listing_edit_none: There is no draft listing edit for this app
@@ -1563,6 +1585,10 @@ en:
               blank: Choose a zip file with supported type
             checksum:
               taken: matched, the debug file was existed
+        debug_symbol:
+          attributes:
+            file:
+              too_large: The file is larger than the 300 MB limit
         backup:
           attributes:
             schedule:

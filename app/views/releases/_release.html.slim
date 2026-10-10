@@ -11,6 +11,7 @@
     == render 'releases/body/activity', current_release: release, recently_releases: release.channel.recently_releases
     - if user_signed_in_or_guest_mode?
       == render 'releases/body/debug_file', debug_file: release.debug_file
+      == render 'releases/body/debug_symbols', release: release
 
   div class="col-span-6 md:col-span-4 3xl:col-span-2 space-y-4"
     == render 'releases/upload_button', app: app, channel: channel

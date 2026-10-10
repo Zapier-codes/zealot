@@ -9,6 +9,8 @@ class App < ApplicationRecord
   has_many :collaborators, dependent: :destroy
   has_many :schemes, dependent: :destroy
   has_many :debug_files, dependent: :destroy
+  # Z-P11: mappings / native symbols uploaded beside the app's releases.
+  has_many :debug_symbols, dependent: :destroy
   # Task 32: listing-fee + maintenance charges via B-PAY.
   has_many :payments, dependent: :destroy
   has_one :maintenance_billing, class_name: 'AppMaintenanceBilling', dependent: :destroy

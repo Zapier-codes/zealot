@@ -1,5 +1,8 @@
 zh-CN:
   announcement: "7.0 版本开启全新主题，还有更多新功能正在开发中！"
+  # Z-P23（Play Console 功能对齐）：可安装控制台的清单描述。
+  pwa:
+    description: "将此应用分发控制台安装到您的设备。它会在独立窗口中打开，并可离线使用。"
   toolbox_section: 工具箱
   admin_section: 管理区域
   monitors_section: 监控区域
@@ -900,6 +903,21 @@ zh-CN:
         upload_to_archived_app: "应用 %{app} 已归档，无法上传新的版本。"
         direct_upload_required: "Android 文件现在直接上传到存储。请在启用脚本的情况下使用上传表单，或使用上传会话 API（docs/direct_upload.md）。"
         status_change_not_allowed: "状态为%{from}的版本不能变更为%{to}。"
+  # Z-P11（Play Console 功能对齐）：版本的混淆还原文件。
+  debug_symbols:
+    title: 混淆还原文件
+    uploaded: 调试符号已上传。
+    removed: 调试符号已删除。
+    upload: 上传
+    replace: 替换
+    download: 下载
+    remove: 删除
+    confirm_remove: 确定要删除此调试符号吗？
+    uploaded_badge: 已上传
+    missing_badge: 缺失
+    kinds:
+      mapping: R8/ProGuard 混淆映射
+      native_symbols: 原生调试符号
   debug_files:
     title: 调试文件
     index:
@@ -1245,6 +1263,9 @@ zh-CN:
     debug_files:
       show:
         not_found: 找不到调试文件，无法提供下载服务
+    debug_symbols:
+      show:
+        not_found: 找不到调试符号文件，无法提供下载服务
   api:
     app_token_wrong_app: 此 API 令牌不属于该应用
     listing_edit_none: 该应用没有待发布的商店文案草稿
@@ -1573,6 +1594,10 @@ zh-CN:
               blank: 必须选择一个 zip 文件
             checksum:
               taken: 文件已经存在，不能重复上传
+        debug_symbol:
+          attributes:
+            file:
+              too_large: 文件超过了 300 MB 的上限
         backup:
           attributes:
             schedule:

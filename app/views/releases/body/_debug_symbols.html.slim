@@ -1,0 +1,32 @@
+/ Z-P11 (Play Console parity): the release's "deobfuscation files" field. Play Console offers a mapping
+/ (R8/ProGuard) and, for apps with native code, the native debug symbols; this shows what the release
+/ already carries and lets an app owner upload or replace each. Nothing else on the release is touched.
+- if user_signed_in_or_guest_mode? && policy(release).update?
+  .card
+    .card-header
+      h3.card-title
+        i.fa-solid.fa-scroll.mr-1
+        = t('debug_symbols.title')
+    .card-body.space-y-4
+      - DebugSymbol::KINDS.each do |kind|
+        - symbol = release.debug_symbols.find { |s| s.kind == kind }
+        .border.border-base-300.rounded-box.p-3.space-y-2
+          .flex.items-center.justify-between.gap-2
+            .font-semibold = t("debug_symbols.kinds.#{kind}")
+            - if symbol.present?
+              .d-badge.d-badge-success.d-badge-sm = t('debug_symbols.uploaded_badge')
+            - else
+              .d-badge.d-badge-ghost.d-badge-sm = t('debug_symbols.missing_badge')
+          - if symbol.present?
+            .text-sm.opacity-65
+              = "#{number_to_human_size(symbol.file.size)} · #{symbol.checksum}"
+            .flex.gap-2
+              = button_link_to t('debug_symbols.download'), download_debug_symbol_path(symbol), 'download', \
+                class: 'd-btn d-btn-sm d-btn-soft'
+              = button_to t('debug_symbols.remove'), channel_release_debug_symbol_path(release.channel, release, symbol), \
+                method: :delete, class: 'd-btn d-btn-sm d-btn-soft', form: { data: { turbo_confirm: t('debug_symbols.confirm_remove') } }
+          = form_with url: channel_release_debug_symbols_path(release.channel, release), \
+            multipart: true, scope: :debug_symbol, class: 'flex items-end gap-2' do |f|
+            = f.hidden_field :kind, value: kind
+            = f.file_field :file, class: 'd-file-input d-file-input-sm d-file-input-bordered'
+            = f.submit (symbol.present? ? t('debug_symbols.replace') : t('debug_symbols.upload')), class: 'd-btn d-btn-sm d-btn-primary'

@@ -4,6 +4,12 @@ Rails.application.routes.draw do
   root to: 'home#index'
   get 'dashboard', to: 'dashboards#index', as: :dashboard
 
+  # Z-P23 (Play Console parity): the console as an installable web app. The manifest is read before a
+  # session exists and the service worker sits outside the page, so both are plain GETs. `format: false`
+  # keeps `.webmanifest` / `.js` in the path rather than being parsed as a response format.
+  get 'manifest.webmanifest', to: 'pwa#manifest', as: :pwa_manifest, format: false
+  get 'service-worker.js', to: 'pwa#service_worker', as: :pwa_service_worker, format: false
+
   # Z-P10 / Task 50: the publisher's revenue report and the payout actions on it.
   resource :revenue, only: :show, controller: 'revenues'
   resources :payouts, only: %i[create] do
@@ -165,6 +171,11 @@ Rails.application.routes.draw do
       member do
         post :auth
       end
+
+      # Z-P11 (Play Console parity): a release's mapping / native symbol uploads. Upload and replace
+      # are `create` (one row per kind is enforced by the model), so only :create, :destroy and the
+      # per-release list are exposed.
+      resources :debug_symbols, only: %i[index create destroy]
     end
 
     scope module: :channels do
@@ -202,6 +213,13 @@ Rails.application.routes.draw do
     end
 
     resources :debug_files, only: :show do
+      member do
+        get ':filename', action: :download, filename: /.+/, as: 'filename'
+      end
+    end
+
+    # Z-P11 (Play Console parity): fetch a release's mapping / native symbol file.
+    resources :debug_symbols, only: :show do
       member do
         get ':filename', action: :download, filename: /.+/, as: 'filename'
       end
@@ -491,6 +509,9 @@ Rails.application.routes.draw do
         put :permissions
         # Task 46c: POST /api/releases/:id/supersede_previous (remove the older releases of the channel; user token).
         post :supersede_previous
+        # Z-P11 (Play Console parity): upload / replace a release's mapping or native symbol file.
+        # See Api::DebugSymbolsController.
+        post 'debug_symbols', to: 'debug_symbols#create'
       end
     end
 

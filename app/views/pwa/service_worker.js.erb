@@ -1,0 +1,58 @@
+// Z-P23 (Play Console parity): the console's service worker. Deliberately small — the app shell and
+// static assets are cache-first so an installed console opens without a network round trip, and every
+// request that could carry data (anything with a session, any API, any download) goes to the network and
+// is never cached. Play Console runs against live data; a stale cached answer would be worse than no
+// answer, so nothing dynamic is stored. Served by PwaController at /service-worker.js.
+const SHELL_CACHE = 'zealot-shell-v1';
+const OFFLINE_URL = '/offline.html';
+
+// Only same-origin files this worker is willing to serve from the cache. A download under /download or
+// an API answer is never in here, so a signed or per-user response can never be replayed.
+function isCacheableShell(url) {
+  if (url.origin !== self.location.origin) return false;
+  if (url.pathname.startsWith('/api/')) return false;
+  if (url.pathname.startsWith('/download/')) return false;
+  return /\.(css|js|png|jpg|jpeg|svg|webp|woff2?|ico)$/.test(url.pathname);
+}
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(SHELL_CACHE).then((cache) => cache.addAll([OFFLINE_URL])).then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((key) => key !== SHELL_CACHE).map((key) => caches.delete(key)))
+    ).then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('fetch', (event) => {
+  const request = event.request;
+  if (request.method !== 'GET') return;
+
+  const url = new URL(request.url);
+
+  // Navigations: try the network (live data), fall back to the offline page when there is none.
+  if (request.mode === 'navigate') {
+    event.respondWith(fetch(request).catch(() => caches.match(OFFLINE_URL)));
+    return;
+  }
+
+  if (!isCacheableShell(url)) return;
+
+  event.respondWith(
+    caches.match(request).then((cached) => {
+      if (cached) return cached;
+      return fetch(request).then((response) => {
+        if (response.ok && response.type === 'basic') {
+          const copy = response.clone();
+          caches.open(SHELL_CACHE).then((cache) => cache.put(request, copy));
+        }
+        return response;
+      });
+    })
+  );
+});
