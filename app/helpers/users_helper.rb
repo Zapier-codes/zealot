@@ -13,6 +13,8 @@ module UsersHelper
     case provider
     when :ldap
       provider.to_s.upcase
+    when :saml
+      'SAML'
     else
       OmniAuth::Utils.camelize(provider).sub('Oauth2', '')
     end

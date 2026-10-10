@@ -62,6 +62,10 @@ gem 'omniauth-feishu', '~> 0.1.8'
 gem 'gitlab_omniauth-ldap', '~> 2.3.0', require: 'omniauth-ldap'
 gem 'omniauth_openid_connect', '0.8.0'
 gem 'omniauth-github', '~> 2.0.1'
+# Z-P18 (SSO/SAML half, Play Console parity): enterprise single sign-on through a SAML 2.0 identity
+# provider (Okta, Entra ID, Keycloak, Authentik, ...). Registered in config/initializers/devise.rb from
+# the `Setting.saml` values; the IdP metadata is read once and stored (SAML_OMNIAUTH_SETUP).
+gem 'omniauth-saml', '~> 2.2'
 
 ## UDID
 gem 'openssl', '~> 3.3.3'

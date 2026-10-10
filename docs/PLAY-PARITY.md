@@ -25,7 +25,7 @@ Key: ✅ have · ◐ partial · ❌ missing · ➖ not applicable by design · �
 | Organization identity verification (legal entity) | E | ✅ | ❌ |
 | Android developer verification registration (package names and signing keys) | C/E | ✅ | ❌ |
 | Audit or activity log | E | ✅ | ❓ |
-| SSO, SAML, SCIM | E | ✅ | ❓ |
+| SSO, SAML, SCIM | E | ✅ | ✅ |
 | Multi-tenant white-label with per-tenant signing key | E | ➖ | ✅ (beyond Play) |
 | Upload AAB or APK, release notes | C | ✅ | ✅ |
 | Testing tracks (internal, closed, open) with tester lists | C/E | ✅ | ❌ (Task 30b) |
@@ -92,7 +92,7 @@ Key: ✅ have · ◐ partial · ❌ missing · ➖ not applicable by design · �
 | Crash and vitals, opt-in only | **ACRA** library with **Acrarium** server, or a Sentry-compatible endpoint (GlitchTip) | ✓ github.com/ACRA; Sentry or GlitchTip DSN ✓ | Off by default (no telemetry by design); the person turns it on. R8 retrace for mapping files ◇ |
 | Funnels, exports | Umami, Plausible or Matomo for site and listing views; Metabase or Apache Superset over Zealot's Postgres for reports and CSV or warehouse export | ◇ | No new data collection on phones |
 | Revenue reports and payouts (Task 50) | **B-Pay-backend payouts** (the program's own service, `Zapier-codes/B-Pay-backend`; read from its source on 2026-10-10, not from upstream docs): the `payouts` feature is in the default build and so in the Docker image (`v1` pulls in `common_default`). Routes: `POST /payouts/create`, `GET`/`PUT /payouts/{id}`, `/confirm`, `/cancel`, `/fulfill`, `/list`, `/aggregate`, `/filter`, `PUT /payouts/{id}/manual-update`. Payout code exists for 20-odd connectors (Adyen, Adyen Platform, Stripe Connect, PayPal, Wise, Paystack, Flutterwave, Korapay and others; confirm each before relying on it). **Not found in B-Pay-backend:** a bulk-payout endpoint, scheduled payouts, a payout analytics module. Upstream Hyperswitch documents some of these; this fork does not carry them | read from `crates/router/src/routes/app.rs` and `routes/payouts.rs` | Task 50 is reporting views over what Zealot stores, plus calls to the routes above; bulk and schedule are Zealot's own loop over `/payouts/create` and `/fulfill` unless the operator ports them. `/subscriptions` (create, estimate, items, list, confirm) also exists for a publisher's recurring plan. Lago for invoices ◇ |
-| SSO, SCIM, audit log | `omniauth-saml`, Keycloak or Authentik, the `scimitar` gem, the `audited` or `paper_trail` gems | ◇ | Enterprise tier |
+| SSO, SCIM, audit log | `omniauth-saml`, Keycloak or Authentik, the `scimitar` gem, the `audited` or `paper_trail` gems | ✓ all three built in Zealot: `omniauth-saml` (SSO/SAML), a native SCIM 2.0 controller (`Scim::UsersController` + `ScimToken`), and `AuditEntry` (the audit log). `scimitar`/`audited` not needed | Enterprise tier. Built 2026-10-10 (Z-P18) |
 | Event-stream feed | Svix or the Standard Webhooks signing spec on top of the existing webhooks | ◇ | |
 | Country availability | Country header from the CDN, or MaxMind GeoLite2 / DB-IP lite | ◇ | Availability only; per-country pricing is not planned |
 | Device targeting | Read minSdk, ABIs and required features from the manifest with `apkanalyzer` or `aapt2` and publish them in the index; the client filters on the phone | ◇ | The same fields feed Appstore's "works on your device" |

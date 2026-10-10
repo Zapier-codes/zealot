@@ -1,0 +1,42 @@
+/ Z-P18 (SSO/SAML half): the SAML status panel and the SP values the IdP needs.
+- content_for :title do
+  = t('.title')
+
+- content_for :section_title do
+  = t('.title')
+
+.row
+  .col-md-12
+    .card
+      .card-header
+        h3.card-title = t('.title')
+      .card-body.space-y-3
+        p.text-sm.opacity-70 = t('.intro')
+        - if @configured
+          .d-alert.d-alert-success role="status" = t('.configured')
+        - else
+          .d-alert.d-alert-warning role="alert" = t('.not_configured')
+        dl.grid.grid-cols-1.gap-2
+          div
+            dt.text-sm.font-semibold = t('.sp_entity_id')
+            dd = @sp[:sp_entity_id]
+          div
+            dt.text-sm.font-semibold = t('.sp_acs_url')
+            dd = @sp[:sp_acs_url]
+          div
+            dt.text-sm.font-semibold = t('.metadata_url')
+            dd
+              = link_to metadata_admin_saml_path, class: 'd-link' do
+                = metadata_admin_saml_path
+          div
+            dt.text-sm.font-semibold = t('.sign_authn')
+            dd = @sp[:sign_authn_requests] == true ? t('.yes') : t('.no')
+          div
+            dt.text-sm.font-semibold = t('.attribute_map')
+            dd
+              table.table.table-xs
+                tbody
+                  - @attribute_statements.each do |field, names|
+                    tr
+                      td.text-nowrap = field
+                      td = Array(names).join(', ')

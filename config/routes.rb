@@ -321,6 +321,16 @@ Rails.application.routes.draw do
       # Z-P18 (audit-log slice): the append-only audit log (Play Console's "changes log"). Read-only here; written by the
       # code that makes each change.
       resources :audit_entries, only: :index
+
+      # Z-P18 (SCIM half): the tokens an identity provider uses to provision people (ScimToken). A platform
+      # admin mints, lists and revokes them; the secret is shown once at creation and never again.
+      resources :scim_tokens, only: %i[ index create destroy ]
+
+      # Z-P18 (SSO/SAML half): the SAML sign-in status and the SP metadata the operator pastes into the IdP
+      # (the `metadata` action renders the XML; the show page is the panel).
+      resource :saml, only: :show, controller: 'saml_settings' do
+        get :metadata
+      end
       resources :apple_keys, except: %i[ edit update ] do
         member do
           put :sync_devices
@@ -439,6 +449,17 @@ Rails.application.routes.draw do
   # API v1
   #############################################
   health_check_routes
+
+  # Z-P18 (SCIM half, Play Console parity): the SCIM 2.0 provisioning API an identity provider calls.
+  # Authenticated by a bearer `ScimToken` (`Authorization: Bearer zsc_...`) ONLY, and the token decides the
+  # tenant. `Scim::UsersController` owns the resources; the three discovery documents live on the same
+  # controller. `defaults: { format: :json }` keeps a client that omits the suffix on the JSON path.
+  namespace :scim, path: 'scim/v2', defaults: { format: :json } do
+    resources :users, only: %i[index show create update destroy], controller: 'users'
+    get 'ServiceProviderConfig', to: 'users#service_provider_config'
+    get 'Schemas', to: 'users#schemas'
+    get 'ResourceTypes', to: 'users#resource_types'
+  end
 
   namespace :api do
     resources :users, except: %i[new edit] do

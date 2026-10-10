@@ -84,6 +84,27 @@ GITEA_OMNIAUTH_SETUP = lambda do |env|
   end
 end
 
+# Z-P18 (SSO/SAML half): SAML 2.0 enterprise SSO. The `Setting.saml` hash carries the IdP's metadata
+# (Issuer, SSO URL, certificate) and the SP's own entity id / assertion consumer URL; the mapping is the
+# claim -> attribute pairs the different IdPs disagree on. The metadata is validated by `SamlConfig` before
+# it gets here (that object is the model-level check; this lambda only feeds omniauth-saml), and every
+# value is read live so an operator's Settings edit is picked up without a restart of the strategy.
+SAML_OMNIAUTH_SETUP = lambda do |env|
+  strategy = env['omniauth.strategy']
+  scheme = env['rack.url_scheme'] || 'https'
+  host = env['HTTP_HOST'] || env['SERVER_NAME']
+  config = SamlConfig.with_defaults(Setting.saml, host: "#{scheme}://#{host}")
+  strategy.options[:idp_cert] = config[:idp_cert]
+  strategy.options[:idp_sso_service_url] = config[:idp_sso_url]
+  strategy.options[:idp_slo_service_url] = config[:idp_slo_url] if config[:idp_slo_url].present?
+  strategy.options[:issuer] = config[:sp_entity_id]
+  strategy.options[:assertion_consumer_service_url] = config[:sp_acs_url]
+  strategy.options[:name_identifier_format] = config[:name_id_format] if config[:name_id_format].present?
+  strategy.options[:uid_attribute] = config[:uid_attribute] if config[:uid_attribute].present?
+  strategy.options[:attribute_statements] = SamlConfig.attribute_statements(config).transform_keys(&:to_sym)
+  strategy.options[:security] = { authn_requests_signed: config[:sign_authn_requests] == true }
+end
+
 # Use this hook to configure devise mailer, warden hooks and so forth.
 # Many of these configuration options can be set straight in your model.
 Devise.setup do |config|
@@ -400,6 +421,9 @@ Devise.setup do |config|
   config.omniauth :openid_connect, setup: OIDC_OMNIAUTH_SETUP
   config.omniauth :github, setup: GITHUB_OMNIAUTH_SETUP
   config.omniauth :gitea, setup: GITEA_OMNIAUTH_SETUP
+  # Z-P18 (SSO/SAML half): enterprise SAML 2.0 SSO. `require: 'omniauth-saml'` is in the Gemfile; the
+  # strategy is only registered here, and `User.enabled_saml?` decides whether it is offered.
+  config.omniauth :saml, setup: SAML_OMNIAUTH_SETUP
 end
 
 module SafeStoreLocation

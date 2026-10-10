@@ -372,6 +372,7 @@ GEM
     mini_magick (5.4.0)
       logger
     mini_mime (1.1.5)
+    mini_portile2 (2.8.9)
     minitest (6.0.6)
       drb (~> 2.0)
       prism (~> 1.5)
@@ -397,6 +398,9 @@ GEM
       net-protocol
     nio4r (2.7.5)
     nkf (0.2.0)
+    nokogiri (1.19.4)
+      mini_portile2 (~> 2.8.2)
+      racc (~> 1.4)
     nokogiri (1.19.4-aarch64-linux-gnu)
       racc (~> 1.4)
     nokogiri (1.19.4-arm-linux-gnu)
@@ -440,6 +444,9 @@ GEM
     omniauth-rails_csrf_protection (2.0.1)
       actionpack (>= 4.2)
       omniauth (~> 2.0)
+    omniauth-saml (2.2.5)
+      omniauth (~> 2.1)
+      ruby-saml (~> 1.18)
     omniauth_openid_connect (0.8.0)
       omniauth (>= 1.9, < 3)
       openid_connect (~> 2.2)
@@ -654,6 +661,9 @@ GEM
       ruby-lsp (>= 0.26.0, < 0.27.0)
     ruby-macho (4.1.0)
     ruby-progressbar (1.13.0)
+    ruby-saml (1.18.1)
+      nokogiri (>= 1.13.10)
+      rexml
     rubyntlm (0.6.5)
       base64
     rubyzip (2.4.1)
@@ -817,6 +827,7 @@ DEPENDENCIES
   omniauth-gitlab (~> 4.1.0)
   omniauth-google-oauth2 (~> 1.2.2)
   omniauth-rails_csrf_protection (~> 2.0.1)
+  omniauth-saml (~> 2.2)
   omniauth_openid_connect (= 0.8.0)
   openssl (~> 3.3.3)
   pg (>= 0.18, < 2.0)

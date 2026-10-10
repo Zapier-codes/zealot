@@ -173,15 +173,32 @@ above: D-P1/D-P2/D-P3/D-P4/D-P5/D-P6/D-P7/D-P8 (web) and S-P1/S-P2 (client). No 
   the BI tool's job, stated on the page.
 - [ ] **Z-P17 · Opt-in crash/vitals (ACRA + Acrarium/GlitchTip)** — off by default; the person turns it on.
   Owner **S** library, **Z** endpoint.
-- [~] **Z-P18 · SSO, SAML, SCIM, audit log** — `omniauth-saml` / Keycloak / Authentik, `scimitar`,
-  `audited`/`paper_trail`. Enterprise tier. Owner **Z**. <u>Audit log slice built 2026-10-10</u> (the SSO /
-  SAML / SCIM half is still open): `AuditEntry` — append-only, polymorphic subject that survives the thing
+- [x] **Z-P18 · SSO, SAML, SCIM, audit log** — `omniauth-saml` / Keycloak / Authentik, `scimitar`,
+  `audited`/`paper_trail`. Enterprise tier. Owner **Z**. <u>Both halves built 2026-10-10</u>.
+  <u>Audit log slice</u>: `AuditEntry` — append-only, polymorphic subject that survives the thing
   it names, tenant-scoped (`for_tenant`, deny by default), and `metadata` scrubbed of a `FORBIDDEN_KEYS`
   list so a secret can never be logged; the two write places that carried a "stand-in until the audit log
   of Task 34c exists" comment (`Api::Apps::ApiTokensController`, `Api::AndroidSigningKeysController`) now
   call `AuditEntry.record`; read-only `Admin::AuditEntriesController` + `admin/audit_entries` list with
   subject/action/text filters, pagination, sidebar link, en/zh-CN; `AuditEntryPolicy`; migration +
   `spec/models/audit_entry_spec.rb` (secret-scrub and tenant-scope runtime-verified).
+  <u>SSO/SAML half</u>: `omniauth-saml` gem registered in `config/initializers/devise.rb`
+  (`SAML_OMNIAUTH_SETUP` feeds the live `Setting.saml`), `SamlConfig` value object (`configured?` demands
+  the IdP SSO URL + certificate, so a half-filled Settings page never offers a dead button;
+  `attribute_statements` maps claims to `info`), the `saml` provider added to `User::PROVIDERS` /
+  `omniauth_providers` / `UserOmniauth#enabled_saml?`, the `Setting.saml` hash field, the sign-in button
+  (the existing `_thirdparty_auth` loop already renders it), an admin `Admin::SamlSettingsController`
+  status/SP-metadata panel (`SamlPolicy`), en/zh-CN. <u>SCIM half</u>: `ScimToken` (bearer `zsc_`
+  secrets, digest-only, tenant-scoped, live cap, soft revoke) + `Tenant`-scoped migration + schema;
+  `Scim::UsersController` at `/scim/v2` (Users CRUD + ServiceProviderConfig/Schemas/ResourceTypes
+  discovery, RFC 7644 error envelope, `userName`/`emails.value` filter, paging), `Scim::UserMapper` and
+  `Scim::Provisioner` (provision = `TenantMembership` + an SSO account, never an admin; de-provision =
+  membership removed + account locked, never destroyed; idempotent), `ScimTokenPolicy`,
+  `Admin::ScimTokensController` + list/mint/revoke page (secret shown once, in the flash), every SCIM write
+  `AuditEntry.record`ed, en/zh-CN. Specs: `spec/models/saml_config_spec.rb`, `scim_token_spec.rb`,
+  `user_omniauth_saml_spec.rb`, `spec/services/scim/*`, `spec/requests/scim/scim_users_spec.rb`,
+  `spec/requests/admin_scim_tokens_spec.rb`. `Gemfile.lock` still needs `bundler` run for `omniauth-saml`
+  on a machine that has it (the sandbox has no bundle); written, not run there.
 - [x] **Z-P19 · Event-stream feed** — Svix or Standard Webhooks signatures on top of the existing webhooks.
   Owner **Z**. Built 2026-10-10: `Webhooks::StandardSignature` (sign + verify, HMAC-SHA256 over
   `<id>.<timestamp>.<body>`, `whsec_` secrets); `signing_secret` on `WebHook` (encrypted, `rotate_signing_secret!`);

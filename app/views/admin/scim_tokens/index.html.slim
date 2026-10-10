@@ -1,0 +1,56 @@
+/ Z-P18 (SCIM half): the SCIM provisioning page. The token is shown once, in the flash after a create.
+- content_for :title do
+  = t('.title')
+
+- content_for :section_title do
+  = t('.title')
+
+.row
+  .col-md-12
+    .card
+      .card-header
+        h3.card-title = t('.title')
+      .card-body.space-y-4
+        p.text-sm.opacity-70 = t('.intro')
+        p.text-xs.opacity-65 = t('.endpoint_hint', url: scim_users_path)
+
+        = form_with scope: :scim_token, url: admin_scim_tokens_path, method: :post, html: { class: 'flex flex-wrap items-end gap-2' } do |f|
+          div
+            = f.label :name, t('.name'), class: 'block text-sm font-semibold mb-1'
+            = f.text_field :name, class: 'd-input d-input-sm', required: true
+          div
+            = f.label :expires_at, t('.expires_at'), class: 'block text-sm font-semibold mb-1'
+            = f.datetime_field :expires_at, class: 'd-input d-input-sm'
+          = f.submit t('.create'), class: 'd-btn d-btn-sm d-btn-primary'
+
+    .card.mt-4
+      .card-body.p-0
+        - if @scim_tokens.empty?
+          p.px-3.py-3.opacity-70 = t('.empty')
+        - else
+          table.table.table-sm.table-hover
+            thead
+              tr
+                th = t('.name')
+                th = t('.status')
+                th = t('.created_at')
+                th = t('.last_used')
+                th = t('.expires_at')
+                th
+            tbody
+              - @scim_tokens.each do |token|
+                tr
+                  td = token.name
+                  td
+                    - if token.revoked_at.present?
+                      span.d-badge.d-badge-sm.d-badge-error = t('.revoked')
+                    - elsif token.live?
+                      span.d-badge.d-badge-sm.d-badge-success = t('.live')
+                    - else
+                      span.d-badge.d-badge-sm.d-badge-ghost = t('.expired')
+                  td.text-nowrap = l(token.created_at, format: :short)
+                  td.text-nowrap = token.last_used_at ? l(token.last_used_at, format: :short) : t('.never')
+                  td.text-nowrap = token.expires_at ? l(token.expires_at, format: :short) : t('.never')
+                  td
+                    - if token.live?
+                      = button_to t('.revoke'), admin_scim_token_path(token), method: :delete, class: 'd-btn d-btn-sm d-btn-error', form: { data: { turbo_confirm: t('.revoke') } }

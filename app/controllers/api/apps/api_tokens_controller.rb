@@ -106,7 +106,7 @@ class Api::Apps::ApiTokensController < Api::BaseController
       subject: token,
       actor: current_user,
       tenant: Current.tenant || @app.tenant,
-      summary_i18n_key: 'admin.audit_entries.summary.app_api_token',
+      summary_i18n_key: 'admin.audit_entries.index.summary.app_api_token',
       summary: "app_api_token #{what} app=#{@app.id} token=#{token.id} last_four=#{token.last_four}",
       metadata: { kind: what, app_id: @app.id, token_id: token.id, last_four: token.last_four }
     )

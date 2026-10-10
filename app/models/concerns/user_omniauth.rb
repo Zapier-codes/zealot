@@ -62,4 +62,11 @@ module UserOmniauth
   def enabled_gitea?
     defined?(OmniAuth::Strategies::Gitea) && Setting.gitea[:enabled]
   end
+
+  # Z-P18 (SSO/SAML half): SAML is enabled only when the strategy is loaded AND the operator has stored a
+  # believable IdP config. `SamlConfig.configured?` is that check (IdP SSO URL + certificate present),
+  # so a half-filled Settings page never offers a sign-in button that cannot work.
+  def enabled_saml?
+    defined?(OmniAuth::Strategies::SAML) && SamlConfig.configured?(Setting.saml)
+  end
 end

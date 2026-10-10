@@ -123,7 +123,7 @@ class Api::AndroidSigningKeysController < Api::BaseController
       action: what == 'removed' ? 'destroyed' : 'created',
       subject: ['AndroidSigningKey', @android_signing_key.id],
       actor: current_user,
-      summary_i18n_key: 'admin.audit_entries.summary.android_signing_key',
+      summary_i18n_key: 'admin.audit_entries.index.summary.android_signing_key',
       summary: "android_signing_key #{what} checksum=#{@android_signing_key.checksum}",
       metadata: { kind: what, checksum: @android_signing_key.checksum }
     )

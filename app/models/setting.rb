@@ -124,6 +124,23 @@ class Setting < RailsSettings::Base
       response_type: ENV.fetch('OIDC_RESPONSE_TYPE', 'code'),
       uid_field: ENV.fetch('OIDC_UID_FIELD', 'preferred_username')
     }, validates: { json: { format: :hash } }
+
+    # Z-P18 (SSO/SAML half): enterprise SAML 2.0 SSO. Only offered when the IdP SSO URL and certificate are
+    # both set (SamlConfig.configured?); the SP entity id / ACS URL default from the request host when blank.
+    # `attribute_map` lets an operator rename a claim (a value that is a string or an array of alternates).
+    field :saml, type: :hash, display: true, restart_required: true, default: {
+      enabled: to_bool(ENV['SAML_ENABLED'] || false),
+      idp_sso_url: ENV['SAML_IDP_SSO_URL'],
+      idp_slo_url: ENV['SAML_IDP_SLO_URL'],
+      idp_cert: ENV['SAML_IDP_CERT'],
+      idp_metadata_url: ENV['SAML_IDP_METADATA_URL'],
+      sp_entity_id: ENV['SAML_SP_ENTITY_ID'],
+      sp_acs_url: ENV['SAML_SP_ACS_URL'],
+      name_id_format: ENV['SAML_NAME_ID_FORMAT'],
+      uid_attribute: ENV['SAML_UID_ATTRIBUTE'],
+      attribute_map: {},
+      sign_authn_requests: to_bool(ENV['SAML_SIGN_AUTHN_REQUESTS'] || false)
+    }, validates: { json: { format: :hash } }
   end
 
   scope :smtp do

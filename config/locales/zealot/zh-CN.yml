@@ -1,5 +1,12 @@
 zh-CN:
   announcement: "7.0 版本开启全新主题，还有更多新功能正在开发中！"
+  # Z-P18（SCIM 半部分，Play Console 功能对齐）：SCIM 2.0 配置 API 自身的字符串。控制器是
+  # ActionController::API（无视图层），因此这里只有它直接渲染的消息。
+  scim:
+    unauthorized: '缺少或无效的 SCIM 持有者令牌。'
+    user_not_found: '未找到用户。'
+    audit_entries:
+      summary: '通过 SCIM 配置或取消配置了一个用户。'
   # Z-P23（Play Console 功能对齐）：可安装控制台的清单描述。
   pwa:
     description: "将此应用分发控制台安装到您的设备。它会在独立窗口中打开，并可离线使用。"
@@ -374,6 +381,45 @@ zh-CN:
         summary:
           app_api_token: "创建或撤销了一个应用 API 令牌。"
           android_signing_key: "创建或移除了 Android 签名密钥。"
+          scim_token: "创建或撤销了一个 SCIM 配置令牌。"
+    # Z-P18（SCIM 半部分）：签发 IdP 用于配置的令牌。
+    scim_tokens:
+      title: SCIM 配置
+      index:
+        title: :admin.scim_tokens.title
+        intro: "身份提供方使用 SCIM 令牌在此创建、更新和取消配置人员。令牌仅在创建时显示一次。任何持有它的人都能更改账户，因此请将其视为机密。"
+        name: 名称
+        created_at: 创建时间
+        last_used: 最近使用
+        expires_at: 过期时间
+        status: 状态
+        revoked: 已撤销
+        live: 有效
+        expired: 已过期
+        never: 从不
+        new_token: 新令牌
+        create: 创建令牌
+        revoke: 撤销
+        empty: 尚无 SCIM 令牌。
+        secret_notice: "请立即复制此令牌——它只显示一次，之后不再显示："
+        never_again: "这是令牌唯一一次显示。"
+        endpoint_hint: "将 IdP 的 SCIM 2.0 客户端指向 %{url}，并使用此令牌作为持有者凭据。"
+        created: "SCIM 令牌 \"%{name}\" 已创建。请立即复制——它只显示一次：%{secret}"
+        revoked: SCIM 令牌已撤销。
+    # Z-P18（SSO/SAML 半部分）：SAML 登录是否就绪，以及需要告知 IdP 的内容。
+    saml_settings:
+      show:
+        title: SAML 单点登录
+        intro: "通过组织自己的身份提供方进行企业登录。在“设置”（SAML 组）中配置 IdP 值；此页面报告就绪状态并提供 IdP 所需的值。"
+        configured: SAML 已配置。启用后会在登录页面提供。
+        not_configured: "SAML 尚未就绪：请在“设置”中填写 IdP SSO URL 和 IdP 证书。"
+        sp_entity_id: SP 实体 ID
+        sp_acs_url: 断言消费者服务（ACS）URL
+        metadata_url: SP 元数据 XML
+        attribute_map: 属性映射
+        sign_authn: 对 AuthnRequest 签名
+        yes: "是"
+        no: "否"
     sponsored_slots:
       title: 赞助位
       index:

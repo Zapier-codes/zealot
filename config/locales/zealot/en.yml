@@ -1,5 +1,12 @@
 en:
   announcement: Version 7.0 introduces a brand new theme, with more exciting features in development!
+  # Z-P18 (SCIM half, Play Console parity): the SCIM 2.0 provisioning API's own strings. The controller is an
+  # ActionController::API (no view layer), so this is only the messages it renders directly.
+  scim:
+    unauthorized: 'Missing or invalid SCIM bearer token.'
+    user_not_found: 'User not found.'
+    audit_entries:
+      summary: 'A user was provisioned or de-provisioned over SCIM.'
   # Z-P23 (Play Console parity): the installable console's manifest description.
   pwa:
     description: 'Install this app distribution console on your device. It opens in its own window and works offline.'
@@ -377,6 +384,45 @@ en:
         summary:
           app_api_token: "An app API token was created or revoked."
           android_signing_key: "The Android signing key was created or removed."
+          scim_token: "A SCIM provisioning token was created or revoked."
+    # Z-P18 (SCIM half): minting the tokens an IdP provisions with.
+    scim_tokens:
+      title: SCIM provisioning
+      index:
+        title: :admin.scim_tokens.title
+        intro: "An identity provider uses a SCIM token to create, update and de-provision people here. The token is shown once, at creation. Anyone holding it can change accounts, so treat it as a secret."
+        name: Name
+        created_at: Created
+        last_used: Last used
+        expires_at: Expires
+        status: Status
+        revoked: Revoked
+        live: Live
+        expired: Expired
+        never: Never
+        new_token: New token
+        create: Create token
+        revoke: Revoke
+        empty: No SCIM tokens yet.
+        secret_notice: "Copy this token now — it is shown once and never again:"
+        never_again: "This is the only time the token is shown."
+        endpoint_hint: "Point the IdP's SCIM 2.0 client at %{url} with this token as the bearer credential."
+        created: "SCIM token \"%{name}\" created. Copy it now — it is shown once: %{secret}"
+        revoked: SCIM token revoked.
+    # Z-P18 (SSO/SAML half): whether SAML sign-in is ready and what to tell the IdP.
+    saml_settings:
+      show:
+        title: SAML single sign-on
+        intro: "Enterprise sign-in through the organisation's own identity provider. Configure the IdP values under Settings (the SAML group); this page reports readiness and gives the values the IdP needs."
+        configured: SAML is configured. It is offered on the sign-in page when enabled.
+        not_configured: "SAML is not ready: set the IdP SSO URL and the IdP certificate under Settings."
+        sp_entity_id: SP entity ID
+        sp_acs_url: Assertion Consumer Service (ACS) URL
+        metadata_url: SP metadata XML
+        attribute_map: Attribute mapping
+        sign_authn: Sign AuthnRequests
+        yes: "Yes"
+        no: "No"
     sponsored_slots:
       title: Sponsored Slots
       index:
