@@ -154,6 +154,7 @@ module CatalogIndex
         },
         slug: slug_for(app),
         summary: text_for(app, :short_description),   # Task 27e-b: the one-line short description (<= 80 characters)
+        app_type: app_type_for(app),                  # D-Store 5.i.i.zo: "app" | "game", from the category's group
         category: category_for(app),
         license: nil,     # reserved
         links: { site: nil, source: nil, tracker: nil, donate: nil }, # reserved
@@ -212,6 +213,17 @@ module CatalogIndex
     # would produce) instead of raising.
     def category_for(app)
       app.respond_to?(:category) ? app.category : nil
+    end
+
+    # D-Store 5.i.i.zo: the two-value `app_type` ("app" | "game") Play's own export has alongside the
+    # category, resolved from the category's group (App::GAME_CATEGORIES all carry a `game_` prefix; the
+    # app categories never do). This is the same signal the D-Store reader already derives from the
+    # `game_` prefix (its `placeZealotCategory`), so publishing it changes nothing for a reader that
+    # already derives it, and lets a reader stop guessing. An app with no category is "app", the same
+    # default the reader uses; the field is never null (Play's AppCategory enum always has a value).
+    def app_type_for(app)
+      category = category_for(app)
+      category.to_s.start_with?('game_') ? 'game' : 'app'
     end
 
     # Task 31a: real columns as of the editorial-flags migration --

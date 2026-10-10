@@ -9,16 +9,23 @@ RSpec.describe CatalogIndex::Publish do
   let(:client) { instance_double(CatalogIndex::GithubPagesCommit) }
   let(:landed) { CatalogIndex::GithubPagesCommit::Result.new(status: :published, commit_sha: 'abc') }
 
-  it 'publishes index, signature, public key and .nojekyll in one commit, signed over the exact bytes' do
+  it 'publishes index, signature, public key, the taxonomy manifest and .nojekyll in one commit, signed over the exact bytes' do
     files = nil
     allow(client).to receive(:publish) { |f, **| files = f; landed }
 
     result = described_class.call(apps: [], client: client, key: key, hook_url: '')
 
     expect(result.status).to eq(:published)
-    expect(files.keys).to contain_exactly('index.json', 'index.json.sig', 'signing_key.pub', '.nojekyll')
+    expect(files.keys).to contain_exactly('index.json', 'index.json.sig', 'signing_key.pub', 'taxonomy.json',
+                                          'taxonomy.json.sig', '.nojekyll')
     expect(files['signing_key.pub'].strip).to eq(key.public_key)
     expect(CatalogIndex::Ed25519.verify(key.public_key, files['index.json'], files['index.json.sig'].strip)).to be true
+    # D-Store 5.i.i.zo: the taxonomy manifest is signed over its own exact bytes with the same key.
+    expect(CatalogIndex::Ed25519.verify(key.public_key, files['taxonomy.json'], files['taxonomy.json.sig'].strip)).to be true
+    manifest = JSON.parse(files['taxonomy.json'])
+    expect(manifest['app_types']).to eq(%w[app game])
+    expect(manifest['app_categories'].size).to eq(App::APP_CATEGORIES.size)
+    expect(manifest['game_categories'].size).to eq(App::GAME_CATEGORIES.size)
   end
 
   it 'fires the deploy hook only after a commit landed, and never fails the publish because of it' do
@@ -44,7 +51,7 @@ RSpec.describe CatalogIndex::Publish do
 
     described_class.call(apps: [], client: client, hook_url: '')
 
-    expect(files.keys).to contain_exactly('index.json', 'index.json.sig', 'signing_key.pub', '.nojekyll')
+    expect(files.keys).to contain_exactly("index.json", "index.json.sig", "signing_key.pub", "taxonomy.json", "taxonomy.json.sig", ".nojekyll")
     expect(files['signing_key.pub'].strip).to eq(key.public_key)
   end
 
@@ -66,7 +73,7 @@ RSpec.describe CatalogIndex::Publish do
       expect(result.status).to eq(:published)
       expect(root).to eq('tenants/acme')
       expect(message).to include('[acme]')
-      expect(files.keys).to contain_exactly('index.json', 'index.json.sig', 'signing_key.pub', '.nojekyll')
+      expect(files.keys).to contain_exactly("index.json", "index.json.sig", "signing_key.pub", "taxonomy.json", "taxonomy.json.sig", ".nojekyll")
       expect(files['signing_key.pub'].strip).to eq(acme_key.public_key)
       expect(CatalogIndex::Ed25519.verify(acme_key.public_key, files['index.json'], files['index.json.sig'].strip)).to be true
     end

@@ -87,10 +87,13 @@ module CatalogIndex
 
     def sign_and_commit(client)
       signed = CatalogIndex::Signer.call(@apps, now: @now, tenant: @tenant, key: @key)
+      taxonomy = CatalogIndex::Taxonomy.call(now: signed.generated_at, sequence: signed.generated_at.to_i)
       files = {
         'index.json' => signed.index_json,
         'index.json.sig' => "#{signed.signature}\n",
         'signing_key.pub' => "#{@key.public_key}\n",
+        'taxonomy.json' => taxonomy.manifest_json,
+        'taxonomy.json.sig' => "#{@key.sign(taxonomy.manifest_json)}\n",
         '.nojekyll' => ''
       }
       commit = client.publish(files, message: "catalog index#{message_scope} #{signed.generated_at.utc.iso8601} (#{signed.key_id})",

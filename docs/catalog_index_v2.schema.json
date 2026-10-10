@@ -148,6 +148,7 @@
         "listing",
         "slug",
         "summary",
+        "app_type",
         "category",
         "license",
         "links",
@@ -457,6 +458,14 @@
         },
         "category": {
           "$ref": "#/$defs/category"
+        },
+        "app_type": {
+          "type": "string",
+          "description": "D-Store 5.i.i.zo: Play's own two-value AppCategory notion. \"game\" when the category is a game genre (a `game_` value), else \"app\". Never null; an uncategorized app is \"app\".",
+          "enum": [
+            "app",
+            "game"
+          ]
         },
         "license": {
           "type": [

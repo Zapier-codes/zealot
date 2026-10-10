@@ -69,6 +69,20 @@ RSpec.describe CatalogIndex::Serializer do
       expect(result[:expires_at]).to eq('2026-09-24T13:00:00Z')
     end
 
+    # D-Store 5.i.i.zo: the v2 index publishes `app_type` ("app" | "game") beside `category`, so the
+    # D-Store reader can stop deriving it from the `game_` prefix.
+    it 'publishes app_type "game" for a game category and "app" otherwise (D-Store 5.i.i.zo)' do
+      app, = build_app_with_release
+      app.update!(category: 'game_puzzle')
+      game_entry = described_class.call(app, generated_at: Time.utc(2026, 9, 24, 12))[:apps].first
+      expect(game_entry[:category]).to eq('game_puzzle')
+      expect(game_entry[:app_type]).to eq('game')
+
+      app.update!(category: 'tools')
+      tool_entry = described_class.call(app, generated_at: Time.utc(2026, 9, 24, 12))[:apps].first
+      expect(tool_entry[:app_type]).to eq('app')
+    end
+
     it 'serializes an app with a release whose file is still local' do
       app, release = build_app_with_release(file_contents: 'apk bytes', signing_key_checksum: 'abc123')
 
@@ -91,6 +105,7 @@ RSpec.describe CatalogIndex::Serializer do
       expect(entry[:listing][:has_in_app_purchases]).to be_nil
       expect(entry[:listing][:privacy_policy_url]).to be_nil
       expect(entry[:summary]).to be_nil
+      expect(entry[:app_type]).to eq('app') # D-Store 5.i.i.zo: an uncategorized app is "app", never null
       expect(entry[:category]).to be_nil
       expect(entry[:license]).to be_nil
       expect(entry[:links]).to eq(site: nil, source: nil, tracker: nil, donate: nil)

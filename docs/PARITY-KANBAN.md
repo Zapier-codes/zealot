@@ -162,7 +162,7 @@ above: D-P1/D-P2/D-P3/D-P4/D-P5/D-P6/D-P7/D-P8 (web) and S-P1/S-P2 (client). No 
   in the sandbox). Two things a first live run must confirm, recorded not assumed: redroid needs host
   binder/ashmem (a stock GitHub runner usually has them, a dedicated host if not), and the workflow's
   `ZEALOT_PRE_LAUNCH_TOKEN` must be a token Zealot accepts for `/download/releases/:id/apk`.
-- [~] **Z-P13 · Delta updates (archive-patcher)** — generate file-by-file patches at publish time on the
+- [x] **Z-P13 · Delta updates (archive-patcher)** — generate file-by-file patches at publish time on the
   signed APK; the client applies them and must match byte for byte. Owner **Z** generate, **S** apply.
   <u>Generator half built 2026-10-10 (the Storeapp</u> **S** <u>apply half is on the D-Store/Storeapp board):</u>
   `ArchivePatcher::BsDiff` (bsdiff over bzip2), `ArchivePatcher::ZipArchive` (central-directory parse +
@@ -183,8 +183,11 @@ above: D-P1/D-P2/D-P3/D-P4/D-P5/D-P6/D-P7/D-P8 (web) and S-P1/S-P2 (client). No 
   `AppData.kt`'s `downloadAndInstall`, which tries the delta before the full APK and falls back to it on any
   miss; the same `ApkVerifier` gate and installer run on whichever file is produced. **Off-device verified**
   (the four generator vectors reproduce byte-for-byte through the Kotlin applier; 8 JUnit tests pass on the
-  JVM; the web reader is `tsc`-clean with 727 tests green), **but the client is not yet compiled under Gradle**
-  (no Android toolchain in the sandbox) — so this stays `[~]` until it builds on a machine with the toolchain.
+  JVM; the web reader is `tsc`-clean with 727 tests green). **The "not compiled under Gradle" hold is now
+  cleared (2026-10-10, Z-P26 session):** the client half was compiled and tested under the Android toolchain —
+  `:app:compileDefaultDebugKotlin` and `:app:assembleDefaultDebug` both BUILD SUCCESSFUL, `FileByFileTest` (8)
+  green inside the full 256-test suite — so this card is ticked `[x]`. **Still not verified:** a live delta on a
+  device (a real patch applied over an installed build); the compile, the vectors and the tests are proven.
 - [~] **Z-P15 · F-Droid-compatible repo (fdroidserver)** — publish index-v2 + signed `entry.jar` beside the
   signed Zealot index; the Zealot index stays the trust anchor. Owner **Z**.
   <u>Cut (TSF) and Z-P15a built 2026-10-10.</u> The format was read from source, not guessed: fdroidserver
@@ -195,14 +198,30 @@ above: D-P1/D-P2/D-P3/D-P4/D-P5/D-P6/D-P7/D-P8 (web) and S-P1/S-P2 (client). No 
   `entry.json` entry point, asserting `entry.index.sha256`/`.size` are exactly the `index-v2.json` bytes'
   digest and length; `rake fdroid_index:generate` writes them. Cross-checked against f-droid.org's real
   index: our package/manifest/file keys are a strict subset (no unknown keys) and `versionCode`/`usesSdk` are
-  integers. **Z-P15b** (open) signs `entry.json` into a signed `entry.jar` (an APK-v1-signed JAR, per
-  fdroidserver `sign_jar`) and publishes the directory. Two things Z-P15b must reconcile before shipping,
-  called out in the code, not assumed: (1) whether an F-Droid client honours an **absolute** `file.name`
-  (our APKs stay served from Zealot's own endpoint rather than being mirrored into the Pages repo); (2) the
-  signing fingerprint's hash type (`AndroidSigningKey#checksum` is SHA-1-of-keystore, F-Droid wants the
-  certificate SHA-256), so `preferredSigner` is left out until then. Sub-slices: **Z-P15a** (index-v2 +
-  entry.json; built) · **Z-P15b** (sign + publish) · **Z-P15c** (signer index) · **Z-P15d** (binary
-  transparency log).
+  integers. **Z-P15b was open to reconcile two things, now built (see the paragraph below):** (1) whether an
+  F-Droid client honours an **absolute** `file.name` (our APKs stay served from Zealot's own endpoint rather
+  than being mirrored into the Pages repo); (2) the signing fingerprint's hash type.
+  **Z-P15b built 2026-10-10 (signed `entry.jar` + publish):** `FdroidIndex::JarSigner` builds the JAR the
+  way `fdroidserver/signindex.py#sign_index` does — it re-checks `entry.json.index.sha256` against the exact
+  `index-v2.json` bytes (so a broken pair is never signed), writes a ZIP whose single root entry is
+  `entry.json` (hand-built, STORED, no compression gem needed), then signs it via the new
+  `Anthropic::ApkSigningService#sign_jar!` (`jarsigner`, `SHA256withRSA`, Android 7/API 23+; the same
+  whole-file JAR signature as the AAB path). `FdroidIndex::Publisher` signs and commits `index-v2.json`,
+  `entry.json` and the signed `entry.jar` as ONE Pages commit, under an advisory lock; `GithubPagesCommit#publish`
+  gained a `binary:` argument so the JAR (not UTF-8) goes through the Git Data API base64-encoded.
+  `FdroidIndexPublishJob` runs it, gated by `ENABLE_FDROID_INDEX` (default false) AND a Pages repo AND
+  `AndroidSigningKey`; `rake fdroid_index:generate` still writes the two unsigned documents for inspection.
+  **Verified this session with the real JDK:** `jarsigner -verify` accepts the produced JAR, `entry.json` and
+  the `META-INF/` signature entries are all present, `entry.json` round-trips byte-for-byte through the
+  signed JAR, and the four refusal paths (bad sha256, non-JSON, missing sha256, wrong index name) raise. Spec
+  `spec/services/fdroid_index/jar_signer_spec.rb` (pure-Ruby assertions + a JDK-gated signing example).
+  **Two flagged items, still open, now narrowed:** (1) the absolute `file.name` assumption is read from the
+  fdroidclient `FileV2`/`Downloader` sources (an absolute URL wins resolution) but **not run against a real
+  client** — the one thing left before this ships to users; (2) `manifest.signer` publishes the release's
+  `signing_key_checksum` (SHA-1-of-keystore, the same value the Zealot index already publishes as
+  `signing_fingerprint`), not a certificate SHA-256, so `preferredSigner` stays out until reconciled.
+  **Z-P15c** (signer index) and **Z-P15d** (binary transparency log) remain open; the JAR entry is `entry.json`
+  which is the entry point F-Droid clients fetch first, and `preferredSigner`/`signer index` are the c/d halves.
 - [x] **Z-P16 · Funnels, exports** — Umami/Plausible/Matomo for site views, Metabase/Superset over Zealot's
   Postgres for reports and CSV/warehouse export. No new phone telemetry. Owner **Z**. Built 2026-10-10:
   Plausible + Matomo added to `layouts/_analytics` with read-only env settings (`PLAUSIBLE_DOMAIN`,

@@ -209,6 +209,23 @@ flagged so the next session touching D-store's side knows the vocabulary
 changed and free-text/legacy values need a mapping or a one-time
 migration, not silent drift.
 
+### `app_type` (D-Store leaf `5.i.i.zo`, 2026-10-10)
+
+The index publishes an `app_type` field beside `category`: a closed two-value
+string, `"app"` or `"game"`, mirroring Play Console's own `AppCategory` notion
+(Google's App Catalog Export carries exactly this — a tiny closed
+`APP_CATEGORY_UNSPECIFIED`/`GAME`/`APP` enum next to the free-text
+`app_subcategory`). It is **derived**, not a new column: `game` when the
+category is one of the 17 `game_*` genres above, `app` otherwise (an
+uncategorized app is `app`, never null). D-Store's reader
+(`lib/sources/zealot.ts`, `placeZealotCategory`) already derives the same
+signal from the `game_` prefix and its own comment says it will read a real
+`app_type` when Zealot publishes one; this is that field, so nothing D-Store
+already renders changes. The schema marks it required and enum-restricted, and
+the serializer spec asserts both values. It is additive to `schema_version: 2`
+(a new required key a strict older reader could reject), shipped in the same
+release window as the rest of this program, not as a breaking schema bump.
+
 ## What's intentionally excluded
 
 Per Task 29's own writeup: **install/view counts, average rating, and rating

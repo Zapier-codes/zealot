@@ -56,6 +56,20 @@ module Anthropic
       )
     end
 
+    # Z-P15b: signs an in-memory JAR (the F-Droid `entry.jar`) and returns its bytes. A signed JAR is a
+    # whole-file JAR signature — the same mechanism as #sign_bundle!, just applied to bytes held in
+    # memory rather than a path on disk, so it reuses the identical `jarsigner` invocation. `SHA256withRSA`
+    # (Android 7 / API 23+; `jarsigner` on the JDK needs the alias and, for JARs, a `-keypass`).
+    def self.sign_jar!(jar_bytes:, keystore_bytes:, keystore_password:, key_alias:, key_password:)
+      new.sign_jar!(
+        jar_bytes: jar_bytes,
+        keystore_bytes: keystore_bytes,
+        keystore_password: keystore_password,
+        key_alias: key_alias,
+        key_password: key_password
+      )
+    end
+
     def initialize(keytool_path: DEFAULT_KEYTOOL_PATH, jarsigner_path: DEFAULT_JARSIGNER_PATH)
       @keytool_path = keytool_path
       @jarsigner_path = jarsigner_path
@@ -87,6 +101,47 @@ module Anthropic
       end
 
       true
+    end
+
+    # Signs a JAR held in memory and returns the signed bytes. Writes the unsigned bytes to a temp
+    # file (jarsigner signs a path, not a stream), signs in place, and reads the result back from the
+    # path (jarsigner rewrites the file by rename, so an already-open handle would read stale bytes).
+    # Same `-storepass:file`/`-keypass:file` scheme as #sign_bundle! so no password reaches argv/`ps`.
+    def sign_jar!(jar_bytes:, keystore_bytes:, keystore_password:, key_alias:, key_password:)
+      ensure_jarsigner_available!
+
+      result = nil
+      Tempfile.create(['fdroid-entry', '.jar'], binmode: true) do |jar_file|
+        jar_file.write(jar_bytes)
+        jar_file.flush
+
+        Tempfile.create(['android-signing', '.jks'], binmode: true) do |keystore_file|
+          keystore_file.write(keystore_bytes)
+          keystore_file.flush
+
+          write_secret_file(keystore_password) do |storepass_path|
+            write_secret_file(key_password) do |keypass_path|
+              cmd = [
+                @jarsigner_path,
+                '-keystore', keystore_file.path,
+                '-storepass:file', storepass_path,
+                '-keypass:file', keypass_path,
+                '-sigalg', 'SHA256withRSA',
+                '-digestalg', 'SHA-256',
+                jar_file.path,
+                key_alias
+              ]
+              _stdout, stderr, status = Open3.capture3(*cmd)
+              raise SigningFailedError, "jarsigner failed: #{stderr.presence}" unless status.success?
+            end
+          end
+        end
+
+        jar_file.flush
+        result = File.binread(jar_file.path)
+      end
+
+      result
     end
 
     def verify_keystore!(keystore_bytes:, keystore_password:, key_alias:, key_password:)

@@ -37,6 +37,7 @@ namespace :fdroid_index do
     puts "packages: #{result.package_count}"
     puts "generated_at: #{result.generated_at.utc.iso8601}"
     puts
-    puts 'Next (Z-P15b, not built yet): sign entry.json into entry.jar and publish the directory.'
+    puts 'Next: sign entry.json into entry.jar and publish (Z-P15b: FdroidIndex::Publisher / FdroidIndexPublishJob,'
+    puts 'gated by ENABLE_FDROID_INDEX).'
   end
 end

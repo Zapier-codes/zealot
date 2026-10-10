@@ -4,6 +4,7 @@ require 'json'
 require 'openssl'
 require 'socket'
 require 'timeout'
+require 'base64'
 
 module CatalogIndex
   # Task 27b-iii: writes a set of files to the *Pages repository* as ONE git
@@ -86,14 +87,18 @@ module CatalogIndex
     # files: { "index.json" => "...", "index.json.sig" => "..." } (UTF-8 text)
     # root: nil (repo root, the default tenant) or the string `.root_for` returns. Every path is
     # written under it; nothing outside it is read or changed by this call.
-    def publish(files, message:, root: nil)
+    # binary: paths (relative, before `root` is applied) whose value is raw bytes and must be sent
+    # base64-encoded, not as UTF-8 text. Used for a signed JAR (Z-P15b's entry.jar), which is not
+    # valid UTF-8; the Git Data API takes a blob's bytes either way, so only the encoding changes.
+    def publish(files, message:, root: nil, binary: [])
       raise ArgumentError, 'no files to publish' if files.empty?
 
       files = rooted(files, root)
+      binary = binary.map { |path| root.nil? ? path : "#{root}/#{path}" }
       attempts = 0
       begin
         attempts += 1
-        publish_once(files, message)
+        publish_once(files, message, binary)
       rescue BranchMoved
         raise Error, "the #{@branch} branch kept moving; gave up after #{MAX_PUBLISH_ATTEMPTS} tries" if attempts >= MAX_PUBLISH_ATTEMPTS
 
@@ -119,12 +124,13 @@ module CatalogIndex
       end
     end
 
-    def publish_once(files, message)
+    def publish_once(files, message, binary = [])
       tip_sha = fetch_tip_sha
       base_tree_sha = fetch_tree_sha(tip_sha)
 
+      binary = Array(binary)
       entries = files.map do |path, content|
-        { path: path, mode: '100644', type: 'blob', sha: create_blob(content) }
+        { path: path, mode: '100644', type: 'blob', sha: create_blob(content, binary: binary.include?(path)) }
       end
       tree_sha = create_tree(base_tree_sha, entries)
       return Result.new(status: :unchanged, commit_sha: tip_sha) if tree_sha == base_tree_sha
@@ -150,8 +156,13 @@ module CatalogIndex
       parse(response).dig('tree', 'sha') || raise(Error, 'GitHub returned no tree sha for the tip commit')
     end
 
-    def create_blob(content)
-      response = request(:post, "#{repo_url}/git/blobs", json: { content: content, encoding: 'utf-8' })
+    def create_blob(content, binary: false)
+      body = if binary
+               { content: Base64.strict_encode64(content), encoding: 'base64' }
+             else
+               { content: content, encoding: 'utf-8' }
+             end
+      response = request(:post, "#{repo_url}/git/blobs", json: body)
       ok!(response, 'create a blob')
       parse(response)['sha'] || raise(Error, 'GitHub returned no blob sha')
     end
