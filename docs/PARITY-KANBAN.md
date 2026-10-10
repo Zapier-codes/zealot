@@ -393,6 +393,21 @@ above: D-P1/D-P2/D-P3/D-P4/D-P5/D-P6/D-P7/D-P8 (web) and S-P1/S-P2 (client). No 
     the sandbox). The self-hosted dispenser (rule 4) is now built (below); the "Import from Play"
     publisher-side bridge (service account, §2) remains open, so the card stays `[~]` until the canary runs
     against a real backend and a client compiles.
+  - **§2 "Import from Play" read bridge built 2026-10-10 (eleventh session).** The §2 gap the card named --
+    no *read* of an existing Play listing -- is closed on the Console side: `Anthropic::PlayImportService`
+    (`app/services/anthropic/play_import_service.rb`) reuses the org-wide `PlayCredential` and the same
+    client-building code as `PlayPreflightService`/`PlayPublishService` and calls the official gem's read
+    endpoints (`edits.listings.list`, `edits.tracks.list`) through an open-then-discard edit (nothing is
+    ever committed), returning a `Result` of mapped `Listing`/`TrackInfo` structs; it keeps the same
+    never-raises contract (blank package, no credential, 404/403, auth failure, missing gem, unexpected
+    error are all codes, never exceptions). `Apps::PlayImportsController` (`GET`/`POST
+    /apps/:app_id/play_import`) shows what Play holds and stages the chosen fields into the app's existing
+    `ListingEditService` draft -- the same draft the ordinary listing editor commits -- so nothing from Play
+    writes the live listing and nothing is sent back to Play. `play_package_name` is adopted onto the app
+    only when blank. Route, nav button, slim view and en/zh-CN locales added. This is the publisher-side
+    **export/import** counterpart to the reverse-engineered read-side catalog adapter (which is a *visitor*
+    read of public store data); reviews and vitals are a deliberate follow-on. The card still stays `[~]`
+    because its other open item -- a real canary against a vendored backend -- is an operator action.
   - **Self-hosted token dispenser built 2026-10-10 (this session, rule 4).** `Play::TokenDispenser`
     (`app/services/play/token_dispenser.rb`) reads the anonymous AAS token from an operator-run dispenser
     instead of a third party's host. It follows `marzzzello/playstoreapi`'s `TokenDispenser` shape (a GET

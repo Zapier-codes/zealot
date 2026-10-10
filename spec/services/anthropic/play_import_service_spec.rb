@@ -1,0 +1,133 @@
+# frozen_string_literal: true
+
+require 'rails_helper'
+
+# Z-P25 §2: the read side of the Play Developer API. Same shape and same never-raises contract as
+# PlayPreflightService, so the stubbing style matches that spec. The service shells out to Google's
+# documented gem shape, which is not installed in the sandbox this was written in, so the client is
+# always doubled here — the point is the mapping and the Result codes, not Google's own behaviour.
+RSpec.describe Anthropic::PlayImportService do
+  let(:credential) { instance_double(PlayCredential, service_account_email: 'publishing@example.iam.gserviceaccount.com') }
+  let(:client) { double('AndroidPublisherService') }
+  let(:package) { 'com.example.app' }
+
+  subject(:service) { described_class.new(credential: credential) }
+
+  before do
+    allow(credential).to receive(:with_credentials_file).and_yield('/tmp/play-credentials.json')
+    allow(service).to receive(:build_client).and_return(client)
+  end
+
+  def listing(language:, title: nil, short: nil, full: nil)
+    double('Listing', language: language, title: title, short_description: short, full_description: full)
+  end
+
+  def track(track:, releases: [])
+    double('Track', track: track, releases: releases)
+  end
+
+  it 'reports no_package_name without calling Google when the package is blank' do
+    expect(service).not_to receive(:build_client)
+
+    result = service.fetch('  ')
+
+    expect(result.code).to eq(:no_package_name)
+    expect(result).not_to be_ok
+  end
+
+  it 'reports not_configured when there is no credential' do
+    result = described_class.new(credential: nil).fetch(package)
+
+    expect(result.code).to eq(:not_configured)
+  end
+
+  it 'reads listings and tracks, then discards the edit without committing' do
+    allow(client).to receive(:insert_edit).with(package, {}).and_return(double(id: 'edit-1'))
+    allow(client).to receive(:list_edit_listings).with(package, 'edit-1')
+      .and_return(double(listings: [listing(language: 'en-US', title: 'My App', short: 'Short', full: "L1\nL2")]))
+    allow(client).to receive(:list_edit_tracks).with(package, 'edit-1')
+      .and_return(double(tracks: [track(track: 'production',
+                                       releases: [double(status: 'completed', version_codes: %w[12 13])])]))
+    expect(client).to receive(:delete_edit).with(package, 'edit-1')
+    expect(client).not_to receive(:commit_edit)
+
+    result = service.fetch(package)
+
+    expect(result).to be_ok
+    expect(result.package_name).to eq(package)
+    expect(result.listings.size).to eq(1)
+    expect(result.listings.first.title).to eq('My App')
+    expect(result.listings.first.full_description).to eq("L1\nL2")
+    expect(result.tracks.first.track).to eq('production')
+    expect(result.tracks.first.status).to eq('completed')
+    expect(result.tracks.first.version_codes).to eq(%w[12 13])
+  end
+
+  it 'prefers en-US, then any English, then the first listing' do
+    en_us = Anthropic::PlayImportService::Listing.new(language: 'en-US', title: 'US')
+    en_gb = Anthropic::PlayImportService::Listing.new(language: 'en-GB', title: 'GB')
+    fr = Anthropic::PlayImportService::Listing.new(language: 'fr-FR', title: 'FR')
+
+    result = Anthropic::PlayImportService::Result.new(code: :ok, listings: [fr, en_gb, en_us])
+
+    expect(result.preferred_listing).to eq(en_us)
+    expect(Anthropic::PlayImportService::Result.new(code: :ok, listings: [fr, en_gb]).preferred_listing).to eq(en_gb)
+    expect(Anthropic::PlayImportService::Result.new(code: :ok, listings: [fr]).preferred_listing).to eq(fr)
+    expect(Anthropic::PlayImportService::Result.new(code: :ok, listings: []).preferred_listing).to be_nil
+  end
+
+  it 'collapses a track whose releases repeat the status' do
+    info = Anthropic::PlayImportService::TrackInfo.from_play(
+      track(track: 'alpha', releases: [double(status: 'completed', version_codes: %w[1]),
+                                       double(status: 'completed', version_codes: %w[2])])
+    )
+
+    expect(info.status).to eq('completed')
+    expect(info.version_codes).to eq(%w[1 2])
+  end
+
+  it 'maps a 404 to package_not_found' do
+    allow(client).to receive(:insert_edit)
+      .and_raise(Google::Apis::ClientError.new("Package not found: #{package}", status_code: 404))
+
+    result = service.fetch(package)
+
+    expect(result.code).to eq(:package_not_found)
+    expect(result.message).to include(package)
+  end
+
+  it 'maps a 403 to access_denied' do
+    allow(client).to receive(:insert_edit)
+      .and_raise(Google::Apis::ClientError.new('forbidden', status_code: 403))
+
+    expect(service.fetch(package).code).to eq(:access_denied)
+  end
+
+  it 'maps an authorization error to auth_failed' do
+    allow(client).to receive(:insert_edit)
+      .and_raise(Google::Apis::AuthorizationError.new('bad key'))
+
+    expect(service.fetch(package).code).to eq(:auth_failed)
+  end
+
+  it 'reports an unexpected error as :error rather than raising' do
+    allow(client).to receive(:insert_edit).and_raise(RuntimeError, 'kaboom')
+
+    result = service.fetch(package)
+
+    expect(result.code).to eq(:error)
+    expect(result.message).to include('kaboom')
+  end
+
+  it 'stays ok when discarding the edit fails' do
+    allow(client).to receive(:insert_edit).and_return(double(id: 'edit-1'))
+    allow(client).to receive(:list_edit_listings).and_return(double(listings: [listing(language: 'en-US', title: 'A')]))
+    allow(client).to receive(:list_edit_tracks).and_return(double(tracks: []))
+    allow(client).to receive(:delete_edit).and_raise(StandardError, 'boom')
+
+    result = service.fetch(package)
+
+    expect(result).to be_ok
+    expect(result.listings.first.title).to eq('A')
+  end
+end

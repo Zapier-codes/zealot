@@ -217,6 +217,35 @@ en:
       destroy:
         discarded: Draft discarded. The listing was not changed.
         nothing: There is no draft to discard.
+    play_imports:
+      show:
+        title: Import from Play
+        card_title: Your Play listing
+        intro: Read this app's existing store listing back from Google Play through the official Play Developer API and use it as the starting point for your Zealot listing. Nothing is sent back to Play and nothing on your live listing changes until you publish the draft.
+        play_field: Field
+        play_value: In Play now
+        fields:
+          name: App name
+          short_description: Short description
+          description: Full description
+        read_from: "Read from %{package} (language %{language})."
+        other_languages: "Play also has listings in: %{languages}. Change the language on the store listing text editor's translations page; this import stages one language at a time."
+        no_listing: Play returned no store listing for this package. It exists, but its listing has not been filled in Play Console yet.
+        empty: none
+        stage_hint: "Stages %{fields} into your draft. Review and publish it on the store listing text editor."
+        stage: Stage into draft
+        adopt_package: This will also record %{package} as the app's Play applicationId.
+        tracks_title: Tracks
+        tracks_note: "For reference only. Track state is not imported; Zealot models releases and channels, not Play tracks."
+        track: Track
+        track_status: Status
+        track_versions: Version codes
+        back: Back to the app
+      create:
+        staged: "Staged from Play. Review it on the store listing text editor, then publish."
+        unchanged: The live listing already matches what Play holds.
+        nothing: There was no Play listing to stage.
+        refused: "The listing was not staged: %{reasons}."
     reviews:
       index:
         title: Reviews
@@ -293,6 +322,7 @@ en:
       store_listing: Store listing
       listing_text: Store listing text
       app_content: App content
+      play_import: Import from Play
       listing_translations: Listing translations
       reviews: Reviews
       anonymous_reviews: Anonymous reviews

@@ -43,6 +43,11 @@
         = button_link_to '', app_listing_translations_path(@app), 'language', \
           class: 'd-join-item d-btn d-tooltip', \
           data: { tip: t('apps.show.listing_translations'), turbo_frame: '_top' }
+      - if !@app.archived && policy(ListingEdit.new(app: @app)).update?
+        / Z-P25 §2: "Import from Play" -- read an existing Play listing back and stage it.
+        = button_link_to '', app_play_import_path(@app), 'file-import', \
+          class: 'd-join-item d-btn d-tooltip', \
+          data: { tip: t('apps.show.play_import'), turbo_frame: '_top' }
       - if !@app.archived && policy(MigratedComment.new(app: @app)).index?
         / Z-P8: the reviews inbox (read reviews, write the developer reply).
         = button_link_to '', app_reviews_path(@app), 'comments', \

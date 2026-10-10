@@ -1,0 +1,74 @@
+/ Z-P25 §2: "Import from Play". GET reads the app's existing Play listing (Anthropic::PlayImportService) and
+/ shows it; POST stages the fields into the app's one draft through ListingEditService. Nothing is written to
+/ the live listing here and nothing is sent back to Play -- publishing happens on the store listing text
+/ editor, exactly as if the owner had typed it. Forms target _top because the flash notice is outside any
+/ turbo frame.
+- content_for :title do
+  = @title
+
+- content_for :section_title do
+  = @title
+  small class="pl-2 text-sm"
+    = @app.name
+
+.row
+  .col-md-12
+    .card
+      .card-header
+        h3.card-title = t('.card_title')
+      .card-body class="space-y-4"
+        p.text-sm.opacity-70 = t('.intro')
+
+        - if @result.ok?
+          - if @listing.nil?
+            .d-alert.d-alert-info role="status"
+              span = t('.no_listing')
+          - else
+            p.text-xs.opacity-65 = t('.read_from', package: @result.package_name, language: @listing.language)
+
+            - if @result.listings.size > 1
+              p.text-xs.opacity-65 = t('.other_languages', languages: @result.listings.map(&:language).join(', '))
+
+            table.table.table-sm
+              thead
+                tr
+                  th = t('.play_field')
+                  th = t('.play_value')
+              tbody
+                - Apps::PlayImportsController::IMPORTABLE.each do |field, play_key|
+                  tr
+                    td = t(".fields.#{field}")
+                    td class="whitespace-pre-line" = @listing.public_send(play_key).presence || t('.empty')
+
+            = form_with url: app_play_import_path(@app), method: :post, \
+              html: { class: 'space-y-3' }, data: { turbo_frame: '_top' } do
+              = hidden_field_tag :locale, @listing.language
+              p.text-sm.opacity-70 = t('.stage_hint', fields: Apps::PlayImportsController::IMPORTABLE.keys.map { |f| t(".fields.#{f}") }.to_sentence)
+              div class="flex flex-wrap items-center gap-3"
+                = submit_tag t('.stage'), class: 'd-btn d-btn-primary'
+                = link_to t('.back'), app_path(@app), class: 'd-link', data: { turbo_frame: '_top' }
+
+            - if @app.play_package_name.blank?
+              p.text-xs.opacity-65 = t('.adopt_package', package: @result.package_name)
+
+          - if @tracks.any?
+            .border-t.border-base-300.pt-4.space-y-2
+              h4.text-sm.font-semibold = t('.tracks_title')
+              p.text-xs.opacity-65 = t('.tracks_note')
+              table.table.table-sm
+                thead
+                  tr
+                    th = t('.track')
+                    th = t('.track_status')
+                    th = t('.track_versions')
+                tbody
+                  - @tracks.each do |track|
+                    tr
+                      td = track.track
+                      td = track.status.presence || t('.empty')
+                      td = track.version_codes.join(', ').presence || t('.empty')
+        - else
+          .d-alert.d-alert-warning role="alert"
+            span = @result.message
+          div class="flex flex-wrap items-center gap-3"
+            = link_to t('.back'), app_path(@app), class: 'd-link', data: { turbo_frame: '_top' }

@@ -217,6 +217,35 @@ zh-CN:
       destroy:
         discarded: 草稿已放弃，上架信息未改变。
         nothing: 没有可放弃的草稿。
+    play_imports:
+      show:
+        title: 从 Play 导入
+        card_title: 你的 Play 上架信息
+        intro: 通过官方的 Play Developer API 从 Google Play 读取该应用现有的商店上架信息，作为 Zealot 上架信息的起点。不会向 Play 写回任何内容，在你发布草稿之前，线上上架信息不会改变。
+        play_field: 字段
+        play_value: Play 当前内容
+        fields:
+          name: 应用名称
+          short_description: 简短说明
+          description: 完整说明
+        read_from: "读取自 %{package}（语言 %{language}）。"
+        other_languages: "Play 还包含以下语言的上架信息：%{languages}。请在商店文字编辑器的翻译页面切换语言；此导入一次只处理一种语言。"
+        no_listing: Play 未返回该包名的商店上架信息。应用已存在，但尚未在 Play Console 中填写上架信息。
+        empty: 无
+        stage_hint: "将 %{fields} 暂存到草稿。请到商店文字编辑器检查并发布。"
+        stage: 暂存到草稿
+        adopt_package: 这还会把 %{package} 记录为该应用的 Play applicationId。
+        tracks_title: 轨道
+        tracks_note: "仅供参考。轨道状态不会被导入；Zealot 以发布和渠道建模，而不是 Play 轨道。"
+        track: 轨道
+        track_status: 状态
+        track_versions: 版本号
+        back: 返回应用
+      create:
+        staged: "已从 Play 暂存。请到商店文字编辑器检查后再发布。"
+        unchanged: 线上上架信息与 Play 的内容一致。
+        nothing: 没有可暂存的 Play 上架信息。
+        refused: "未能暂存上架信息：%{reasons}。"
     reviews:
       index:
         title: 评价
@@ -293,6 +322,7 @@ zh-CN:
       store_listing: 商店上架
       listing_text: 商店文字
       app_content: 应用内容
+      play_import: 从 Play 导入
       listing_translations: 文案翻译
       reviews: 评价
       anonymous_reviews: 匿名评价

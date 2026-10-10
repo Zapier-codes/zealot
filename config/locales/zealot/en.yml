@@ -459,6 +459,15 @@ en:
         not_configured: "No Play API credential has been uploaded yet (admin/play_credential)."
         auth_failed: "Google rejected the Play service-account credential (%{detail}). Upload a valid key at admin/play_credential and make sure the Google Play Android Developer API is enabled for its project."
         error: "The Play setup check failed unexpectedly: %{detail}"
+    play_import:
+      messages:
+        ok: "Read the listing for %{package} from Google Play."
+        no_package_name: "No Play applicationId is set for this app yet, so there is nothing to read from Play. Enter it on the app, or upload an .aab with the Play Store target ticked."
+        not_configured: "No Play API credential has been uploaded yet (admin/play_credential)."
+        package_not_found: "Google Play has no app for %{package} yet, so there is no listing to import. An applicationId is only registered by the first bundle uploaded to Play Console, and the API cannot do that step. If %{package} is not the bundle's real applicationId, correct it on the app instead."
+        access_denied: "Google Play refused the service account (%{email}) access to %{package}. Check its permissions under Users and permissions in Play Console and that the Google Play Android Developer API is still enabled for its project."
+        auth_failed: "Google rejected the Play service-account credential (%{detail}). Upload a valid key at admin/play_credential and make sure the Google Play Android Developer API is enabled for its project."
+        error: "The Play import failed unexpectedly: %{detail}"
     apple_teams:
       edit:
         title: Edit team metadata

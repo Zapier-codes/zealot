@@ -109,6 +109,10 @@ Rails.application.routes.draw do
     resource :app_content, only: %i[show update destroy], module: :apps do
       post :commit
     end
+    # Z-P25 §2: "Import from Play". Reads the app's existing Play listing back through the official Play
+    # Developer API (Anthropic::PlayImportService) and stages it into the same draft as the listing editor.
+    # GET shows what Play holds, POST stages the chosen listing. Nothing is sent back to Play.
+    resource :play_import, only: %i[show create], module: :apps
     # Z-P21: machine translation of the listing. The index publishes only approved, non-stale translations.
     get 'listing_translations', to: 'apps/listing_translations#show', as: :listing_translations
     post 'listing_translations/translate', to: 'apps/listing_translations#translate', as: :translate_listing_translations
