@@ -19,13 +19,18 @@ Owner key: **Z** = zealot (Console, Rails, `develop`) · **S** = Storeapp (Andro
 
 ## ▶ In progress
 
-- [x] **Z-P5 · Content declarations forms (Task 34)** — the *data layer* landed this session (App columns
-  for content rating + Data Safety answers + the two store flags, published by the serializer under
-  `listing`; `ListingEdit` can now stage them). The Console *form UI* (Task 34) is still to build. Owner
-  **Z**. The half D-P5/S-P1 read is live.
-- [x] **Z-P6 · Privacy policy URL, account-deletion URL, reviewer access instructions** — the Data Safety
-  *deletion request URL* landed this session as part of the Z-P5 columns. The remaining two (a store
-  privacy-policy URL, reviewer-access instructions) still need columns + Console fields. Owner **Z**.
+- [x] **Z-P5 · Content declarations forms (Task 34)** — done: the data layer (App columns for content rating
+  + Data Safety answers + the two store flags, published by the serializer under `listing`; `ListingEdit` can
+  stage them) AND the Console *form UI* both landed (the UI was already in `a423b008`; the card text below was
+  stale until this session). The screen is `Apps::AppContentsController` (`GET`/`PATCH`/`POST commit`/`DELETE`
+  `/apps/:app_id/app_content`) + `app/views/apps/app_contents/show.html.slim`, the same staged-draft model as
+  the listing-text editor; reachable from the app page. Owner **Z**. The half D-P5/S-P1 read is live.
+- [x] **Z-P6 · Privacy policy URL, account-deletion URL, reviewer access instructions** — done: the Data
+  Safety *deletion request URL* landed with the Z-P5 columns; the store privacy-policy URL and the
+  reviewer-access instructions are App columns (`privacy_policy_url`, `reviewer_access_instructions`) with
+  Console fields on the same App-content screen. Reviewer access is the one field that is NOT staged and never
+  published: it holds a reviewer test account, saved straight to the app (`App#update`), while the public
+  fields go through the draft. Owner **Z**.
 
 ## Done (this session — 2026-10-10, second pass)
 
@@ -162,8 +167,24 @@ above: D-P1/D-P2/D-P3/D-P4/D-P5/D-P6/D-P7/D-P8 (web) and S-P1/S-P2 (client). No 
   (the four generator vectors reproduce byte-for-byte through the Kotlin applier; 8 JUnit tests pass on the
   JVM; the web reader is `tsc`-clean with 727 tests green), **but the client is not yet compiled under Gradle**
   (no Android toolchain in the sandbox) — so this stays `[~]` until it builds on a machine with the toolchain.
-- [ ] **Z-P15 · F-Droid-compatible repo (fdroidserver)** — publish index-v2 + signed `entry.jar` beside the
+- [~] **Z-P15 · F-Droid-compatible repo (fdroidserver)** — publish index-v2 + signed `entry.jar` beside the
   signed Zealot index; the Zealot index stays the trust anchor. Owner **Z**.
+  <u>Cut (TSF) and Z-P15a built 2026-10-10.</u> The format was read from source, not guessed: fdroidserver
+  (`fdroidserver/index.py`, `signindex.py`, `update.py` → `METADATA_VERSION = 30000`) and f-droid.org's own
+  live `entry.json` / `index-v2.json`. **Z-P15a** (this session) writes the two JSON documents from the live
+  catalog: `FdroidIndex::Serializer` (`app/services/fdroid_index/serializer.rb`) renders index-v2
+  (`repo` + `packages` keyed by package name, each `{metadata, versions}` keyed by the APK sha256) and the
+  `entry.json` entry point, asserting `entry.index.sha256`/`.size` are exactly the `index-v2.json` bytes'
+  digest and length; `rake fdroid_index:generate` writes them. Cross-checked against f-droid.org's real
+  index: our package/manifest/file keys are a strict subset (no unknown keys) and `versionCode`/`usesSdk` are
+  integers. **Z-P15b** (open) signs `entry.json` into a signed `entry.jar` (an APK-v1-signed JAR, per
+  fdroidserver `sign_jar`) and publishes the directory. Two things Z-P15b must reconcile before shipping,
+  called out in the code, not assumed: (1) whether an F-Droid client honours an **absolute** `file.name`
+  (our APKs stay served from Zealot's own endpoint rather than being mirrored into the Pages repo); (2) the
+  signing fingerprint's hash type (`AndroidSigningKey#checksum` is SHA-1-of-keystore, F-Droid wants the
+  certificate SHA-256), so `preferredSigner` is left out until then. Sub-slices: **Z-P15a** (index-v2 +
+  entry.json; built) · **Z-P15b** (sign + publish) · **Z-P15c** (signer index) · **Z-P15d** (binary
+  transparency log).
 - [x] **Z-P16 · Funnels, exports** — Umami/Plausible/Matomo for site views, Metabase/Superset over Zealot's
   Postgres for reports and CSV/warehouse export. No new phone telemetry. Owner **Z**. Built 2026-10-10:
   Plausible + Matomo added to `layouts/_analytics` with read-only env settings (`PLAUSIBLE_DOMAIN`,
