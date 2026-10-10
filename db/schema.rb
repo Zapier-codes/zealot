@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_10_190000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_10_200000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -619,6 +619,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_10_190000) do
     t.text "keystore_password", null: false
     t.datetime "updated_at", null: false
     t.index ["checksum"], name: "index_play_upload_keys_on_checksum", unique: true
+  end
+
+  create_table "play_source_states", force: :cascade do |t|
+    t.string "backend", null: false
+    t.datetime "created_at", null: false
+    t.text "error"
+    t.datetime "last_checked_at"
+    t.datetime "last_ok_at"
+    t.string "status", default: "unknown", null: false
+    t.datetime "updated_at", null: false
+    t.index ["backend"], name: "index_play_source_states_on_backend", unique: true
   end
 
   create_table "publisher_profiles", force: :cascade do |t|

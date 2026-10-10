@@ -46,13 +46,19 @@ Owner key: **Z** = zealot (Console, Rails, `develop`) · **S** = Storeapp (Andro
   the `rollout` block the index publishes (`rollout_percentage`/`rollout_status` were already in
   `Release`); wired into `AppHeader`. The Console *percentage UI* and the deterministic device-bucket
   helper already exist (`Release#rollout_includes_device?`). Owner **Z** (index + console), reader **D**.
-- [~] **S-P1 · Content rating / parental filter** — `ContentClass` + `contentClassOf` in `PlayModels.kt`,
+- [x] **S-P1 · Content rating / parental filter** — `ContentClass` + `contentClassOf` in `PlayModels.kt`,
   the `contentClass` filter term on `SearchFilters`, and a "Content rating" group in `SearchSortFilterRow`.
-  Owner **S**. The client half of D-P7. **Written, not compiled** (no JRE/gradle in-sandbox); tick after an Android-toolchain build.
-- [~] **S-P2 · Age / device filter wire-up** — `contentRating` + `minSdk` on `GitHubRepo`, the
+  Owner **S**. The client half of D-P7. **Compiled + tested 2026-10-10:** the Android toolchain was present
+  in the sandbox this session, so `:app:compileDefaultDebugKotlin`, `:app:assembleDefaultDebug` and the
+  full unit-test task all pass; new `SearchFiltersCardsTest.kt` (10 cases) pins `contentClassOf` (common
+  strings, case-insensitivity, `null` for blank/unplaceable) and the ceiling (at-or-below kept, an unrated
+  app dropped rather than guessed, no ceiling keeps everything).
+- [x] **S-P2 · Age / device filter wire-up** — `contentRating` + `minSdk` on `GitHubRepo`, the
   `worksOnDevice` filter term (kept only when the app published a `minSdk` the device fails), and
   `Build.VERSION.SDK_INT` threaded into both `applySearchView` call sites. Consumes Z-P14's
-  `compatibility.min_sdk`. Owner **S**. **Written, not compiled**; tick after an Android build.
+  `compatibility.min_sdk`. Owner **S**. **Compiled + tested 2026-10-10** in the same run (see S-P1); the
+  new tests cover the drop-only-when-provable rule, the no-`minSdk` app never dropped, an unknown device
+  API level dropping nothing, and the filter being off unless asked.
 - [x] **Z-P14 · Device-targeting fields** — already published: `Release` carries `min_sdk_version`,
   `target_sdk_version`, `abis`, `screen_densities`, `required_features`, `permissions`, and
   `CatalogIndex::Serializer#compatibility_for` emits them under `versions[].compatibility` (schema-validated).
@@ -338,11 +344,30 @@ above: D-P1/D-P2/D-P3/D-P4/D-P5/D-P6/D-P7/D-P8 (web) and S-P1/S-P2 (client). No 
   listing — a separate decision, Z-P24).
 - [ ] **Z-P24 · Enterprise device management** — Headwind MDM + Android RestrictionsManager managed config
   (+ the Android Management API). Separate project. Owner **Z**.
-- [ ] **Z-P25 · Development-assistant / Play import bridge (PlayCatalogSource adapter)** — ONE adapter in
+- [~] **Z-P25 · Development-assistant / Play import bridge (PlayCatalogSource adapter)** — ONE adapter in
   its own service process behind which the reverse-engineered Play clients sit (Aurora `GPlayApi` +
   Python `playstoreapi`, two implementations so one can fail over), pinned + vendored, a daily canary marks
   it `degraded` and the UI hides the Play panel, self-hosted dispenser, hard cache, catalogue-only fallback,
   optional per deployment and off by default for tenants. **Never the only path.** Owner **Z**.
+  - **Console half built 2026-10-10** (this session; the branch, not `develop`). The boundary is the
+    `Play` namespace: `Play::BackendRunner` runs ONE configured backend **in its own process** and reads one
+    JSON object from stdout (the licence boundary, §1.1 rule 7 — Zealot is MIT, Aurora's GPlayApi is
+    GPL-3.0-or-later, so it is never linked into Rails); `Play::PanelNormalizer` turns whatever the backend
+    prints into the labelled panel (`source: play`, rounded rating, verbatim installs label, https-only
+    screenshots); `Play::CatalogAdapter` is the ONE adapter with the exact §1.1 order — off unless
+    `ENABLE_PLAY_CATALOG` (rule 6) → fresh cache (rule 5) → each *proven* backend in turn with failover
+    (rule 1) → stale cache (rule 5) → hidden panel, never an error. `Play::Canary` does the one fixed
+    daily read against **each** backend directly and records `ok`/`degraded` in `PlaySourceState`
+    (rule 3); a backend with no passing canary is never tried blind. `PlayCatalogCache` (rule 5) is the
+    timestamped on-disk cache; `PlaySourceState` + migration `20261010200000` hold the canary state;
+    `PlayCatalogCanaryJob` is registered in the `good_job` cron daily at 03:23; `lib/tasks/play_catalog.rake`
+    exposes `canary`/`status`/`show`; `script/vendor-play-clients.sh` pins + vendors the two clients
+    (rule 2, cloned to a pinned SHA, not run in-sandbox); `config/initializers/play_catalog.rb` is the
+    switch. Specs: `spec/services/play/*`, `spec/models/play_source_state_spec.rb` (written; the pure
+    logic was also exercised by a standalone harness, `ruby -c` clean; **rspec not run** — no bundle in
+    the sandbox). The self-hosted dispenser (rule 4) and the "Import from Play" publisher-side bridge
+    (service account, §2) remain open; the card stays `[~]` until the canary runs against a real backend
+    and a client compiles, and until the dispenser is stood up.
 - [x] **Z-P26 · Silent-install backends in the client** — Shizuku/Sui, Dhizuku (Device Owner), root
   (Magisk/KernelSU/APatch) as opt-in next to the existing 47i update-ownership. Owner **S**.
   Built 2026-10-10 (Storeapp): `silent/` — `SilentInstallBackend` (Shizuku/Dhizuku/Root), `SilentInstallStatus`,

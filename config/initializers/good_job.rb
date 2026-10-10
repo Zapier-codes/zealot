@@ -59,6 +59,13 @@ CRON_JOBS_SETUP = lambda do
       cron: '*/15 * * * *',
       class: 'ReleaseUploadSweeperJob',
       description: 'Expire direct uploads never finalized and fail finalized ones nobody processed'
+    },
+    # Z-P25: the daily canary that proves each reverse-engineered Play backend still works, so the adapter
+    # marks it usable and the Play panel shows (or hides the day Google changes the interface).
+    play_catalog_canary: {
+      cron: '23 3 * * *',
+      class: 'PlayCatalogCanaryJob',
+      description: 'Read one fixed public app through each configured Play backend and record ok/degraded'
     }
   }
 
