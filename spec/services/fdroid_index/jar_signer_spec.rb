@@ -20,13 +20,13 @@ RSpec.describe FdroidIndex::JarSigner do
     ) + "\n"
   end
 
-  def entry_bytes_of(jar)
+  def entry_bytes_of(jar, want = 'entry.json')
     data = jar.b
     off = 0
     while (i = data.index("PK\x01\x02".b, off))
       nlen = data[i + 28, 2].unpack1('v')
       name = data[i + 46, nlen]
-      if name == 'entry.json'
+      if name == want
         lho = data[i + 42, 4].unpack1('V')
         lnlen = data[lho + 26, 2].unpack1('v')
         lelen = data[lho + 28, 2].unpack1('v')
@@ -46,6 +46,21 @@ RSpec.describe FdroidIndex::JarSigner do
       expect(jar).to include('entry.json')
       expect(jar).not_to include('META-INF')
       expect(entry_bytes_of(jar)).to eq(entry_json)
+    end
+
+    # Z-P15c: extra JSON documents (the signer index) ride inside the same signed JAR under their own
+    # names, so they are covered by the one signature without a second signed JAR.
+    it 'carries extra entries beside entry.json, each byte-identical, in the order given' do
+      signer_index = "{\"com.example.app\":{\"signer\":\"#{'d' * 64}\"}}\n"
+      jar = described_class.new(entry_json: entry_json, index_json: index_json,
+                                extra_entries: { 'signer-index.json' => signer_index }).call
+
+      expect(jar).to include('entry.json')
+      expect(jar).to include('signer-index.json')
+      expect(entry_bytes_of(jar, 'entry.json')).to eq(entry_json)
+      expect(entry_bytes_of(jar, 'signer-index.json')).to eq(signer_index)
+      # entry.json is written first, so a client that reads the first root entry still finds it.
+      expect(jar.index('entry.json')).to be < jar.index('signer-index.json')
     end
 
     it 'refuses when entry.json points at a different index than the bytes given' do

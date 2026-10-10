@@ -67,15 +67,25 @@ module FdroidIndex
       key = AndroidSigningKey.current
       raise NoKeyError, 'no AndroidSigningKey configured; cannot sign entry.jar' if key.nil?
 
+      @signing_key = key
+      # Z-P15c: the fingerprint the F-Droid client compares an installed APK's signer against is the org
+      # key's *certificate* SHA-256 (AndroidSigningKey#certificate_sha256, computed through keytool). That
+      # needs the JDK; where it is unavailable we pass nil and the serializer falls back to the release
+      # checksum (the documented, non-verifying fallback). Best-effort and never fatal: a publish must not
+      # fail because the fingerprint could not be recomputed.
+      fingerprint = certificate_fingerprint(key)
       serializer_result = FdroidIndex::Serializer.call(
         @apps || CatalogIndex::Signer.default_apps,
         now: @now,
         repo_name: @repo_name,
         repo_description: @repo_description,
-        repo_address: @repo_address
+        repo_address: @repo_address,
+        signer_fingerprint: fingerprint
       )
+      extra_entries = serializer_result.signer_index_json ? { 'signer-index.json' => serializer_result.signer_index_json } : {}
       jar_bytes = FdroidIndex::JarSigner.new(
-        entry_json: serializer_result.entry_json, index_json: serializer_result.index_json
+        entry_json: serializer_result.entry_json, index_json: serializer_result.index_json,
+        extra_entries: extra_entries
       ).call
       signed_jar = FdroidIndex::JarSigner.sign_jar!(
         jar_bytes,
@@ -91,6 +101,17 @@ module FdroidIndex
 
     private
 
+    def certificate_fingerprint(key)
+      return nil unless key.respond_to?(:certificate_sha256)
+
+      value = key.certificate_sha256
+      @logger.warn('fdroid index: certificate fingerprint unavailable (no JDK?); falling back to release checksum') if value.blank?
+      value.presence
+    rescue StandardError => e
+      @logger.warn("fdroid index: certificate fingerprint failed (#{e.class}); falling back to release checksum")
+      nil
+    end
+
     def publish(result, signed_jar)
       client = @client || CatalogIndex::GithubPagesCommit.new
       files = {
@@ -98,6 +119,18 @@ module FdroidIndex
         'entry.json' => result.entry_json,
         'entry.jar' => signed_jar
       }
+      # Z-P15c: the signer index, published beside entry.jar and signed over its own exact bytes with the
+      # same key (the detached-signature pattern the Zealot catalog index already uses). A client that reads
+      # it verifies it against the repo's signing key; one that does not is unaffected.
+      if result.signer_index_json
+        files['signer-index.json'] = result.signer_index_json
+        files['signer-index.json.sig'] = "#{@signing_key.sign(result.signer_index_json)}\n"
+      end
+      # Z-P15d: the binary transparency log — the sizes of exactly these bytes, the "these files existed"
+      # record. `.HTTP-headers.json` files are a mirroring-deployment artifact and are deliberately not
+      # fabricated here (see FdroidIndex::TransparencyLog).
+      transparency = FdroidIndex::TransparencyLog.call(files, generated_at: result.generated_at)
+      files['filesystemlog.json'] = transparency.filesystem_log_json
       with_publish_lock do
         client.publish(
           files,

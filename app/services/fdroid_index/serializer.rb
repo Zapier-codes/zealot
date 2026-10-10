@@ -41,10 +41,13 @@ module FdroidIndex
   # name against the repo `address` and an absolute URL wins that resolution, so the APK stays served from
   # Zealot and is never mirrored into the Pages repo. This one assumption (that the F-Droid client honours
   # an absolute `file.name`) is the thing Z-P15b must confirm against a real client before this ships; it is
-  # called out here rather than assumed silently. `manifest.signer` is published only when a release recorded
-  # a signing checksum, and that checksum's hash type (SHA-1 of the keystore, `AndroidSigningKey#checksum`,
-  # versus the F-Droid certificate SHA-256) is a second thing Z-P15b must reconcile — so `preferredSigner` is
-  # left out until then rather than publishing a value that might not verify.
+  # called out here rather than assumed silently.
+  # Z-P15c reconciles the second flagged item: with a `signer_fingerprint` given (the org key's certificate
+  # SHA-256, `AndroidSigningKey#certificate_sha256`), `manifest.signer.sha256` and each package's
+  # `metadata.preferredSigner` carry a real certificate fingerprint, the value an F-Droid client compares an
+  # installed APK against and the same value `signer_index_json` lists. Without one the serializer falls back
+  # to the release's `signing_key_checksum` (SHA-1 of the keystore), which is not a certificate SHA-256; that
+  # fallback exists only so a keyless run still serializes and it is what the card flags when it appears.
   class Serializer
     # The F-Droid index-v2 format version, from fdroidserver `METADATA_VERSION` (30000), not guessed.
     FORMAT_VERSION = 30_000
@@ -54,11 +57,19 @@ module FdroidIndex
     # else in the index. A machine translation (Z-P21) adds that locale's text beside it.
     DEFAULT_LOCALE = 'en-US'
 
-    Result = Struct.new(:index_json, :entry_json, :generated_at, :package_count, keyword_init: true)
+    Result = Struct.new(:index_json, :entry_json, :signer_index_json, :generated_at, :package_count, keyword_init: true)
 
     # @param apps [Array, #to_a] the published apps (same set the signed index uses: `CatalogIndex::Signer.default_apps`)
+    # @param signer_fingerprint [String, nil] Z-P15c: the org signing key's certificate SHA-256, lower-case hex
+    #   (AndroidSigningKey#certificate_sha256). When given it is published as `manifest.signer.sha256[]` and as
+    #   each package's `metadata.preferredSigner` — F-Droid's real field and the value its signer-index lists,
+    #   which is what its client compares an installed APK's signer against. When nil (no key configured, or a
+    #   fixture) the serializer falls back to the release's own `signing_key_checksum`, which is *not* a
+    #   certificate SHA-256 and would not verify in an F-Droid client; that fallback is kept only so a
+    #   keyless run still serializes, and it is what the card flags as "not reconciled" when it appears.
     def initialize(apps, now: Time.now.utc, repo_name: 'Zealot', repo_description: nil,
-                   repo_address: nil, repo_icon: nil, max_age_days: DEFAULT_MAX_AGE_DAYS)
+                   repo_address: nil, repo_icon: nil, max_age_days: DEFAULT_MAX_AGE_DAYS,
+                   signer_fingerprint: nil)
       @apps = apps.respond_to?(:play_package_name) ? [apps] : apps.to_a
       @now = now
       @repo_name = repo_name
@@ -66,6 +77,7 @@ module FdroidIndex
       @repo_address = repo_address
       @repo_icon = repo_icon
       @max_age_days = max_age_days
+      @signer_fingerprint = signer_fingerprint.to_s.strip.downcase.presence
     end
 
     def self.call(apps, **opts)
@@ -93,10 +105,33 @@ module FdroidIndex
         }
       }
       Result.new(index_json: index_json, entry_json: "#{JSON.pretty_generate(entry)}\n",
-                 generated_at: @now, package_count: packages.size)
+                 signer_index_json: signer_index_json(packages), generated_at: @now, package_count: packages.size)
     end
 
     private
+
+    # Z-P15c: F-Droid's signer index (`/repo/signer-index.json`), `{ "<packageName>": { "signer": "<sha256>" } }`.
+    # Read from f-droid.org's own live file this session (552 KB, 4577 packages, shape confirmed). It is the
+    # source of truth that maps a package to the certificate that must sign its APK. We publish one entry per
+    # package, the org certificate: our whole catalog is signed by the one AndroidSigningKey, so every package
+    # maps to the same fingerprint. A package with no resolvable certificate (no key configured and no release
+    # checksum) is left out rather than given a null signer.
+    def signer_index_json(packages)
+      fingerprint = @signer_fingerprint || packages.keys.filter_map { |name| release_signer_fingerprint(name) }.first
+      return nil if fingerprint.nil?
+
+      entries = packages.keys.sort.each_with_object({}) { |name, out| out[name] = { 'signer' => fingerprint } }
+      "#{JSON.pretty_generate(entries)}\n"
+    end
+
+    # The first release checksum seen for a package, when no org certificate was supplied; see the
+    # `signer_fingerprint` note on the constructor for why this is a fallback and not the real value.
+    def release_signer_fingerprint(package_name)
+      app = @apps.find { |a| text(a, :play_package_name) == package_name }
+      return nil unless app
+
+      releases_for(app).filter_map { |r| signer_for(r) }.first
+    end
 
     def serialize_repo(timestamp)
       repo = {
@@ -140,7 +175,18 @@ module FdroidIndex
       metadata['icon'] = { DEFAULT_LOCALE => icon } if icon
       screenshots = screenshots_for(app)
       metadata['screenshots'] = { 'phone' => { DEFAULT_LOCALE => screenshots } } if screenshots.any?
+      # Z-P15c: F-Droid's per-package `metadata.preferredSigner` — the certificate its client compares an
+      # installed APK's signer against, the same value its signer-index lists. Present on every one of
+      # f-droid.org's 4577 packages; omitted here only when no certificate is resolvable at all.
+      preferred = signer_fingerprint_for(app)
+      metadata['preferredSigner'] = preferred if preferred
       metadata
+    end
+
+    # The certificate SHA-256 for this app: the org key's fingerprint when supplied, else the release's own
+    # checksum (the fallback the constructor documents). Same read `signer_index_json` uses, per app.
+    def signer_fingerprint_for(app)
+      @signer_fingerprint || releases_for(app).filter_map { |r| signer_for(r) }.first
     end
 
     # A locale map for a listing field: the app's own text as en-US, plus any reviewed machine translation
@@ -295,7 +341,11 @@ module FdroidIndex
       release.respond_to?(:icon_sha256) ? release.icon_sha256 : nil
     end
 
+    # Z-P15c: the certificate fingerprint for a release — the org key's certificate SHA-256 when the caller
+    # supplied it (the real F-Droid value), else the release's recorded `signing_key_checksum` (SHA-1 of the
+    # keystore — a fallback that is NOT a certificate SHA-256; see the `signer_fingerprint` constructor note).
     def signer_for(release)
+      return @signer_fingerprint if @signer_fingerprint
       return nil unless release.respond_to?(:signing_key_checksum)
 
       release.signing_key_checksum.presence

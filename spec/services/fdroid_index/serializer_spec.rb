@@ -162,4 +162,44 @@ RSpec.describe FdroidIndex::Serializer do
     expect { JSON.parse(result.index_json) }.not_to raise_error
     expect { JSON.parse(result.entry_json) }.not_to raise_error
   end
+
+  # Z-P15c: the signer index and per-package preferredSigner. The certificate fingerprint the caller
+  # supplies (AndroidSigningKey#certificate_sha256) is what an F-Droid client compares an installed APK
+  # against; the signer index maps each package to it.
+  describe 'Z-P15c signer fingerprint' do
+    let(:fingerprint) { 'd' * 64 }
+
+    it 'publishes the supplied certificate as preferredSigner, manifest.signer and the signer index' do
+      result = described_class.call([app], now: now, signer_fingerprint: fingerprint)
+
+      metadata = index_of(result)['packages']['com.example.app']['metadata']
+      expect(metadata['preferredSigner']).to eq(fingerprint)
+      version = index_of(result)['packages']['com.example.app']['versions'].values.first
+      expect(version['manifest']['signer']).to eq('sha256' => [fingerprint])
+      expect(JSON.parse(result.signer_index_json)).to eq('com.example.app' => { 'signer' => fingerprint })
+    end
+
+    it 'lists every package in the signer index, sorted, all sharing the one org certificate' do
+      result = described_class.call([app(play_package_name: 'com.z.app'), app(play_package_name: 'com.a.app')],
+                                    now: now, signer_fingerprint: fingerprint)
+
+      entries = JSON.parse(result.signer_index_json)
+      expect(entries.keys).to eq(%w[com.a.app com.z.app])
+      expect(entries.values).to all(eq('signer' => fingerprint))
+    end
+
+    it 'falls back to the release checksum (not a certificate SHA-256) when no fingerprint is supplied' do
+      result = described_class.call([app], now: now)
+
+      expect(index_of(result)['packages']['com.example.app']['metadata']['preferredSigner']).to eq('c' * 64)
+      expect(JSON.parse(result.signer_index_json)).to eq('com.example.app' => { 'signer' => 'c' * 64 })
+    end
+
+    it 'omits the signer index entirely when neither a fingerprint nor a checksum is available' do
+      result = described_class.call([app(catalog_releases: [release(signing_key_checksum: nil)])], now: now)
+
+      expect(result.signer_index_json).to be_nil
+      expect(index_of(result)['packages']['com.example.app']['metadata']).not_to have_key('preferredSigner')
+    end
+  end
 end

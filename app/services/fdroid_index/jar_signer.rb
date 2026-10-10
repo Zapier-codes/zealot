@@ -35,14 +35,19 @@ module FdroidIndex
     #
     # @param entry_json [String] the exact bytes Z-P15a produced
     # @param index_json [String] the exact index-v2.json bytes entry.json points at
-    def initialize(entry_json:, index_json:)
+    # @param extra_entries [Hash{String=>String}] Z-P15c: additional JSON documents to carry inside the signed
+    #   JAR under their own file names (the signer index). F-Droid's own entry.jar holds only entry.json; we
+    #   add signer-index.json so it is covered by the same signature without a second signed JAR. A client
+    #   ignores entries it does not ask for, so this is additive and never changes how entry.json is read.
+    def initialize(entry_json:, index_json:, extra_entries: {})
       @entry_json = entry_json
       @index_json = index_json
+      @extra_entries = extra_entries
     end
 
     def call
       verify_against_index!
-      build_jar(@entry_json)
+      build_jar({ 'entry.json' => @entry_json }.merge(@extra_entries))
     end
 
     # Signs an already-built JAR in place. Kept separate so the unsigned bytes are testable without a
@@ -73,32 +78,46 @@ module FdroidIndex
       raise UnsignedIndexError, "entry.json is not valid JSON: #{e.message}"
     end
 
-    # A minimal, valid ZIP with one STORED entry. Written by hand (local file header + central
-    # directory + end record) so no compression gem is needed and the bytes are exactly what
-    # `jarsigner` expects; `jarsigner` then appends/updates only the `META-INF/` entries.
-    def build_jar(content)
-      name = 'entry.json'
-      data = content.b
-      crc = Zlib.crc32(data)
-      size = data.bytesize
+    # A minimal, valid ZIP. Written by hand (local file header + central directory + end record) so no
+    # compression gem is needed and the bytes are exactly what `jarsigner` expects; `jarsigner` then
+    # appends/updates only the `META-INF/` entries. Entries are STORED (method 0) and written in the order
+    # given, so `entry.json` stays the first root entry (a client finds it regardless, but the order matches
+    # F-Droid's own single-entry layout as closely as possible).
+    def build_jar(entries)
+      local_parts = []
+      central_parts = []
+      offset = 0
       dos_time = dos_date = 0 # jarsigner does not read the timestamp; F-Droid clients do not either
 
-      local = [
-        0x04034b50, 20, 0, 0, # signature, version-needed, flags, method (0 = stored)
-        dos_time, dos_date,
-        crc, size, size,
-        name.bytesize, 0
-      ].pack('VvvvvvVVVvv') + name.b
-      central = [
-        0x02014b50, 20, 20, 0, 0, # signature, version-made-by, version-needed, flags, method
-        dos_time, dos_date,
-        crc, size, size,
-        name.bytesize, 0, 0, 0, 0, # name len, extra len, comment len, disk start, internal attrs
-        0, 0 # external attrs, local header offset
-      ].pack('VvvvvvvVVVvvvvvVV') + name.b
-      eocd = [0x06054b50, 0, 0, 1, 1, central.bytesize, local.bytesize + size, 0].pack('VvvvvVVv')
+      entries.each do |name, content|
+        data = content.b
+        crc = Zlib.crc32(data)
+        size = data.bytesize
+        name_bytes = name.b
 
-      local + data + central + eocd
+        local = [
+          0x04034b50, 20, 0, 0, # signature, version-needed, flags, method (0 = stored)
+          dos_time, dos_date,
+          crc, size, size,
+          name_bytes.bytesize, 0
+        ].pack('VvvvvvVVVvv') + name_bytes
+        central = [
+          0x02014b50, 20, 20, 0, 0, # signature, version-made-by, version-needed, flags, method
+          dos_time, dos_date,
+          crc, size, size,
+          name_bytes.bytesize, 0, 0, 0, 0, # name len, extra len, comment len, disk start, internal attrs
+          0, offset # external attrs, local header offset
+        ].pack('VvvvvvvVVVvvvvvVV') + name_bytes
+
+        local_parts << local << data
+        central_parts << central
+        offset += local.bytesize + size
+      end
+
+      local = local_parts.join
+      central = central_parts.join
+      eocd = [0x06054b50, 0, 0, entries.size, entries.size, central.bytesize, local.bytesize, 0].pack('VvvvvVVv')
+      local + central + eocd
     end
   end
 end

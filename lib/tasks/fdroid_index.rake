@@ -31,13 +31,19 @@ namespace :fdroid_index do
     FileUtils.mkdir_p(out_dir)
     File.write(File.join(out_dir, 'index-v2.json'), result.index_json)
     File.write(File.join(out_dir, 'entry.json'), result.entry_json)
+    # Z-P15c: the signer index, when a certificate fingerprint is resolvable. Written unsigned here for
+    # inspection; the Publisher signs it (signer-index.json.sig) into the Pages repo.
+    if result.signer_index_json
+      File.write(File.join(out_dir, 'signer-index.json'), result.signer_index_json)
+      puts "wrote #{out_dir}/signer-index.json (#{result.signer_index_json.bytesize} bytes)"
+    end
 
     puts "wrote #{out_dir}/index-v2.json (#{result.index_json.bytesize} bytes)"
     puts "wrote #{out_dir}/entry.json (#{result.entry_json.bytesize} bytes)"
     puts "packages: #{result.package_count}"
     puts "generated_at: #{result.generated_at.utc.iso8601}"
     puts
-    puts 'Next: sign entry.json into entry.jar and publish (Z-P15b: FdroidIndex::Publisher / FdroidIndexPublishJob,'
-    puts 'gated by ENABLE_FDROID_INDEX).'
+    puts 'Next: sign entry.json into entry.jar and publish (Z-P15b/Z-P15c/Z-P15d: FdroidIndex::Publisher /'
+    puts 'FdroidIndexPublishJob, gated by ENABLE_FDROID_INDEX).'
   end
 end

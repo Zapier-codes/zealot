@@ -189,7 +189,9 @@ above: D-P1/D-P2/D-P3/D-P4/D-P5/D-P6/D-P7/D-P8 (web) and S-P1/S-P2 (client). No 
   green inside the full 256-test suite — so this card is ticked `[x]`. **Still not verified:** a live delta on a
   device (a real patch applied over an installed build); the compile, the vectors and the tests are proven.
 - [~] **Z-P15 · F-Droid-compatible repo (fdroidserver)** — publish index-v2 + signed `entry.jar` beside the
-  signed Zealot index; the Zealot index stays the trust anchor. Owner **Z**.
+  signed Zealot index; the Zealot index stays the trust anchor. Owner **Z**. All four slices (P15a–d) now
+  built; the only thing keeping this `[~]` and not `[x]` is the one unverified-against-a-real-client
+  assumption (below), which needs a device, not this sandbox.
   <u>Cut (TSF) and Z-P15a built 2026-10-10.</u> The format was read from source, not guessed: fdroidserver
   (`fdroidserver/index.py`, `signindex.py`, `update.py` → `METADATA_VERSION = 30000`) and f-droid.org's own
   live `entry.json` / `index-v2.json`. **Z-P15a** (this session) writes the two JSON documents from the live
@@ -222,6 +224,30 @@ above: D-P1/D-P2/D-P3/D-P4/D-P5/D-P6/D-P7/D-P8 (web) and S-P1/S-P2 (client). No 
   `signing_fingerprint`), not a certificate SHA-256, so `preferredSigner` stays out until reconciled.
   **Z-P15c** (signer index) and **Z-P15d** (binary transparency log) remain open; the JAR entry is `entry.json`
   which is the entry point F-Droid clients fetch first, and `preferredSigner`/`signer index` are the c/d halves.
+  **Z-P15c + Z-P15d built 2026-10-10 (this session):** the second flagged item is reconciled. `Serializer`
+  now takes `signer_fingerprint:` — the org key's *certificate* SHA-256 (`AndroidSigningKey#certificate_sha256`,
+  computed through `keytool`) — and publishes it as each package's `metadata.preferredSigner` (F-Droid's real
+  per-package field: present on all 4577 of f-droid.org's live packages, checked this session) and as
+  `manifest.signer.sha256[]`; it also renders F-Droid's **signer index** (`signer-index.json`,
+  `{ "<packageName>": {"signer": "<sha256>"} }`, the exact shape of f-droid.org's live 552 KB file) mapping
+  every package to that one certificate. With no fingerprint supplied it falls back to the release's
+  `signing_key_checksum` (SHA-1 of the keystore — *not* a certificate SHA-256), which is the reconciliation the
+  card flagged; the fallback keeps a keyless run serializing and is documented as non-verifying.
+  `FdroidIndex::JarSigner` gained `extra_entries:` so `signer-index.json` is carried inside the same signed
+  `entry.jar` under its own name (entry.json first), covered by the one signature. `FdroidIndex::Publisher`
+  resolves the certificate best-effort (a missing JDK warn-falls-back, never fails a publish), publishes
+  `signer-index.json` + `signer-index.json.sig` (signed over its own bytes with the same key) and the
+  **binary transparency log**: new `FdroidIndex::TransparencyLog` renders `filesystemlog.json`
+  (`{path: [size, ctime_ns, mtime_ns, mode, uid, gid]}`, sorted) exactly as fdroidserver `btlog.py` does,
+  over the real byte sizes of exactly the published files. `.HTTP-headers.json` (a mirroring-deployment
+  artifact btlog.py writes from a live fetch) is deliberately not fabricated. `rake fdroid_index:generate`
+  writes `signer-index.json` too. **Verified this session:** pure-Ruby assertions on the serializer fields,
+  the fallback, the JAR extra entries and the filesystem log all pass; the multi-entry JAR signs with the real
+  JDK (`jarsigner -verify` → "jar verified"; entries `META-INF/MANIFEST.MF`, `.SF`, `.RSA`, `entry.json`,
+  `signer-index.json`, both payloads byte-preserved). Specs updated (`serializer_spec.rb` Z-P15c block,
+  new `transparency_log_spec.rb`, `jar_signer_spec.rb` extra-entry example) but not run under rspec
+  (gems/Postgres absent). **Still flagged:** the absolute `file.name` assumption (item 1) is still unverified
+  against a real F-Droid client — that remains the one thing before this ships to users.
 - [x] **Z-P16 · Funnels, exports** — Umami/Plausible/Matomo for site views, Metabase/Superset over Zealot's
   Postgres for reports and CSV/warehouse export. No new phone telemetry. Owner **Z**. Built 2026-10-10:
   Plausible + Matomo added to `layouts/_analytics` with read-only env settings (`PLAUSIBLE_DOMAIN`,
