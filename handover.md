@@ -373,6 +373,36 @@ Order: 44a, then 44b, 44c and 44d (independent of each other), 44e last (TSF: th
 
 **Honest limits:** workflows and the trust model can match Play. Its ML malware detection, device attestation and scale cannot be matched, and its OS-level trust depends on Google's platform. The differentiator is transparency: an open, verifiable index and on-device APK verification.
 
+**Console capability inventory (operator-directed 2026-10-10: "find all the features Play Console has that Zealot is missing").** The operator asked for a systematic sweep of the Play Console surface, naming **billing / revenue** in particular. This table is that sweep against what Zealot holds today; it extends the plane map above and defers to the existing Tasks 24–36 rather than opening duplicates. Status: **built** (on `develop`), **partial**, **carded** (an existing task owns it), or **n/a** (no honest equivalent for a multi-source open-source catalogue — recorded so it is not re-opened).
+
+| Play Console capability | Status here | Where / note |
+| --- | --- | --- |
+| Developer account / identity / publisher profiles | built | Tasks 24, 25; `PublisherProfile`, `devise` users. |
+| App record, listing text, graphics, localization | built | `apps`, `listing_texts`, `listing_graphics`. |
+| Transactional editing (draft → validate → commit) | built | Task 30a (the `listing_texts` commit/discard path). |
+| Release management (upload, notes, version, halt, supersede) | built / partial | `releases`, `release_uploads`, Task 46d supersede; staged rollout is carded (Task 30b). |
+| Tracks (internal / closed / open / production) | carded | Task 30b; production only is published today. |
+| App bundles (AAB) + dynamic delivery / asset packs | built | Bundle compile + `ENABLE_ASSET_PACK_DELIVERY`. |
+| Play App Signing / key rotation (upload key vs distribution key) | built | Tasks 35a; `PlayUploadKey` vs `AndroidSigningKey`; tenant key rotation 37b-ii-k*. |
+| Trust & policy: automated checks, then a human review queue | partial | Permission diff, signing continuity and integrity checks exist (Task 30c/30d); the human review queue is not built (Task 30). |
+| Content declarations: Data safety, Content rating, Target audience, Ads, News | partial | Some fields modelled and published in the index; the Console **forms** are carded (Task 34 and the D-Store/Storeapp parity docs). |
+| Ratings & reviews + developer replies | carded | Tasks 31b, 33 (the feedback plane); carried-over reviews exist in the index. |
+| **Billing: publisher paid store listings** | built | Hyperswitch (`checkouts`, `store_listing_payment`, `Payment`, `app_maintenance_billing`) lets a publisher pay for a paid listing. |
+| **Billing: user in-app purchases / subscriptions / price** | n/a | The catalogue serves free, open-source releases; there is no user to bill and no IAP to model. |
+| **Revenue / earnings reports, financial reports, payouts, revenue share** | missing | No reporting or payout surface exists. If the operator wants the publisher's money view, this is the concrete gap: a payments/revenue report over the Hyperswitch records already stored. Carded here as a candidate Task 50. |
+| Store presence: featured / editorial / collections / sponsored slots | built | `editorial`, `collections[]`, `sponsored_slots[]` (Task 29d, 31a). |
+| Store settings: country availability, pricing, content rating | partial | Category/vocabulary done (29e); country availability and pricing tables are not built. |
+| User & team management (collaborators, roles, ownership transfer) | built | `collaborators`, `new_owner`. |
+| API access (Publishing API, service tokens, GraphQL) | built | `api_tokens`, `graphql`. |
+| Notifications (email preferences, release notifications) | built | `email_preferences`, `notification_mailer`. |
+| Webhooks / integrations (CI, third-party events) | built | `web_hooks` (new/create/destroy, enable/disable, test event). |
+| Analytics / store performance | partial | `dashboards#_analytics` (installs/downloads); Play's acquisition and retention funnels are not built. |
+| Experiments / A-B listing tests | n/a | No traffic-scale experiment framework; recorded as no honest equivalent. |
+| Android vitals / crash & ANR reporting | n/a | No telemetry, by design (privacy) — consistent with the client. |
+| Policy compliance surfaces (DMCA, takedown, moderation) | built | `teardowns`; D-Store carries the public moderation/report side. |
+
+**What this found, said plainly:** the Console's *publishing* half is largely built; the named gap is **revenue reporting / payouts** (the Hyperswitch payment records exist, but nothing reports or pays out) and the **human review queue** (Task 30). Everything billing-adjacent on the *user* side is honestly `n/a` for a free catalogue. Neither missing item is built in this session — this entry is the inventory the operator asked for, carded so the next session can take the revenue report as **Task 50** if the operator confirms.
+
 **❓ Decisions (operator):**
 1. Updater before or after the Phase 2 console features? (Recommendation: Phase 2 first; the Updater's verification code depends on the index being stable.)
 2. Confirm the recommended answers recorded under Task 27 (❓1, ❓4, ❓6 refinement) and in the D-store handover.
