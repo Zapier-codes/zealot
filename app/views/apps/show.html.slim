@@ -48,6 +48,11 @@
         = button_link_to '', app_reviews_path(@app), 'comments', \
           class: 'd-join-item d-btn d-tooltip', \
           data: { tip: t('apps.show.reviews'), turbo_frame: '_top' }
+      - if !@app.archived && policy(AnonymousReview.new(app: @app)).index?
+        / Z-P9: moderate anonymous reviews the automated moderator held.
+        = button_link_to '', app_anonymous_reviews_path(@app), 'user-shield', \
+          class: 'd-join-item d-btn d-tooltip', \
+          data: { tip: t('apps.show.anonymous_reviews'), turbo_frame: '_top' }
       - if !@app.archived && policy(@app).show?
         / Z-P2/Z-P3/Z-P4: the automated-review policy status.
         = button_link_to '', app_policy_status_path(@app), 'shield-halved', \

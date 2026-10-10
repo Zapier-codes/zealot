@@ -41,6 +41,23 @@ Rails.application.routes.draw do
   get 'checkout/:token', to: 'checkouts#show', as: :store_listing_checkout, constraints: { token: %r{[^/]+} }
 
   #############################################
+  # Z-P9 (principle 2): anonymous reviews. Public, no account and no session. A client (or the website)
+  # first asks for a proof-of-work challenge, then posts the solved review, optionally signed by a
+  # device-bound key that was registered up front. See AnonymousReviewsController.
+  #############################################
+  get  'reviews/:package_name/challenge', to: 'anonymous_reviews#challenge',
+       as: :anonymous_review_challenge, format: false,
+       constraints: { package_name: /[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+/ }
+  # Register a device-bound key (its attestation chain is checked here) so a later review can carry the
+  # "verified install" mark. No key required to review; this only earns the mark.
+  post 'reviews/:package_name/keys', to: 'anonymous_reviews#register_key',
+       as: :anonymous_review_keys, format: false,
+       constraints: { package_name: /[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+/ }
+  post 'reviews/:package_name', to: 'anonymous_reviews#create',
+       as: :anonymous_reviews, format: false,
+       constraints: { package_name: /[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+/ }
+
+  #############################################
   # User
   #############################################
   # There is no separate sign-up page: the login form registers unknown emails
@@ -99,6 +116,13 @@ Rails.application.routes.draw do
     delete 'listing_translations/:locale', to: 'apps/listing_translations#destroy', as: :listing_translation
     # Z-P8: the reviews inbox — read an app's reviews and write the developer reply (one per review).
     resources :reviews, only: %i[index update], module: :apps
+    # Z-P9: moderate anonymous reviews the automated moderator held for a person (publish / reject).
+    resources :anonymous_reviews, only: %i[index], module: :apps do
+      member do
+        post :publish
+        post :reject
+      end
+    end
     # Z-P22: the deep-link verification checker — read the app's declared hosts and check each one's
     # /.well-known/assetlinks.json against the app's package + signing certificate.
     resource :deep_link_verification, only: :show, module: :apps

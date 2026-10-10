@@ -28,6 +28,9 @@ class App < ApplicationRecord
   # release. No uploader, route or reader yet (27d-d2, 27d-e1).
   has_many :listing_graphics, dependent: :destroy
   has_many :migrated_comments, dependent: :destroy # Task 45c: comments carried over from before the listing
+  # Z-P9: anonymous reviews left from the client or the website with a device-bound key and a proof-of-work
+  # token. One row per (app, reviewer_key); see AnonymousReview.
+  has_many :anonymous_reviews, dependent: :destroy
   # Task 34a-1: per-app API tokens for the owner's own CI (no route or caller until 34a-2).
   has_many :api_tokens, class_name: 'AppApiToken', dependent: :destroy
 

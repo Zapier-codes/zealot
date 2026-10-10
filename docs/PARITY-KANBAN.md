@@ -101,10 +101,22 @@ above: D-P1/D-P2/D-P3/D-P4/D-P5/D-P6/D-P7/D-P8 (web) and S-P1/S-P2 (client). No 
   2026-09-30 (BR/ID/SG/TH), global 2027. Owner **Z**.
 - [x] **Z-P8 · Reviews inbox + developer replies + reply templates (Tasks 31b, 33)** — anonymous by
   design. Owner **Z**.
-- [ ] **Z-P9 · Anonymous reviews (own task, cut by the TSF; principle 2)** — device-bound pseudonymous key
+- [x] **Z-P9 · Anonymous reviews (own task, cut by the TSF; principle 2)** — device-bound pseudonymous key
   (Android Keystore), one editable review per key per app, proof-of-work (ALTCHA) instead of a captcha,
   rate limits, automated moderation, "verified install" mark via Android Key Attestation. No accounts,
-  ever. Owner **Z** + **S**.
+  ever. Owner **Z** + **S**. Built 2026-10-10: `AnonymousReviewService`
+  (`issue_challenge!` PoW, `submit!`), `ReviewChallenge`, `ReviewerKey`, `AnonymousReview`,
+  `AnonymousReviewRateLimit`, `AnonymousReviewModerator`, `AndroidKeyAttestation`/`Attestation`,
+  `AnonymousReviewsController` (public `GET/POST /reviews/:package_name[/challenge|/keys]`) + tenant
+  moderation inbox. Signed over `package_name` (the client knows the package, not the numeric id), same
+  canonical bytes as the Android client. Published in the catalog index as `anonymous_reviews[]` (schema +
+  `docs/catalog_index_v2.md` updated). Client: Storeapp `ReviewClient`/`ReviewProto`/`DeviceReviewKey`/
+  `ReviewWriter` (registers the device key before submitting, so the fingerprint resolves); D-Store reads
+  and badges it (`mergeAppReviews`, `ReviewsList` "Verified install"). zealot's own `verified_install`
+  column was `string` in `schema.rb` vs `boolean` in the migration — schema.rb corrected. Written, partly
+  unrun in-sandbox (zealot has no bundle/postgres): the service's PoW + signature contract and the
+  attestation verifier pass standalone Ruby checks; the Kotlin client (8) and both D-Store suites
+  (carried-over + reader) pass.
 - [x] **Z-P10 · Task 50 · Revenue report + payouts** — reporting views over what Zealot stores, plus calls
   to **B-Pay-backend**: `POST /payouts/create`, `GET`/`PUT /{id}`, `/confirm`, `/cancel`, `/fulfill`,
   `/list`, `/aggregate`, `/filter`, `PUT /{id}/manual-update`. Bulk/schedule = Zealot's own loop over

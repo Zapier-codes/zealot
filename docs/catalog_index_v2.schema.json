@@ -158,6 +158,7 @@
         "verification",
         "base_stats",
         "reviews",
+        "anonymous_reviews",
         "sponsored_slots",
         "collections",
         "suggested_version_code",
@@ -655,6 +656,52 @@
                 ],
                 "format": "date-time",
                 "description": "Z-P8. When the developer reply was last written; null when there is no reply."
+              }
+            }
+          }
+        },
+        "anonymous_reviews": {
+          "description": "Z-P9. Live anonymous reviews, published so a reader can show them beside the carried-over `reviews`. Only `published` rows appear; `pending` waits for an owner and `rejected` never publishes. No reviewer identity is published (there is none). `verified_install` is the earned mark: the review carried a device-bound key that passed Android Key Attestation and named a real release of this app. Additive: no schema_version bump; a reader that does not know the key ignores it, and it is `[]` when the app has none.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "rating",
+              "body",
+              "verified_install",
+              "version_code",
+              "helpful_count",
+              "created_at"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "rating": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5
+              },
+              "body": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "verified_install": {
+                "type": "boolean"
+              },
+              "version_code": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "helpful_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
               }
             }
           }

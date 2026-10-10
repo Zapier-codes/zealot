@@ -236,6 +236,24 @@ zh-CN:
       update:
         saved: 回复已保存。
         refused: "回复未保存：%{reasons}。"
+    anonymous_reviews:
+      index:
+        title: 匿名评价
+        pending_title: 待审核
+        intro: "这些评价被自动拦截，因为它们可能属于垃圾信息（包含链接、联系方式或多项可疑特征）。发布使其公开，或拒绝将其排除。匿名评价不携带账号或身份信息。"
+        empty_pending: 没有待处理的评价——所有评价均已自动发布。
+        published_title: 最近发布
+        empty_published: 暂无已发布的匿名评价。
+        rejected_count: "已拒绝 %{count} 条"
+        stars: "%{count}★"
+        verified: 已验证安装
+        flagged: "拦截原因：%{reason}"
+        publish: 发布
+        reject: 拒绝
+      publish:
+        published: 评价已发布。
+      reject:
+        rejected: 评价已拒绝。
     policy_statuses:
       show:
         title: 政策状态
@@ -260,6 +278,7 @@ zh-CN:
       app_content: 应用内容
       listing_translations: 文案翻译
       reviews: 评价
+      anonymous_reviews: 匿名评价
       policy_status: 政策状态
       deep_link_verification: 深层链接验证
     deep_link_verifications:

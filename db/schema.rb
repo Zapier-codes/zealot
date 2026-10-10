@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_10_150000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_10_160000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -99,6 +99,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_10_150000) do
     t.index ["status"], name: "index_app_maintenance_billings_on_status"
     t.index ["user_id"], name: "index_app_maintenance_billings_on_user_id"
     t.check_constraint "amount_cents > 0", name: "app_maintenance_billings_amount_positive"
+  end
+
+  create_table "anonymous_reviews", force: :cascade do |t|
+    t.bigint "app_id", null: false
+    t.text "body"
+    t.datetime "created_at", null: false
+    t.integer "helpful_count", default: 0, null: false
+    t.string "moderation_reason"
+    t.integer "rating", null: false
+    t.bigint "reviewer_key_id", null: false
+    t.string "status", default: "published", null: false
+    t.bigint "tenant_id"
+    t.datetime "updated_at", null: false
+    t.boolean "verified_install", default: false, null: false
+    t.string "version_code"
+    t.index ["app_id", "reviewer_key_id"], name: "index_anonymous_reviews_on_app_id_and_reviewer_key_id", unique: true
+    t.index ["app_id", "status"], name: "index_anonymous_reviews_on_app_id_and_status"
+    t.index ["app_id"], name: "index_anonymous_reviews_on_app_id"
+    t.index ["reviewer_key_id"], name: "index_anonymous_reviews_on_reviewer_key_id"
   end
 
   create_table "apple_keys", force: :cascade do |t|
@@ -719,6 +738,33 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_10_150000) do
     t.check_constraint "status::text = 'available'::text OR status::text = 'held'::text OR status::text = 'halted'::text OR status::text = 'pulled'::text", name: "releases_status_known"
   end
 
+  create_table "review_challenges", force: :cascade do |t|
+    t.integer "cost", default: 3, null: false
+    t.datetime "created_at", null: false
+    t.datetime "expires_at", null: false
+    t.string "ip_digest"
+    t.string "nonce", null: false
+    t.string "salt", null: false
+    t.datetime "solved_at"
+    t.bigint "tenant_id"
+    t.datetime "updated_at", null: false
+    t.index ["ip_digest", "created_at"], name: "index_review_challenges_on_ip_digest_and_created_at"
+    t.index ["nonce"], name: "index_review_challenges_on_nonce", unique: true
+  end
+
+  create_table "reviewer_keys", force: :cascade do |t|
+    t.boolean "attestation_verified", default: false, null: false
+    t.datetime "attestation_verified_at"
+    t.string "attestation_status", default: "unverified", null: false
+    t.datetime "created_at", null: false
+    t.string "fingerprint", null: false
+    t.datetime "last_seen_at"
+    t.text "public_key_pem"
+    t.bigint "tenant_id"
+    t.datetime "updated_at", null: false
+    t.index ["fingerprint", "tenant_id"], name: "index_reviewer_keys_on_fingerprint_and_tenant_id", unique: true
+  end
+
   create_table "schemes", force: :cascade do |t|
     t.bigint "app_id"
     t.string "name", null: false
@@ -884,6 +930,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_10_150000) do
   end
 
   add_foreign_key "android_package_registrations", "apps", on_delete: :nullify
+  add_foreign_key "anonymous_reviews", "apps"
+  add_foreign_key "anonymous_reviews", "reviewer_keys"
   add_foreign_key "app_api_tokens", "apps", on_delete: :cascade
   add_foreign_key "app_api_tokens", "users", column: "created_by_id", on_delete: :nullify
   add_foreign_key "app_maintenance_billings", "apps"

@@ -236,6 +236,24 @@ en:
       update:
         saved: Reply saved.
         refused: "The reply was not saved: %{reasons}."
+    anonymous_reviews:
+      index:
+        title: Anonymous reviews
+        pending_title: Held for review
+        intro: "These reviews were held automatically because they may be spam (a link, a contact address, or several signals together). Publish one to make it public, or reject it to keep it out. Anonymous reviews carry no account and no identity."
+        empty_pending: Nothing is waiting — every review was published automatically.
+        published_title: Recently published
+        empty_published: No published anonymous reviews yet.
+        rejected_count: "%{count} rejected"
+        stars: "%{count}★"
+        verified: Verified install
+        flagged: "Held for: %{reason}"
+        publish: Publish
+        reject: Reject
+      publish:
+        published: Review published.
+      reject:
+        rejected: Review rejected.
     policy_statuses:
       show:
         title: Policy status
@@ -260,6 +278,7 @@ en:
       app_content: App content
       listing_translations: Listing translations
       reviews: Reviews
+      anonymous_reviews: Anonymous reviews
       policy_status: Policy status
       deep_link_verification: Deep link verification
       # Z-P22: the deep-link verification checker page.

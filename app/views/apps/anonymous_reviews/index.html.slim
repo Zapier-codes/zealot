@@ -1,0 +1,59 @@
+/ Z-P9 (principle 2): moderate anonymous reviews. `pending` rows were held by the automated moderator (a
+/ link, an address, or several soft signals in one review); publish makes one public, reject keeps it out.
+/ Published rows are listed read-only below. A review carries no identity to show -- only its stars, text,
+/ date and the earned "verified install" mark.
+- content_for :title do
+  = @title
+
+- content_for :section_title do
+  = @title
+  small class="pl-2 text-sm"
+    = @app.name
+
+.row
+  .col-md-12
+    .card
+      .card-header
+        h3.card-title = t('.pending_title')
+      .card-body class="space-y-4"
+        p.text-sm.opacity-70 = t('.intro')
+
+        - if @pending.empty?
+          p.opacity-70 = t('.empty_pending')
+        - else
+          - @pending.each do |review|
+            .border.border-base-300.rounded.p-4.space-y-2
+              div class="flex items-center justify-between gap-2"
+                div class="flex items-center gap-2"
+                  span.badge = t('.stars', count: review.rating)
+                  - if review.marked_verified?
+                    span.badge.badge-success = t('.verified')
+                span.text-xs.opacity-60 = review.created_at
+              - if review.body.present?
+                p.text-sm.whitespace-pre-line = review.body
+              p.text-xs.opacity-60 = t('.flagged', reason: review.moderation_reason)
+              div class="flex gap-2"
+                = button_to t('.publish'), publish_app_anonymous_review_path(@app, review), \
+                  method: :post, class: 'd-btn d-btn-success d-btn-sm'
+                = button_to t('.reject'), reject_app_anonymous_review_path(@app, review), \
+                  method: :post, class: 'd-btn d-btn-error d-btn-outline d-btn-sm'
+
+.row.mt-4
+  .col-md-12
+    .card
+      .card-header
+        h3.card-title = t('.published_title')
+      .card-body class="space-y-3"
+        p.text-sm.opacity-60 = t('.rejected_count', count: @rejected_count)
+        - if @recent_published.empty?
+          p.opacity-70 = t('.empty_published')
+        - else
+          - @recent_published.each do |review|
+            .border-b.border-base-200.pb-2 class="flex items-center justify-between gap-2"
+              div class="flex items-center gap-2"
+                span.badge = t('.stars', count: review.rating)
+                - if review.marked_verified?
+                  span.badge.badge-success = t('.verified')
+                - if review.body.present?
+                  span.text-sm = truncate(review.body, length: 120)
+              span.text-xs.opacity-60 = review.created_at
