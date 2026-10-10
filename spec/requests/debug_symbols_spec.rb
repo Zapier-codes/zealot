@@ -50,8 +50,9 @@ RSpec.describe 'Release debug symbols', type: :request do
            params: { token: developer.token, debug_symbol: { kind: 'mapping', file: upload_file('mapping.txt') } }
 
       expect(response).to have_http_status(:created)
-      expect(release.debug_symbols.mapping_for(release).kind).to eq('mapping')
-      expect(release.debug_symbols.mapping_for(release).checksum).to be_present
+      stored = DebugSymbol.mapping_for(release)
+      expect(stored.kind).to eq('mapping')
+      expect(stored.checksum).to be_present
     end
 
     it 'replaces rather than appends when the same kind is uploaded again' do
@@ -78,13 +79,13 @@ RSpec.describe 'Release debug symbols', type: :request do
       post "/channels/#{channel.id}/releases/#{release.id}/debug_symbols",
            params: { debug_symbol: { kind: 'native_symbols', file: upload_file('symbols.zip') } }
 
-      expect(release.debug_symbols.native.count).to eq(1)
+      expect(release.debug_symbols.where(kind: 'native_symbols').count).to eq(1)
     end
 
     it 'removes one on request' do
       post "/channels/#{channel.id}/releases/#{release.id}/debug_symbols",
            params: { debug_symbol: { kind: 'mapping', file: upload_file('mapping.txt') } }
-      symbol = release.debug_symbols.mapping_for(release)
+      symbol = DebugSymbol.mapping_for(release)
 
       delete "/channels/#{channel.id}/releases/#{release.id}/debug_symbols/#{symbol.id}"
 

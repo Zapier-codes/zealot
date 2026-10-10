@@ -1,0 +1,80 @@
+/ Z-P21: machine translation of the listing. The owner picks target locales on the form (the form POSTs
+/ `locales`); each result is listed below with its state (machine / reviewed / stale) and an
+/ approve-or-discard action. Only approved, non-stale translations reach the signed catalog index.
+/ Translation is off unless ZEALOT_TRANSLATE_URL is set; the page says so and the button still posts.
+
+- content_for :title do
+  = @title
+
+- content_for :section_title do
+  = @title
+  small class="pl-2 text-sm"
+    = @app.name
+
+.row
+  .col-md-12
+    .card
+      .card-header
+        h3.card-title = t('.card_title')
+      .card-body class="space-y-4"
+        p.text-sm.opacity-70 = t('.intro')
+        p.text-xs.opacity-65
+          = t('.source_note', source: Apps::ListingTranslationsController::SOURCE_LOCALE)
+
+        - unless @configured
+          .d-alert.d-alert-warning role="status"
+            span = t('.disabled_note')
+
+        = form_with url: translate_listing_translations_path(@app), method: :post, \
+          html: { class: 'space-y-3' }, data: { turbo_frame: '_top' } do |f|
+          div
+            = f.label :locales, t('.locales_label'), class: 'block text-sm font-semibold mb-1'
+            = f.text_field :locales, value: @locales.join(','), name: 'locales', \
+              class: 'd-input w-full', placeholder: t('.locales_placeholder')
+            p.text-xs.opacity-65.mt-1 = t('.locales_hint')
+          div
+            = f.submit t('.translate'), class: 'd-btn d-btn-primary'
+
+        .border-t.border-base-300.pt-4
+          h4.text-sm.font-semibold.mb-2 = t('.stored_title')
+          - if @rows.empty?
+            p.text-sm.opacity-65 = t('.none_stored')
+          - else
+            table.table.table-sm.w-full
+              thead
+                tr
+                  th = t('.columns.locale')
+                  th = t('.columns.state')
+                  th = t('.columns.short_description')
+                  th = t('.columns.actions')
+              tbody
+                - @rows.each do |row|
+                  tr
+                    td = row[:locale]
+                    td
+                      - if row[:stale]
+                        span.d-badge.d-badge-warning = t('.states.stale')
+                      - elsif row[:entry]['reviewed']
+                        span.d-badge.d-badge-success = t('.states.reviewed')
+                      - else
+                        span.d-badge = t('.states.machine')
+                    td = truncate(row[:entry]['short_description'].to_s.presence || row[:entry]['description'].to_s, length: 80)
+                    td class="flex flex-wrap gap-2"
+                      - unless row[:entry]['reviewed'] && !row[:stale]
+                        = button_to t('.approve'), review_listing_translation_path(@app, locale: row[:locale]), \
+                          method: :post, class: 'd-btn d-btn-sm'
+                      = button_to t('.discard'), listing_translation_path(@app, locale: row[:locale]), \
+                        method: :delete, class: 'd-btn d-btn-sm d-btn-error'
+
+    .card.mt-4
+      .card-header
+        h3.card-title = t('.source_card_title')
+      .card-body class="space-y-3"
+        div
+          p.text-xs.opacity-65 = t('apps.listing_texts.show.fields.short_description')
+          p.text-sm = @source[:short_description].presence || t('.empty')
+        div
+          p.text-xs.opacity-65 = t('apps.listing_texts.show.fields.description')
+          p.text-sm whitespace-pre-line
+            = @source[:description].presence || t('.empty')
+        = link_to t('apps.listing_texts.show.back'), app_path(@app), class: 'd-link', data: { turbo_frame: '_top' }

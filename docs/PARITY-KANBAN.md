@@ -159,8 +159,17 @@ above: D-P1/D-P2/D-P3/D-P4/D-P5/D-P6/D-P7/D-P8 (web) and S-P1/S-P2 (client). No 
   (algorithm runtime-verified).
 - [x] **Z-P20 · Country availability** — CDN country header or GeoLite2/DB-IP lite (availability only).
   Owner **Z**.
-- [ ] **Z-P21 · Machine translation of listings** — Weblate (Crowdin file already exists) / LibreTranslate /
-  Argos. Owner **Z**.
+- [x] **Z-P21 · Machine translation of listings** — Weblate (Crowdin file already exists) / LibreTranslate /
+  Argos. Owner **Z**. Built 2026-10-10: `apps.listing_translations` (jsonb, one entry per locale) stores the
+  machine translation of the listing's name and descriptions with a `source_digest` of the text it was made
+  from; `MachineTranslatorClient` (plain Faraday, the LibreTranslate/Argos `/translate` shape, off until
+  `ZEALOT_TRANSLATE_URL` is set) does the call, `MachineTranslation` decides what to store and marks a
+  translation stale when the source text later changes. `Apps::ListingTranslationsController` + the
+  "Listing translations" page and app-page link translate / approve / discard; the signed index publishes
+  only approved, non-stale translations under `listing.translations` (schema + `CatalogIndex::Serializer`
+  `translations_for`, additive). en/zh-CN; `spec/services/machine_translation_spec.rb`; the digest/stale
+  algorithm runtime-verified (no Rails in-sandbox). The Weblate/Crowdin human-translation half is not
+  built (the Crowdin file stays the route for that).
 - [x] **Z-P22 · Deep link verification checker (assetlinks)** — Google Digital Asset Links API. Owner **Z**.
   Built 2026-10-10: `AssetLinks::Verifier` reads a host's `/.well-known/assetlinks.json` once (bounded
   body, short timeouts, host validated first) and answers `verified` / `not_associated` / `unreachable` /

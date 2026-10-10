@@ -92,6 +92,11 @@ Rails.application.routes.draw do
     resource :app_content, only: %i[show update destroy], module: :apps do
       post :commit
     end
+    # Z-P21: machine translation of the listing. The index publishes only approved, non-stale translations.
+    get 'listing_translations', to: 'apps/listing_translations#show', as: :listing_translations
+    post 'listing_translations/translate', to: 'apps/listing_translations#translate', as: :translate_listing_translations
+    post 'listing_translations/:locale/review', to: 'apps/listing_translations#review', as: :review_listing_translation
+    delete 'listing_translations/:locale', to: 'apps/listing_translations#destroy', as: :listing_translation
     # Z-P8: the reviews inbox — read an app's reviews and write the developer reply (one per review).
     resources :reviews, only: %i[index update], module: :apps
     # Z-P22: the deep-link verification checker — read the app's declared hosts and check each one's

@@ -234,7 +234,8 @@
             "privacy_policy_url",
             "data_safety",
             "contains_ads",
-            "has_in_app_purchases"
+            "has_in_app_purchases",
+            "translations"
           ],
           "additionalProperties": false,
           "properties": {
@@ -419,6 +420,24 @@
                 "boolean",
                 "null"
               ]
+            },
+            "translations": {
+              "description": "Z-P21: the reviewed, non-stale machine translations of the listing's free text, keyed by locale (e.g. \"de\"). Empty when translation is off, nothing was made, or the source text changed since (a stale translation is never published). Each value carries the translated description and/or short_description; omitted fields mean the source had none.",
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "description": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "short_description": {
+                    "type": "string",
+                    "maxLength": 80
+                  }
+                }
+              }
             }
           }
         },

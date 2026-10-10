@@ -38,6 +38,11 @@
         = button_link_to '', app_app_content_path(@app), 'clipboard-list', \
           class: 'd-join-item d-btn d-tooltip', \
           data: { tip: t('apps.show.app_content'), turbo_frame: '_top' }
+      - if !@app.archived && policy(@app).update?
+        / Z-P21: machine translation of the listing (reviewed translations are published in the index).
+        = button_link_to '', app_listing_translations_path(@app), 'language', \
+          class: 'd-join-item d-btn d-tooltip', \
+          data: { tip: t('apps.show.listing_translations'), turbo_frame: '_top' }
       - if !@app.archived && policy(MigratedComment.new(app: @app)).index?
         / Z-P8: the reviews inbox (read reviews, write the developer reply).
         = button_link_to '', app_reviews_path(@app), 'comments', \

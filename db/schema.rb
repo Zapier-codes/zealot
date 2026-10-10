@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_10_130000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_10_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -171,6 +171,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_10_130000) do
     t.bigint "tenant_id"
     t.datetime "updated_at", null: false
     t.boolean "updater_enabled", default: true, null: false
+    t.jsonb "listing_translations", default: {}, null: false
     t.datetime "verification_checked_at"
     t.boolean "verification_key_registered", default: false, null: false
     t.boolean "verification_package_registered", default: false, null: false

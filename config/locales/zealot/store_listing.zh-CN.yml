@@ -112,6 +112,45 @@ zh-CN:
       destroy:
         discarded: 草稿已放弃，上架信息未改变。
         nothing: 没有可放弃的草稿。
+    listing_translations:
+      show:
+        title: 商店文案翻译
+        card_title: 机器翻译
+        intro: 将商店文案的名称和描述翻译成其他语言。机器翻译会先作为草稿保存，只有在你批准后才会发布到商店；之后修改原文会把翻译标记为已过期。
+        source_note: "文案以 %{source} 撰写，翻译以此为原文。"
+        disabled_note: 机器翻译未启用。请设置 ZEALOT_TRANSLATE_URL 指向 LibreTranslate 或 Argos 服务后启用。
+        locales_label: 目标语言
+        locales_placeholder: "de, fr, pt-BR"
+        locales_hint: 使用逗号分隔的语言代码。
+        translate: 开始翻译
+        stored_title: 已保存的翻译
+        none_stored: 暂无翻译。
+        source_card_title: 原文（英文）
+        empty: 尚未填写。
+        columns:
+          locale: 语言
+          state: 状态
+          short_description: 简短说明
+          actions: 操作
+        states:
+          machine: 机器翻译 — 待审核
+          reviewed: 已批准
+          stale: 已过期
+        approve: 批准
+        discard: 删除
+      translate:
+        disabled: 机器翻译未启用。请设置 ZEALOT_TRANSLATE_URL 后重试。
+        no_locales: 请至少选择一种目标语言。
+        done: "已翻译：%{locales}。"
+        failed: "未能翻译：%{reasons}"
+        partial: "已翻译 %{locales}，但部分失败：%{reasons}"
+        none: 没有新的翻译。
+      review:
+        approved: "已批准 %{locale} 翻译，将显示在商店中。"
+        approve_failed: "无法批准 %{locale} 翻译 — 可能已过期，请先重新翻译。"
+      destroy:
+        discarded: "已删除 %{locale} 翻译。"
+        missing: "没有可删除的 %{locale} 翻译。"
     app_contents:
       show:
         title: 应用内容
@@ -219,6 +258,7 @@ zh-CN:
       store_listing: 商店上架
       listing_text: 商店文字
       app_content: 应用内容
+      listing_translations: 文案翻译
       reviews: 评价
       policy_status: 政策状态
       deep_link_verification: 深层链接验证

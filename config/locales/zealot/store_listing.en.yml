@@ -112,6 +112,45 @@ en:
       destroy:
         discarded: Draft discarded. The listing was not changed.
         nothing: There is no draft to discard.
+    listing_translations:
+      show:
+        title: Listing translations
+        card_title: Machine translation
+        intro: Translate the store listing's name and descriptions into other languages. A machine translation is stored as a draft and only published on the store once you approve it; editing the original text later marks a translation as out of date.
+        source_note: "The listing is authored in %{source}; translations are made from that text."
+        disabled_note: Machine translation is off. Set ZEALOT_TRANSLATE_URL to a LibreTranslate or Argos server to turn it on.
+        locales_label: Target languages
+        locales_placeholder: "de, fr, pt-BR"
+        locales_hint: Comma-separated language codes.
+        translate: Translate
+        stored_title: Stored translations
+        none_stored: No translations yet.
+        source_card_title: Source text (English)
+        empty: Nothing written yet.
+        columns:
+          locale: Language
+          state: State
+          short_description: Short description
+          actions: Actions
+        states:
+          machine: Machine — needs review
+          reviewed: Approved
+          stale: Out of date
+        approve: Approve
+        discard: Discard
+      translate:
+        disabled: Machine translation is off. Set ZEALOT_TRANSLATE_URL and try again.
+        no_locales: Choose at least one target language.
+        done: "Translated: %{locales}."
+        failed: "Nothing was translated: %{reasons}"
+        partial: "Translated %{locales}, but some failed: %{reasons}"
+        none: Nothing new was translated.
+      review:
+        approved: "Approved the %{locale} translation. It will appear on the store."
+        approve_failed: "The %{locale} translation could not be approved — it may be out of date. Re-translate it first."
+      destroy:
+        discarded: "Discarded the %{locale} translation."
+        missing: "There is no %{locale} translation to discard."
     app_contents:
       show:
         title: App content
@@ -219,6 +258,7 @@ en:
       store_listing: Store listing
       listing_text: Store listing text
       app_content: App content
+      listing_translations: Listing translations
       reviews: Reviews
       policy_status: Policy status
       deep_link_verification: Deep link verification

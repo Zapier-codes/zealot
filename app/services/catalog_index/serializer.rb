@@ -150,6 +150,7 @@ module CatalogIndex
           contains_ads: flag_for(app, :contains_ads),          # Z-P5
           has_in_app_purchases: flag_for(app, :has_in_app_purchases), # Z-P5
           privacy_policy_url: text_for(app, :privacy_policy_url),     # Z-P6
+          translations: translations_for(app),                       # Z-P21
         },
         slug: slug_for(app),
         summary: text_for(app, :short_description),   # Task 27e-b: the one-line short description (<= 80 characters)
@@ -238,9 +239,17 @@ module CatalogIndex
     # always said. Duck-typed so a fixture without the column still reads as "all regions".
     def available_regions_for(app)
       return nil unless app.respond_to?(:available_regions)
-
       regions = Array(app.available_regions).map { |code| code.to_s.upcase }.select { |code| code.match?(/\A[A-Z]{2}\z/) }
       regions.presence
+    end
+
+    # Z-P21: the reviewed, non-stale machine translations of the listing's free text, keyed by locale. Empty
+    # when translation is off, none was made, or a translation's source text has since changed (stale). The
+    # staleness rule lives in MachineTranslation so the Console and the index agree on what "stale" means.
+    def translations_for(app)
+      MachineTranslation.publishable(app)
+    rescue StandardError
+      {}
     end
 
     # Task 45a: the downloads and ratings an app has from before it was listed here, under a neutral name: a

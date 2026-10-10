@@ -677,8 +677,12 @@ class App < ApplicationRecord
     # not be able to stage their own verification status.
     verification_changed = saved_change_to_developer_verified? || saved_change_to_verification_package_registered? ||
                            saved_change_to_verification_key_registered? || saved_change_to_verification_checked_at?
+    # Z-P21: the index carries `listing.translations`, so storing/approving/discarding one republishes. Kept
+    # out of CATALOG_INDEX_LISTING_FIELDS for the same reason as the editorial and verification blocks: a
+    # translation is staged through MachineTranslation, not through ListingEdit.
+    translations_changed = saved_change_to_listing_translations?
     return unless saved_change_to_listing_status? || watched_field_changed || editorial_flag_changed ||
-                  verification_changed || saved_change_to_tenant_id?
+                  verification_changed || translations_changed || saved_change_to_tenant_id?
 
     catalog_index_tenants_to_republish.each { |tenant| CatalogIndexPublishJob.enqueue_for(tenant) }
   end
