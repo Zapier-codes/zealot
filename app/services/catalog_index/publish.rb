@@ -96,6 +96,12 @@ module CatalogIndex
         'taxonomy.json.sig' => "#{@key.sign(taxonomy.manifest_json)}\n",
         '.nojekyll' => ''
       }
+      # Z-P24: when the organisation has set managed-configuration policy, publish it too, so a DPC reads
+      # the same values Storeapp expects (a single source of truth). Unmanaged (the default) publishes
+      # nothing new, so this is inert until an operator sets a key.
+      if (managed = CatalogIndex::ManagedConfig.from_settings) && managed.configured?
+        files['managed-config.json'] = managed.to_json
+      end
       commit = client.publish(files, message: "catalog index#{message_scope} #{signed.generated_at.utc.iso8601} (#{signed.key_id})",
                                      root: publish_root)
 

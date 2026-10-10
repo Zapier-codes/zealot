@@ -1,0 +1,40 @@
+/ Z-P24 (enterprise device management): the managed-configuration panel and the document a DPC reads.
+- content_for :title do
+  = t('.title')
+
+- content_for :section_title do
+  = t('.title')
+
+.row
+  .col-md-12
+    .card
+      .card-header
+        h3.card-title = t('.title')
+      .card-body.space-y-3
+        p.text-sm.opacity-70 = t('.intro')
+        - if @configured
+          .d-alert.d-alert-success role="status" = t('.configured')
+        - else
+          .d-alert.d-alert-warning role="alert" = t('.not_configured')
+        dl.grid.grid-cols-1.gap-2
+          div
+            dt.text-sm.font-semibold = t('.enabled_sources')
+            dd = @document['config']['enabled_sources'].inspect
+          div
+            dt.text-sm.font-semibold = t('.show_desktop_sources')
+            dd = @document['config']['show_desktop_sources'].inspect
+          div
+            dt.text-sm.font-semibold = t('.hidden_packages')
+            dd = @document['config']['hidden_packages'].inspect
+          div
+            dt.text-sm.font-semibold = t('.managed_keys')
+            dd = @document['managed_keys'].inspect
+          div
+            dt.text-sm.font-semibold = t('.document_url')
+            dd
+              = link_to download_admin_managed_config_path, class: 'd-link' do
+                = download_admin_managed_config_path
+        hr
+        p.text-sm.font-semibold = t('.known_sources')
+        p.text-sm.opacity-70 = @source_tokens.join(', ')
+        pre.bg-gray-100.p-2.rounded.text-xs = JSON.pretty_generate(@document)

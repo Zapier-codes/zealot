@@ -333,6 +333,12 @@ Rails.application.routes.draw do
       resource :saml, only: :show, controller: 'saml_settings' do
         get :metadata
       end
+
+      # Z-P24 (enterprise device management): the managed-configuration panel and the
+      # `managed-config.json` document a DPC's provisioning tooling reads.
+      resource :managed_config, only: :show, controller: 'managed_configs' do
+        get :download
+      end
       resources :apple_keys, except: %i[ edit update ] do
         member do
           put :sync_devices

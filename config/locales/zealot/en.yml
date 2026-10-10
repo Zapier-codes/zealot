@@ -423,6 +423,19 @@ en:
         sign_authn: Sign AuthnRequests
         yes: "Yes"
         no: "No"
+    # Z-P24 (enterprise device management): the managed-configuration panel and the document a DPC reads.
+    managed_config:
+      show:
+        title: Managed configuration
+        intro: "The organisation policy a device policy controller (Headwind MDM, Android Enterprise, any DPC) hands to the store app through RestrictionsManager. Edit the policy under Settings (the Enterprise group); this page reports readiness and gives the document the DPC reads. A key the organisation does not set leaves the person's own choice untouched."
+        configured: Managed configuration is set and is published as managed-config.json.
+        not_configured: "No managed configuration is set, so the store is unmanaged and no managed-config.json is published."
+        enabled_sources: Enabled sources
+        show_desktop_sources: Show desktop sources
+        hidden_packages: Hidden packages
+        managed_keys: Keys the organisation set
+        document_url: managed-config.json
+        known_sources: Source names the client recognises
     sponsored_slots:
       title: Sponsored Slots
       index:
@@ -498,6 +511,10 @@ en:
       github: Github
       gitlab: Gitlab
       google_oauth: Google OAuth
+      # Z-P24 (enterprise device management): the Settings scope that holds the managed-configuration policy.
+      enterprise: Enterprise
+      managed_config: Managed configuration
+      managed_config_hint: "The organisation policy a device policy controller hands to the store app. enabled_sources and hidden_packages are comma-separated; show_desktop_sources is true/false. A key left blank is not set, so the person's own choice stays. See the Managed configuration panel for the published document."
       smtp: Email SMTP
       mailer_default_from: Default email send from
       mailer_default_reply_to: Default email reply to

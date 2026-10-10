@@ -58,4 +58,22 @@ namespace :play_catalog do
     puts "error:   #{result.error}" if result.error.present?
     puts JSON.pretty_generate(result.panel) if result.panel
   end
+
+  desc 'Report the self-hosted Play token dispenser (Z-P25, rule 4) without printing the token'
+  task dispenser: :environment do
+    dispenser = Play::TokenDispenser.new
+    puts "PLAY_DISPENSER_ENABLED=#{ENV.fetch('PLAY_DISPENSER_ENABLED', 'false')}"
+    if dispenser.url.empty?
+      abort 'Set PLAY_DISPENSER_URL (and PLAY_DISPENSER_ENABLED=true).'
+    end
+
+    result = dispenser.call
+    if result.ok?
+      # Never print the token: only prove one was issued, and how long it lasts.
+      puts "dispenser ok: token length=#{result.token.bytesize} " \
+           "expires_at=#{result.expires_at&.iso8601 || 'unknown'}"
+    else
+      abort "dispenser miss: #{result.error}"
+    end
+  end
 end

@@ -420,6 +420,19 @@ zh-CN:
         sign_authn: 对 AuthnRequest 签名
         yes: "是"
         no: "否"
+    # Z-P24（企业设备管理）：托管配置面板及 DPC 读取的文档。
+    managed_config:
+      show:
+        title: 托管配置
+        intro: "组织策略，由设备策略控制器（Headwind MDM、Android Enterprise 或任意 DPC）通过 RestrictionsManager 交给商店应用。请在“设置”（企业组）中编辑策略；此页面报告就绪状态并提供 DPC 读取的文档。组织未设置的键不会改动用户自己的选择。"
+        configured: 托管配置已设置，并会作为 managed-config.json 发布。
+        not_configured: "未设置托管配置，商店处于非托管状态，不会发布 managed-config.json。"
+        enabled_sources: 启用的来源
+        show_desktop_sources: 显示桌面来源
+        hidden_packages: 隐藏的应用包
+        managed_keys: 组织已设置的键
+        document_url: managed-config.json
+        known_sources: 客户端可识别的来源名称
     sponsored_slots:
       title: 赞助位
       index:
@@ -495,6 +508,10 @@ zh-CN:
       gitlab: Gitlab
       github: Github
       google_oauth: Google OAuth
+      # Z-P24（企业设备管理）：存放托管配置策略的设置分组。
+      enterprise: 企业
+      managed_config: 托管配置
+      managed_config_hint: "由设备策略控制器交给商店应用的组织策略。enabled_sources 与 hidden_packages 用逗号分隔；show_desktop_sources 为 true/false。留空的键即未设置，用户自己的选择保持不变。发布的文档见“托管配置”面板。"
       smtp: 邮件配置
       mailer_default_from: 发送地址
       mailer_default_reply_to: 回复地址

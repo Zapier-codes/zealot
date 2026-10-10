@@ -143,6 +143,18 @@ class Setting < RailsSettings::Base
     }, validates: { json: { format: :hash } }
   end
 
+  # Z-P24 (enterprise device management): the organisation's managed-configuration policy, the Console half
+  # that pairs with Storeapp's RestrictionsManager reader (S-P3). The three keys are exactly the ones the
+  # client reads; an unset key is left out (the person's own choice stays), and nothing here is guessed. A
+  # deployment that sets none publishes no `managed-config.json` and is unmanaged, exactly as before.
+  scope :enterprise do
+    field :managed_config, type: :hash, display: true, default: {
+      enabled_sources: ENV['MANAGED_ENABLED_SOURCES'],
+      show_desktop_sources: ENV['MANAGED_SHOW_DESKTOP_SOURCES'],
+      hidden_packages: ENV['MANAGED_HIDDEN_PACKAGES']
+    }, validates: { json: { format: :hash } }
+  end
+
   scope :smtp do
     field :mailer_default_from, default: ENV['ACTION_MAILER_DEFAULT_FROM'], type: :string,
       readonly: true, display: true

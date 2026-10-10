@@ -6,8 +6,31 @@ module ReleaseParser
   def parse!(parser, default_source)
     @manifest_parse_attempted = true
     parse_app(parser, default_source)
+    merge_external_compatibility
 
     self
+  end
+
+  # Z-P14 auto-fill (docs/PARITY-KANBAN.md): `AppInfo` cannot open an Android App Bundle's split APKs, so
+  # `.aab` uploads reach the catalog with blank compatibility fields — and even on the APK path it never
+  # fills `screen_densities` or `required_features`. `Play::ApkInspector` shells out to `bundletool` (already
+  # in the image) to read them. It runs only when a file is on disk and the inspector is configured, and it
+  # FILLS BLANKS only: whatever `AppInfo` read stays authoritative, so this can never overwrite a good read
+  # with a worse one. Never raises — the inspector reports a miss.
+  def merge_external_compatibility
+    return unless @manifest_parse_attempted
+    return unless android_app_bundle? || device_type == Channel.device_types['android']
+    return unless file&.path && File.file?(file.path)
+
+    result = Play::ApkInspector.call(file.path)
+    return unless result.ok?
+
+    c = result.compatibility
+    self.min_sdk_version = safe_integer(c[:min_sdk_version]) if min_sdk_version.blank? && c[:min_sdk_version]
+    if target_sdk_version.blank? && c[:target_sdk_version]
+      self.target_sdk_version = safe_integer(c[:target_sdk_version])
+    end
+    self.required_features = Array(c[:required_features]) if Array(required_features).empty?
   end
 
   # D-Store leaf 7.a.ii.zi (Storeapp uploads its release bundle here). #parse_app has always

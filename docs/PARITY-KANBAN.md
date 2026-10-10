@@ -64,6 +64,16 @@ Owner key: **Z** = zealot (Console, Rails, `develop`) · **S** = Storeapp (Andro
   `CatalogIndex::Serializer#compatibility_for` emits them under `versions[].compatibility` (schema-validated).
   This is what S-P2 and D's "works on your device" read. Owner **Z**. (The `apkanalyzer`/`aapt2` *auto-fill*
   at upload time is a separate enhancement, not this card's publishing deliverable.)
+  <u>Auto-fill built 2026-10-10 (this session).</u> The named enhancement now exists: `Play::ApkInspector`
+  (`app/services/play/apk_inspector.rb`) shells out to `bundletool dump manifest --features` (already in the
+  image; same process-boundary, never-raise posture as `Play::BackendRunner`) and reads `minSdkVersion`,
+  `targetSdkVersion` and required `uses-feature` names, which `AppInfo` cannot read from an Android App
+  Bundle's split APKs and never read for `required_features` at all. `ReleaseParser#merge_external_compatibility`
+  folds the result onto the release **filling blanks only** (whatever `AppInfo` read stays authoritative) and
+  is a no-op when the inspector is unconfigured, so an upload path with no `bundletool` behaves exactly as
+  before. Command/timeout overridable via `PLAY_INSPECT_COMMAND` / `PLAY_INSPECT_TIMEOUT_SECONDS`. Spec
+  `spec/services/play/apk_inspector_spec.rb`; two standalone harnesses (inspector + the concern's merge, the
+  latter exercising the real concern against stub hosts) pass.
 
 ## Done (prior session)
 
@@ -342,8 +352,23 @@ above: D-P1/D-P2/D-P3/D-P4/D-P5/D-P6/D-P7/D-P8 (web) and S-P1/S-P2 (client). No 
   go to the network with a static `public/offline.html` fallback. en/zh-CN locale; `spec/requests/pwa_spec.rb`;
   cache rule runtime-verified (node harness, 10 checks). No Bubblewrap TWA (needs a signing key + a Play
   listing — a separate decision, Z-P24).
-- [ ] **Z-P24 · Enterprise device management** — Headwind MDM + Android RestrictionsManager managed config
+- [~] **Z-P24 · Enterprise device management** — Headwind MDM + Android RestrictionsManager managed config
   (+ the Android Management API). Separate project. Owner **Z**.
+  <u>Console half built 2026-10-10 (this session).</u> The pair of Storeapp's managed-config reader
+  (`enterprise/ManagedConfig.kt`, S-P3): `CatalogIndex::ManagedConfig` (`app/services/catalog_index/managed_config.rb`)
+  normalises the organisation's policy into exactly the three keys the client reads (`enabled_sources`,
+  `show_desktop_sources`, `hidden_packages`) with the client's own two rules — a key the org did not set stays
+  unset (the person's choice is untouched), and a value that cannot be understood is treated as unset rather
+  than guessed. `Setting.managed_config` (new `:enterprise` scope) is the one place an operator edits it;
+  `CatalogIndex::Publish` adds `managed-config.json` to the same signed Pages commit **only when a key is set**,
+  so a DPC's provisioning tooling and Storeapp cannot drift and an unmanaged deployment is byte-for-byte
+  unchanged. Read-only admin panel `Admin::ManagedConfigsController` (`/admin/managed_config[.json]`,
+  `ManagedConfigPolicy`, platform-admins only) reports readiness, lists the `SourceId` names the client
+  recognises and serves the exact document. en/zh-CN locales; sidebar/Settings labels. Specs:
+  `spec/services/catalog_index/managed_config_spec.rb`, `managed_config_publish_spec.rb`,
+  `spec/requests/admin_managed_config_spec.rb`; standalone harness (`/tmp/zp24_managed_config_harness.rb`)
+  passes (24 checks). **Still open (the "separate project"):** the Headwind MDM server itself and the Android
+  Management API onboarding are deployment, not this repo.
 - [~] **Z-P25 · Development-assistant / Play import bridge (PlayCatalogSource adapter)** — ONE adapter in
   its own service process behind which the reverse-engineered Play clients sit (Aurora `GPlayApi` +
   Python `playstoreapi`, two implementations so one can fail over), pinned + vendored, a daily canary marks
@@ -365,9 +390,22 @@ above: D-P1/D-P2/D-P3/D-P4/D-P5/D-P6/D-P7/D-P8 (web) and S-P1/S-P2 (client). No 
     (rule 2, cloned to a pinned SHA, not run in-sandbox); `config/initializers/play_catalog.rb` is the
     switch. Specs: `spec/services/play/*`, `spec/models/play_source_state_spec.rb` (written; the pure
     logic was also exercised by a standalone harness, `ruby -c` clean; **rspec not run** — no bundle in
-    the sandbox). The self-hosted dispenser (rule 4) and the "Import from Play" publisher-side bridge
-    (service account, §2) remain open; the card stays `[~]` until the canary runs against a real backend
-    and a client compiles, and until the dispenser is stood up.
+    the sandbox). The self-hosted dispenser (rule 4) is now built (below); the "Import from Play"
+    publisher-side bridge (service account, §2) remains open, so the card stays `[~]` until the canary runs
+    against a real backend and a client compiles.
+  - **Self-hosted token dispenser built 2026-10-10 (this session, rule 4).** `Play::TokenDispenser`
+    (`app/services/play/token_dispenser.rb`) reads the anonymous AAS token from an operator-run dispenser
+    instead of a third party's host. It follows `marzzzello/playstoreapi`'s `TokenDispenser` shape (a GET
+    returning `authToken`, tolerating the `auth_token`/`token`/`aas_token`/`aasToken` spellings), is off
+    unless `PLAY_DISPENSER_ENABLED=true` **and** a URL is set, refuses a non-HTTPS URL unless the operator
+    says otherwise (`PLAY_DISPENSER_ALLOW_HTTP`), sends `Bearer $PLAY_DISPENSER_TOKEN` or HTTP Basic, and —
+    like `Play::BackendRunner` — turns every failure (non-2xx, timeout, non-JSON, no token, over-long token)
+    into a miss, never a raise, so a dispenser outage is a backend failover and not an error page. It is a
+    **credential boundary**: it reads only its own ENV and never touches `PlayCredential`/`PlayUploadKey`, so
+    a leaked token carries no publishing authority — the spec pins exactly that. `rake play_catalog:dispenser`
+    proves the dispenser and prints the token's length/expiry, never the token. Spec
+    `spec/services/play/token_dispenser_spec.rb`; standalone harness `/tmp/zp25_dispenser_harness.rb` (18
+    checks) passes.
 - [x] **Z-P26 · Silent-install backends in the client** — Shizuku/Sui, Dhizuku (Device Owner), root
   (Magisk/KernelSU/APatch) as opt-in next to the existing 47i update-ownership. Owner **S**.
   Built 2026-10-10 (Storeapp): `silent/` — `SilentInstallBackend` (Shizuku/Dhizuku/Root), `SilentInstallStatus`,

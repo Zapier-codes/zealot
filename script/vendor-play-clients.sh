@@ -7,10 +7,18 @@
 # recorded below into vendor/play/<name> and writes the commit into that copy's VENDORED file. It is
 # idempotent: a re-run jumps each vendored copy to the pinned commit, so a hand-edited tree is reverted.
 #
-# It is NOT run in the sandbox (network + size); it is what the operator or a build host runs once, and
-# the resulting vendor/play/ tree is committed alongside the adapter. Neither library is imported by the
-# Rails process: `PlayCatalogSource` shells out to a separate process that uses them (licence boundary,
-# §1.1 rule 7 — Zealot is MIT, Aurora's GPlayApi is GPL-3.0-or-later).
+# It is NOT run in the sandbox (no network in this sandbox, and the token here cannot create the forks);
+# it is what the operator or a build host runs once, and the resulting vendor/play/ tree is committed
+# alongside the adapter. Neither library is imported by the Rails process: `PlayCatalogSource` shells out to
+# a separate process that uses them (licence boundary, §1.1 rule 7 — Zealot is MIT, Aurora's GPlayApi is
+# GPL-3.0-or-later).
+#
+# PREREQUISITE: the two forks must exist first (the URLs below are Zapier-codes' forks, per the operator's
+# directive). Create them once from a machine that has your GitHub credentials — the sandbox token is
+# read-only and cannot fork:
+#   gh repo fork whyorean/GPlayApi --clone=false
+#   gh repo fork AbhiTheModder/playstoreapi --clone=false
+# A fork shares upstream's object store, so the pinned SHAs resolve in the fork with no sync needed.
 #
 #   bash script/vendor-play-clients.sh            # fetch/refresh both vendored copies
 #   bash script/vendor-play-clients.sh gplayapi   # just one
@@ -21,9 +29,14 @@ dest="$root/vendor/play"
 
 # --- the pins (Rule 2). Update a commit here deliberately, with a note in HANDOVER/kanban, never by hand
 # in the vendored tree.
-GPLAYAPI_REPO='https://github.com/whyorean/GPlayApi.git'      # Aurora OSS wrapper; GPL-3.0-or-later
+#
+# The repo URL is OUR FORK, not upstream (operator directive, 2026-10-10): "we only need to fork the repo
+# and use our forked version". A fork is the same object store as upstream, so the pinned commit below is
+# reachable in the fork unchanged, and if upstream is deleted, renamed or force-pushes, the pin still
+# resolves. The upstream each fork came from is recorded on the line so provenance is never lost.
+GPLAYAPI_REPO='https://github.com/Zapier-codes/GPlayApi.git'  # our fork of whyorean/GPlayApi; GPL-3.0-or-later
 GPLAYAPI_SHA='e90581facaccfd53f424c60ba84ce316bc67f3d3'       # 2020-11-08
-PLAYSTOREAPI_REPO='https://github.com/AbhiTheModder/playstoreapi.git' # Python fork; parent BSD
+PLAYSTOREAPI_REPO='https://github.com/Zapier-codes/playstoreapi.git' # our fork of AbhiTheModder/playstoreapi; parent BSD
 PLAYSTOREAPI_SHA='ac57f327172ee609100cff3b3414e81dbf5c78a9'   # 2026-05-28
 
 want="${1:-both}"
