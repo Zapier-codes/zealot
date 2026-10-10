@@ -1,0 +1,14 @@
+__pycache__/
+.ropeproject/
+*.swp
+*.apk
+*.obb
+*.apks
+build/
+dist/
+*.egg-info/
+.idea/
+.venv/
+
+# This file will be generated during build
+playstoreapi/googleplay_pb2.py
