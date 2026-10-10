@@ -1,0 +1,29 @@
+/ Z-P12 (Play Console parity): the pre-launch report for one release, on the release page. Renders nothing
+/ until a runner has produced something (the job only enqueues when a runner is configured, and the card hides
+/ itself when the status is the untouched `not_run`), so an install without a runner shows no card. The verdict,
+/ its findings and the one-line summary are all read off the release's own columns (see PreLaunchReport).
+- status = release.pre_launch_status
+- verdict = release.pre_launch_verdict
+- findings = Array(release.pre_launch_findings)
+- summary = release.pre_launch_summary
+
+- if status != 'not_run'
+  .card
+    .card-header class="flex items-center justify-between gap-2"
+      h3.card-title = t('apps.policy_statuses.show.pre_launch.card_title')
+      span.badge = verdict ? t("apps.policy_statuses.show.pre_launch.verdict.#{verdict}", default: verdict) : t("apps.policy_statuses.show.pre_launch.status.#{status}", default: status)
+    .card-body class="space-y-2"
+      - if release.pre_launch_run_at
+        p.text-xs.opacity-70 = t('apps.policy_statuses.show.pre_launch.ran', when: time_ago_in_words(release.pre_launch_run_at))
+      - if summary.present?
+        p.text-sm.opacity-70 = t('apps.policy_statuses.show.pre_launch.summary', summary: summary)
+      - if findings.any?
+        p.text-xs.font-semibold = t('apps.policy_statuses.show.pre_launch.findings_title')
+        - findings.each do |finding|
+          p.text-sm
+            span.badge class="mr-2" = finding['severity']
+            = finding['message']
+      - elsif verdict == 'pass'
+        p.text-sm.opacity-70 = t('apps.policy_statuses.show.pre_launch.clean')
+      - else
+        p.text-xs.opacity-70 = t('apps.policy_statuses.show.pre_launch.intro')

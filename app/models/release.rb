@@ -327,6 +327,10 @@ class Release < ApplicationRecord
   # person never has to read an upload to know it is clean. Best-effort and non-blocking -- the job writes a
   # verdict, it never refuses the release.
   after_create  :enqueue_automated_review
+  # Z-P12: every release is also exercised on a device (the pre-launch report) so a crash is found before a
+  # person reviews the upload. Like the automated review this is best-effort and non-blocking; with no runner
+  # configured the job no-ops and the report stays `not_run`.
+  after_create  :enqueue_pre_launch_report
   # Task 27c: a new release changes CatalogIndex::Serializer's versions[]
   # for this app (see App#catalog_releases, added in 29b for exactly this
   # list), so the next index has to be regenerated. Only matters for an app
@@ -924,6 +928,14 @@ class Release < ApplicationRecord
   # is down must not stop the upload, so the failure is swallowed (the review simply stays `not_run`).
   def enqueue_automated_review
     AutomatedReviewJob.perform_later(id)
+  rescue StandardError
+    nil
+  end
+
+  # Z-P12: kick off the pre-launch report. Best-effort like the automated review -- and only when a robot
+  # runner is configured, so an install with no runner never enqueues a no-op job or shows a "not run" card.
+  def enqueue_pre_launch_report
+    PreLaunchReportJob.perform_later(id)
   rescue StandardError
     nil
   end

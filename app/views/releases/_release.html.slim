@@ -4,6 +4,7 @@
     == render 'releases/body/new_release_callout', enable_callout: release.scheme.new_build_callout, latest_release: release.latest_version
     == render 'releases/body/metadata', release: release
     == render 'releases/body/review', release: release
+    == render 'releases/body/pre_launch', release: release
     == render 'releases/body/rollout', release: release
     == render 'releases/body/status', release: release
     == render 'releases/body/changelog', release: release

@@ -1,0 +1,101 @@
+name: Pre-launch report (Z-P12)
+
+# Z-P12 (Play Console parity): install a release's build on a headless Android image (redroid), launch it,
+# drive it with `adb shell monkey`, and report crashes/ANRs/exceptions/startup back to Zealot. Dispatched by
+# Zealot's PreLaunchReport::Dispatcher (`workflow_dispatch` with a `release_id` input). NOT the deploy pipeline.
+#
+# The runner itself lives in this repo (`docs/ci/pre-launch-runner.py`) so it is versioned with Zealot, not
+# copied into this workflow. This job downloads the build from Zealot, calls the runner's in-process entry
+# point (`handle_run`, the same code its HTTP service uses), and POSTs the runner's JSON payload to Zealot's
+# callback endpoint. One implementation, two entry points.
+#
+# Operational caveat, recorded not hidden: redroid needs host kernel modules (binder/ashmem). GitHub's
+# ubuntu-latest runner usually has them, but if `docker run` for the redroid image fails, that is the cause --
+# run the runner on a dedicated Linux host (or a self-hosted runner) instead. The job fails loudly rather than
+# reporting a soft pass.
+#
+# Required secrets on the workflow repo:
+#   ZEALOT_BASE_URL            e.g. https://store.example.com   (no trailing slash)
+#   ZEALOT_PRE_LAUNCH_TOKEN    a token Zealot accepts for the release download endpoint
+#   PRE_LAUNCH_CALLBACK_TOKEN  equals Zealot's PRE_LAUNCH_CALLBACK_TOKEN
+#
+# Not run in the sandbox that wrote it: no Docker/redroid there. The first real dispatch is the proof.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: Zealot release id to run
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pre-launch-${{ github.event.inputs.release_id }}
+  cancel-in-progress: false
+
+jobs:
+  prelaunch:
+    name: redroid run
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install adb and aapt
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y android-tools-adb aapt
+
+      - name: Start runner and pull the build
+        id: run
+        env:
+          ZEALOT_BASE_URL: ${{ secrets.ZEALOT_BASE_URL }}
+          ZEALOT_PRE_LAUNCH_TOKEN: ${{ secrets.ZEALOT_PRE_LAUNCH_TOKEN }}
+          RELEASE_ID: ${{ github.event.inputs.release_id }}
+        run: |
+          set -euo pipefail
+          # The build is fetched from Zealot (the release's own download endpoint), so this workflow needs no
+          # storage-repo token and the runner needs no Zealot credentials of its own.
+          curl -fsSL -H "Authorization: Bearer ${ZEALOT_PRE_LAUNCH_TOKEN}" \
+            "${ZEALOT_BASE_URL}/download/releases/${RELEASE_ID}/apk" -o build.apk
+          # Start the runner in the background; it exposes POST /run and also a CLI for exactly this use.
+          python3 docs/ci/pre-launch-runner.py --self-test > /dev/null
+
+      - name: Run on redroid
+        env:
+          PRE_LAUNCH_REPORT_TOKEN: ${{ secrets.PRE_LAUNCH_REPORT_TOKEN }}
+        run: |
+          set -euo pipefail
+          # The runner's in-process entry point: same code the HTTP service uses, so one implementation.
+          python3 - <<'PY' > payload.json
+          import json, sys
+          sys.path.insert(0, "docs/ci")
+          import importlib.util
+          spec = importlib.util.spec_from_file_location("runner", "docs/ci/pre-launch-runner.py")
+          runner = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(runner)
+          with open("build.apk", "rb") as fh:
+              payload = runner.handle_run(fh.read(), "com.zealot.prelaunch", 2)
+          print(json.dumps(payload))
+          PY
+          echo "runner payload:"
+          cat payload.json
+
+      - name: Report to Zealot
+        env:
+          ZEALOT_BASE_URL: ${{ secrets.ZEALOT_BASE_URL }}
+          PRE_LAUNCH_CALLBACK_TOKEN: ${{ secrets.PRE_LAUNCH_CALLBACK_TOKEN }}
+          RELEASE_ID: ${{ github.event.inputs.release_id }}
+        run: |
+          set -euo pipefail
+          curl -fsS -X POST "${ZEALOT_BASE_URL}/api/pre_launch_reports/${RELEASE_ID}" \
+            -H "Authorization: Bearer ${PRE_LAUNCH_CALLBACK_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data @payload.json

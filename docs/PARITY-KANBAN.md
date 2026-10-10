@@ -142,8 +142,26 @@ above: D-P1/D-P2/D-P3/D-P4/D-P5/D-P6/D-P7/D-P8 (web) and S-P1/S-P2 (client). No 
 
 ### Console — scale, enterprise, reach
 
-- [ ] **Z-P12 · Pre-launch report (redroid in CI)** — install the build on a headless Android image, launch,
-  `adb shell monkey` N events, no crash → written to the release. Owner **Z**.
+- [x] **Z-P12 · Pre-launch report (redroid in CI)** — install the build on a headless Android image, launch,
+  `adb shell monkey` N events, no crash → written to the release. Owner **Z**. Built 2026-10-10, the same
+  dispatch-and-callback shape Task 40 uses for the compile: Zealot never hosts a device. `PreLaunchReport`
+  (pure: raw runner payload → verdict + findings; a crash is a `reject`, an ANR/exception/startup problem is a
+  `flag`, and a malformed section is treated as nothing observed, never an invented crash) and
+  `PreLaunchReport::Dispatcher` (`workflow_dispatch` to the workflow repo, no secret in the body);
+  `Api::PreLaunchReportsController` at `POST /api/pre_launch_reports/:id` (shared-secret
+  `PRE_LAUNCH_CALLBACK_TOKEN`, fails closed, idempotent, 409 on a state that cannot accept one);
+  `ReleaseChecks::PreLaunchRecorder` writes the release's new `pre_launch_*` columns (migration
+  `20261010180000`); `PreLaunchReportJob` is enqueued on release create (like Z-P2) and off unless dispatched;
+  the release page card `releases/body/_pre_launch` is rendered beside the automated-review card; the
+  runner itself is `docs/ci/pre-launch-runner.py` (redroid + `adb shell monkey`, a real program with a
+  `--self-test`) driven by `.github/workflows/pre-launch-report.yml`. Specs:
+  `spec/services/pre_launch_report_spec.rb` (the pure half, 10 cases), `pre_launch_report/dispatcher_spec.rb`,
+  `spec/requests/api_pre_launch_reports_spec.rb`. **Run:** `python3 -m py_compile` on the runner + its
+  `--self-test`; a 19-assertion standalone harness on the pure half (all pass); `ruby -c` on every Ruby file;
+  YAML load of the workflow and both locales. **Not run:** rspec and a real redroid dispatch (no device/toolchain
+  in the sandbox). Two things a first live run must confirm, recorded not assumed: redroid needs host
+  binder/ashmem (a stock GitHub runner usually has them, a dedicated host if not), and the workflow's
+  `ZEALOT_PRE_LAUNCH_TOKEN` must be a token Zealot accepts for `/download/releases/:id/apk`.
 - [~] **Z-P13 · Delta updates (archive-patcher)** — generate file-by-file patches at publish time on the
   signed APK; the client applies them and must match byte for byte. Owner **Z** generate, **S** apply.
   <u>Generator half built 2026-10-10 (the Storeapp</u> **S** <u>apply half is on the D-Store/Storeapp board):</u>

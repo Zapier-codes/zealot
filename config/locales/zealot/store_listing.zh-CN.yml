@@ -272,6 +272,20 @@ zh-CN:
           pass: 通过
           flag: 需要关注
           reject: 已拒绝
+        pre_launch:
+          card_title: 预发布报告
+          intro: 你的构建会被安装到设备上并自动运行——先启动，再用 monkey 事件反复操作——任何崩溃、ANR、异常或启动问题都会在人工查看前显示于此。崩溃视为拒绝，其余发现视为标记。此处不会阻断分发。
+          clean: 应用在设备上运行，未出现崩溃、ANR、异常或启动问题。
+          ran: "%{when}前运行"
+          findings_title: 本次运行发现
+          summary: "运行：%{summary}"
+          status:
+            running: 正在设备上运行……
+            failed: 无法完成运行
+          verdict:
+            pass: 无问题
+            flag: 需要关注
+            reject: 已崩溃
     show:
       store_listing: 商店上架
       listing_text: 商店文字

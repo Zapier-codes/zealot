@@ -585,6 +585,9 @@ Rails.application.routes.draw do
     # Task 40a: the storage repo's compile workflow reports its result here. NOT a user or app-token
     # route: authenticated by the shared CI_COMPILE_CALLBACK_TOKEN only. See Api::CiCompileController.
     post 'ci_compile/:id/callback', to: 'ci_compile#callback'
+    # Z-P12: the pre-launch workflow reports the redroid run's JSON payload here. Same shared-secret door,
+    # PRE_LAUNCH_CALLBACK_TOKEN. See Api::PreLaunchReportsController.
+    post 'pre_launch_reports/:id', to: 'pre_launch_reports#create'
     get 'tenant_builds/:build_id/download', to: 'tenant_builds#download', as: :tenant_build_download
 
     # Task 40i-a: the stage-1 workflow reports what it read from a staged upload. Authenticated by GitHub's OIDC

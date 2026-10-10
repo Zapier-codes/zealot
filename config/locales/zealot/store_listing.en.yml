@@ -272,6 +272,20 @@ en:
           pass: Passed
           flag: Needs a look
           reject: Rejected
+        pre_launch:
+          card_title: Pre-launch report
+          intro: Your build is installed on a device and driven automatically — launched, then hammered with monkey events — and any crash, ANR, exception or startup problem is reported here before a person looks. A crash is a reject; the other findings are flags. Nothing here blocks distribution.
+          clean: The app ran on the devices without a crash, ANR, exception or startup problem.
+          ran: "Ran %{when} ago"
+          findings_title: What the run saw
+          summary: "Run: %{summary}"
+          status:
+            running: Running on a device…
+            failed: The run could not complete
+          verdict:
+            pass: No problems
+            flag: Needs a look
+            reject: Crashed
     show:
       store_listing: Store listing
       listing_text: Store listing text
