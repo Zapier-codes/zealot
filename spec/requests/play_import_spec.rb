@@ -125,19 +125,24 @@ RSpec.describe 'Import from Play', type: :request do
       expect(response.body).to include(I18n.t('apps.play_imports.show.no_reviews'))
     end
 
-    it 'renders crash and ANR rates, and "not measured" when a datapoint is missing' do
+    it 'renders crash, ANR, slow rendering and error count, and "not measured" when a datapoint is missing' do
       stub_fetch(ok_result)
       allow_any_instance_of(Anthropic::PlayImportService).to receive(:fetch_vitals).and_return(
         Anthropic::PlayImportService::VitalsResult.new(code: :ok, package_name: 'com.example.app', vitals: [
           Anthropic::PlayImportService::VitalInfo.new(kind: 'crashRate', start_time: '2026-10-09', value: '0.55', user_count: '1234'),
-          Anthropic::PlayImportService::VitalInfo.new(kind: 'anrRate', start_time: '2026-10-09', value: nil)
+          Anthropic::PlayImportService::VitalInfo.new(kind: 'anrRate', start_time: '2026-10-09', value: nil),
+          Anthropic::PlayImportService::VitalInfo.new(kind: 'slowRenderingRate', start_time: '2026-10-09', value: '12.5', user_count: '900'),
+          Anthropic::PlayImportService::VitalInfo.new(kind: 'errorCount', start_time: '2026-10-09', value: '987', user_count: '4321')
         ])
       )
 
       get app_play_import_path(app)
 
       expect(response).to have_http_status(:ok)
-      expect(response.body).to include('0.55%', 'Crash rate', 'ANR rate', '1,234')
+      expect(response.body).to include('0.55%', 'Crash rate', 'ANR rate', '12.5%', 'Slow rendering', '1,234', '900')
+      # errorCount is a count, not a rate -- rendered as a plain number, no '%'.
+      expect(response.body).to include('987', 'Errors', '4,321')
+      expect(response.body).not_to include('987%')
       expect(response.body).to include(I18n.t('apps.play_imports.show.not_measured'))
     end
 

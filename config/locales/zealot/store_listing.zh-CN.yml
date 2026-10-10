@@ -249,14 +249,16 @@ zh-CN:
         no_text: （无文字）
         developer_reply: "开发者回复 · %{when}"
         no_reviews: Play 中该应用还没有评价。
-        vitals_title: 崩溃与 ANR
-        vitals_intro: 来自 Play 的最近 %{days} 天崩溃率与 ANR 率，以及每个比率覆盖的用户数。仅供只读参考；Zealot 自己的崩溃上报是独立功能。
+        vitals_title: 崩溃、ANR 与错误
+        vitals_intro: 来自 Play 的最近 %{days} 天崩溃率、ANR 率、渲染缓慢率与错误数，以及各自覆盖的用户数。仅供只读参考；Zealot 自己的崩溃上报是独立功能。
         vitals_metric: 指标
-        vitals_latest: 最新比率
+        vitals_latest: 最新
         vitals_users: 用户数
         vitals_kinds:
           crashRate: 崩溃率
           anrRate: ANR 率
+          slowRenderingRate: 渲染缓慢
+          errorCount: 错误数
         vitals_percent: "%{value}%"
         not_measured: 未测量
       create:

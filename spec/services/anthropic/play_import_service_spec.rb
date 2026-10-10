@@ -229,7 +229,7 @@ RSpec.describe Anthropic::PlayImportService do
       expect(described_class.new(credential: nil).fetch_vitals(package).code).to eq(:not_configured)
     end
 
-    it 'reads crash and ANR rate, keeping the latest interval per kind' do
+    it 'reads crash, ANR, slow rendering and error count, keeping the latest interval per kind' do
       allow(reporting_client).to receive(:query_vital_crashrate).and_return(double(rows: [
         row(kind: 'crashRate', day: 8, rate: '0.42', users: '1234'),
         row(kind: 'crashRate', day: 9, rate: '0.55')
@@ -237,27 +237,57 @@ RSpec.describe Anthropic::PlayImportService do
       allow(reporting_client).to receive(:query_vital_anrrate).and_return(double(rows: [
         row(kind: 'anrRate', day: 9, rate: '0.10')
       ]))
+      allow(reporting_client).to receive(:query_vital_slowrenderingrate).and_return(double(rows: [
+        row(kind: 'slowRenderingRate', day: 9, rate: '12.5')
+      ]))
+      allow(reporting_client).to receive(:query_vital_error_count).and_return(double(rows: [
+        row(kind: 'errorReportCount', day: 9, rate: '987', users: '4321')
+      ]))
 
       result = service.fetch_vitals(package)
 
       expect(result).to be_ok
-      expect(result.vitals.size).to eq(3)
+      expect(result.vitals.size).to eq(5)
       expect(result.crash.start_time).to eq('2026-10-09')
       expect(result.crash.value).to eq('0.55')
       expect(result.anr.start_time).to eq('2026-10-09')
       expect(result.anr.value).to eq('0.10')
+      expect(result.slow_rendering.value).to eq('12.5')
+      expect(result.error_count.value).to eq('987')
+      expect(result.error_count.user_count).to eq('4321')
       expect(result.vitals.find { |v| v.start_time == '2026-10-08' }.user_count).to eq('1234')
+    end
+
+    it 'asks for the right metric-set resource and metric name per feature' do
+      allow(reporting_client).to receive(:query_vital_crashrate).and_return(double(rows: []))
+      allow(reporting_client).to receive(:query_vital_anrrate).and_return(double(rows: []))
+      allow(reporting_client).to receive(:query_vital_slowrenderingrate).and_return(double(rows: []))
+      allow(reporting_client).to receive(:query_vital_error_count).and_return(double(rows: []))
+
+      service.fetch_vitals(package)
+
+      expect(reporting_client).to have_received(:query_vital_crashrate)
+        .with("apps/#{package}/crashRateMetricSet", have_attributes(metrics: %w[crashRate distinctUsers]))
+      expect(reporting_client).to have_received(:query_vital_slowrenderingrate)
+        .with("apps/#{package}/slowRenderingRateMetricSet", have_attributes(metrics: %w[slowRenderingRate distinctUsers]))
+      expect(reporting_client).to have_received(:query_vital_error_count)
+        .with("apps/#{package}/errorCountMetricSet", have_attributes(metrics: %w[errorReportCount distinctUsers]))
     end
 
     it 'leaves a rate nil when Play measured no datapoint (never 0)' do
       allow(reporting_client).to receive(:query_vital_crashrate)
         .and_return(double(rows: [row(kind: 'crashRate', day: 9)]))
       allow(reporting_client).to receive(:query_vital_anrrate).and_return(double(rows: []))
+      allow(reporting_client).to receive(:query_vital_slowrenderingrate).and_return(double(rows: []))
+      allow(reporting_client).to receive(:query_vital_error_count)
+        .and_return(double(rows: [row(kind: 'errorReportCount', day: 9)]))
 
       result = service.fetch_vitals(package)
 
       expect(result.crash.value).to be_nil
       expect(result.anr).to be_nil
+      expect(result.slow_rendering).to be_nil
+      expect(result.error_count.value).to be_nil
     end
 
     it 'maps Play errors to Result codes rather than raising' do

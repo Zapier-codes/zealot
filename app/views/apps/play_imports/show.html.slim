@@ -118,12 +118,15 @@
                 th = t('.vitals_latest')
                 th = t('.vitals_users')
             tbody
-              - [ @vitals_result.crash, @vitals_result.anr ].each do |series|
+              - [ @vitals_result.crash, @vitals_result.anr, @vitals_result.slow_rendering, @vitals_result.error_count ].each do |series|
                 - next if series.nil?
                 - latest = series.value
                 tr
                   td = t(".vitals_kinds.#{series.kind}")
-                  td = latest.nil? ? t('.not_measured') : t('.vitals_percent', value: latest)
+                  - if series.kind == 'errorCount'
+                    td = latest.nil? ? t('.not_measured') : number_with_delimiter(latest)
+                  - else
+                    td = latest.nil? ? t('.not_measured') : t('.vitals_percent', value: latest)
                   td = series.user_count.nil? ? t('.empty') : number_with_delimiter(series.user_count)
         - elsif @vitals_result.ok?
           .d-alert.d-alert-info role="status"

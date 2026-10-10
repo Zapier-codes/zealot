@@ -26,9 +26,10 @@ module Anthropic
   #   * `fetch_reviews`  -- the app's Play reviews, newest first, with the
   #                        developer reply Play already holds. A plain app-level
   #                        read; no edit needed.
-  #   * `fetch_vitals`   -- crash and ANR rate from Google's *other* API (the Play
-  #                        Developer Reporting API, a separate gem and scope) over
-  #                        a trailing window. Read-only.
+  #   * `fetch_vitals`   -- crash, ANR and slow-rendering rates and the error
+  #                        count from Google's *other* API (the Play Developer
+  #                        Reporting API, a separate gem and scope) over a trailing
+  #                        window. Read-only.
   #
   # All three share the same never-raises contract: an API/credential problem is
   # a Result code, not an exception. Reviews and vitals are read for display here;
@@ -96,9 +97,10 @@ module Anthropic
       end
     end
 
-    # One vitals row: a crash/ANR rate and the distinct-user count it is normalised
-    # by, for one interval. `value` stays nil when Play answered no datapoint for
-    # the interval -- it is never turned into a 0, which would read as "no crashes".
+    # One vitals row: a crash/ANR/slow-rendering rate or an error count, and the
+    # distinct-user count it is normalised by, for one interval. `value` stays nil
+    # when Play answered no datapoint for the interval -- it is never turned into a
+    # 0, which would read as "no crashes".
     VitalInfo = Struct.new(:kind, :start_time, :aggregation_period, :value, :user_count, keyword_init: true)
 
     VitalsResult = Struct.new(:code, :package_name, :vitals, :window, :message, keyword_init: true) do
@@ -107,11 +109,21 @@ module Anthropic
       end
 
       def crash
-        latest(VITALS_FEATURES.first)
+        latest('crashRate')
       end
 
       def anr
-        latest(VITALS_FEATURES.last)
+        latest('anrRate')
+      end
+
+      # The Reporting API's other headline rows: how many errors and how many slow
+      # frames, over the same window as the crash/ANR rates above.
+      def error_count
+        latest('errorCount')
+      end
+
+      def slow_rendering
+        latest('slowRenderingRate')
       end
 
       # The most recent interval for the kind -- rows may arrive in any order, so
@@ -132,9 +144,17 @@ module Anthropic
     # Google's metric name for the normalising user count, asked for beside each
     # rate so a rate can be read as "0.41% of 1,203 users" rather than a bare number.
     DISTINCT_USERS = 'distinctUsers'
-    QUERY_METHODS = { 'crashRate' => :query_vital_crashrate, 'anrRate' => :query_vital_anrrate }.freeze
-    # The two rate metric sets read, in display order.
-    VITALS_FEATURES = QUERY_METHODS.keys.freeze
+    # errorCountMetricSet aggregates a plain count, not a rate; its single metric.
+    ERROR_COUNT_METRIC = 'errorReportCount'
+    # The Reporting API metric sets this read queries, in display order, each as
+    # `feature => query method`. crashRate/anrRate/slowRenderingRate are rate sets
+    # (metric name == feature); errorCount is a count set (see ERROR_COUNT_METRIC).
+    QUERY_METHODS = {
+      'crashRate' => :query_vital_crashrate,
+      'anrRate' => :query_vital_anrrate,
+      'slowRenderingRate' => :query_vital_slowrenderingrate,
+      'errorCount' => :query_vital_error_count
+    }.freeze
 
     def initialize(credential: PlayCredential.current)
       @credential = credential
@@ -282,7 +302,7 @@ module Anthropic
       @credential.with_credentials_file do |creds_path|
         client = build_reporting_client(creds_path)
         window = vitals_timeline
-        vitals = VITALS_FEATURES.flat_map do |feature|
+        vitals = QUERY_METHODS.keys.flat_map do |feature|
           map_vitals(feature, query_vital(client, feature, package_name, window))
         end
         build_vitals(:ok, package_name: package_name, vitals: vitals, window: window)
@@ -305,8 +325,8 @@ module Anthropic
 
       client.public_send(
         method,
-        "apps/#{package_name}/#{metric_set(feature)}",
-        request_class.new(metrics: [feature, DISTINCT_USERS], timeline_spec: window)
+        "apps/#{package_name}/#{feature}MetricSet",
+        request_class.new(metrics: [metric_name(feature), DISTINCT_USERS], timeline_spec: window)
       )
     end
 
@@ -315,16 +335,21 @@ module Anthropic
       case feature
       when 'crashRate' then mod::GooglePlayDeveloperReportingV1beta1QueryCrashRateMetricSetRequest
       when 'anrRate' then mod::GooglePlayDeveloperReportingV1beta1QueryAnrRateMetricSetRequest
+      when 'slowRenderingRate' then mod::GooglePlayDeveloperReportingV1beta1QuerySlowRenderingRateMetricSetRequest
+      when 'errorCount' then mod::GooglePlayDeveloperReportingV1beta1QueryErrorCountMetricSetRequest
       end
     end
 
-    def metric_set(feature)
-      QUERY_METHODS.key?(feature) ? "#{feature}MetricSet" : nil
+    # The metric name asked for in the query. A rate set's metric is named after the
+    # feature; errorCountMetricSet's single metric is `errorReportCount`.
+    def metric_name(feature)
+      feature == 'errorCount' ? ERROR_COUNT_METRIC : feature
     end
 
     def map_vitals(feature, response)
+      wanted = metric_name(feature)
       Array(response&.rows).first(VITALS_MAX_ROWS).map do |row|
-        rate = Array(row.metrics).find { |m| m.metric == feature }
+        rate = Array(row.metrics).find { |m| m.metric == wanted }
         users = Array(row.metrics).find { |m| m.metric == DISTINCT_USERS }
         VitalInfo.new(
           kind: feature,

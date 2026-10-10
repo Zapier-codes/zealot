@@ -424,8 +424,22 @@ above: D-P1/D-P2/D-P3/D-P4/D-P5/D-P6/D-P7/D-P8 (web) and S-P1/S-P2 (client). No 
     lock gain `google-apis-playdeveloperreporting_v1beta1 ~> 0.43.0`; en/zh-CN locales extended. The
     **reporting gem was actually installed in-sandbox** and a harness drove the *real, unmodified* service
     against the *real* gem classes (33/33), so the field mapping against Google's own generated classes is
-    verified, not guessed. The §2 "reports" row (error-count / performance metric sets) remains open. The
-    card stays `[~]` (the canary item is still an operator action).
+    verified, not guessed. The card stays `[~]` (the canary item is still an operator action).
+  - **§2 reports row built 2026-10-10 (thirteenth session).** The last Console row the previous session left
+    open is now closed: `fetch_vitals` reads **two more Reporting API metric sets** beside crash/ANR --
+    `slowRenderingRateMetricSet` (`:query_vital_slowrenderingrate`, a rate) and `errorCountMetricSet`
+    (`:query_vital_error_count`, a plain `errorReportCount` count, not a rate). `QUERY_METHODS` is now four
+    entries; a `metric_name` helper maps the one set whose metric name differs from its feature; `request_for`
+    covers all four real request classes; `VitalsResult` gains `#slow_rendering`/`#error_count`. The view
+    table now renders four rows and shows the error count as a plain delimited number (no `%`), the rates as
+    percentages; en/zh-CN extended ("Crashes, ANRs and errors"). The harness was rebuilt against the **real**
+    gems (47/47) and additionally pins the metric-set resource names (`apps/<pkg>/errorCountMetricSet`), the
+    per-feature metric names (`errorReportCount`), and that every `query_vital_*` method and request class the
+    service calls exists in gem `0.43.0`. Specs `play_import_service_spec.rb` (+2 examples, incl. a
+    request-construction test) and `play_import_spec.rb` (four-row render + "count not a rate") updated. The
+    `slowStartRateMetricSet` was deliberately **not** added: it requires a `startType` dimension
+    (`HOT`/`WARM`/`COLD`), so a dimension-free read is not valid; that is a follow-on if a start-type split is
+    wanted. Card stays `[~]` only for the operator canary.
   - **Self-hosted token dispenser built 2026-10-10 (this session, rule 4).** `Play::TokenDispenser`
     (`app/services/play/token_dispenser.rb`) reads the anonymous AAS token from an operator-run dispenser
     instead of a third party's host. It follows `marzzzello/playstoreapi`'s `TokenDispenser` shape (a GET

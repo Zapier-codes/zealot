@@ -249,14 +249,16 @@ en:
         no_text: (no text)
         developer_reply: "Developer reply · %{when}"
         no_reviews: Play has no reviews for this app yet.
-        vitals_title: Crashes and ANRs
-        vitals_intro: Crash and ANR rate from Play over the last %{days} days, with the number of users each rate covers. Read-only reference; Zealot's own crash reporting is separate.
+        vitals_title: Crashes, ANRs and errors
+        vitals_intro: Crash, ANR and slow-rendering rate and the error count from Play over the last %{days} days, with the number of users each covers. Read-only reference; Zealot's own crash reporting is separate.
         vitals_metric: Metric
-        vitals_latest: Latest rate
+        vitals_latest: Latest
         vitals_users: Users
         vitals_kinds:
           crashRate: Crash rate
           anrRate: ANR rate
+          slowRenderingRate: Slow rendering
+          errorCount: Errors
         vitals_percent: "%{value}%"
         not_measured: not measured
       create:
