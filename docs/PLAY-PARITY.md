@@ -58,7 +58,7 @@ Key: ✅ have · ◐ partial · ❌ missing · ➖ not applicable by design · �
 | Acquisition, retention and conversion funnels | E | ✅ | ❌ |
 | Report export, BigQuery-style export | E | ✅ | ❌ |
 | Android vitals (crashes, ANRs, battery) | C/E | ✅ | ➖ (no telemetry by default; an opt-in route is in the reuse map) |
-| Publisher pays for a paid store listing (Hyperswitch) | C/E | ➖ | ✅ (beyond Play) |
+| Publisher pays for a paid store listing (B-Pay-backend) | C/E | ➖ | ✅ (beyond Play) |
 | Revenue and financial reports, payouts | E | ✅ | ❌ (candidate Task 50) |
 | Per-country pricing | E | ✅ | ❌ |
 | Subscriptions, in-app products, promo codes, voided purchases | C | ✅ | ➖ |
@@ -91,7 +91,7 @@ Key: ✅ have · ◐ partial · ❌ missing · ➖ not applicable by design · �
 | Review moderation | Detoxify, StopForumSpam, Akismet | ◇ | Automated first pass; reports and takedown stay as today |
 | Crash and vitals, opt-in only | **ACRA** library with **Acrarium** server, or a Sentry-compatible endpoint (GlitchTip) | ✓ github.com/ACRA; Sentry or GlitchTip DSN ✓ | Off by default (no telemetry by design); the person turns it on. R8 retrace for mapping files ◇ |
 | Funnels, exports | Umami, Plausible or Matomo for site and listing views; Metabase or Apache Superset over Zealot's Postgres for reports and CSV or warehouse export | ◇ | No new data collection on phones |
-| Revenue reports and payouts (Task 50) | **Hyperswitch payouts**: `/payouts/create`, bulk and scheduled payouts, smart retries, payout analytics and a manual update API. B-Pay-backend is the program's Hyperswitch fork, so the connectors it already wraps are the route | ✓ docs.hyperswitch.io/other-features/connectors/payouts | Task 50 is reporting views plus payout calls over what is stored. Lago for invoices and usage billing ◇ |
+| Revenue reports and payouts (Task 50) | **B-Pay-backend payouts** (the program's own service, `Zapier-codes/B-Pay-backend`; read from its source on 2026-10-10, not from upstream docs): the `payouts` feature is in the default build and so in the Docker image (`v1` pulls in `common_default`). Routes: `POST /payouts/create`, `GET`/`PUT /payouts/{id}`, `/confirm`, `/cancel`, `/fulfill`, `/list`, `/aggregate`, `/filter`, `PUT /payouts/{id}/manual-update`. Payout code exists for 20-odd connectors (Adyen, Adyen Platform, Stripe Connect, PayPal, Wise, Paystack, Flutterwave, Korapay and others; confirm each before relying on it). **Not found in B-Pay-backend:** a bulk-payout endpoint, scheduled payouts, a payout analytics module. Upstream Hyperswitch documents some of these; this fork does not carry them | read from `crates/router/src/routes/app.rs` and `routes/payouts.rs` | Task 50 is reporting views over what Zealot stores, plus calls to the routes above; bulk and schedule are Zealot's own loop over `/payouts/create` and `/fulfill` unless the operator ports them. `/subscriptions` (create, estimate, items, list, confirm) also exists for a publisher's recurring plan. Lago for invoices ◇ |
 | SSO, SCIM, audit log | `omniauth-saml`, Keycloak or Authentik, the `scimitar` gem, the `audited` or `paper_trail` gems | ◇ | Enterprise tier |
 | Event-stream feed | Svix or the Standard Webhooks signing spec on top of the existing webhooks | ◇ | |
 | Country availability | Country header from the CDN, or MaxMind GeoLite2 / DB-IP lite | ◇ | Availability only; per-country pricing is not planned |
@@ -101,7 +101,7 @@ Key: ✅ have · ◐ partial · ❌ missing · ➖ not applicable by design · �
 | Console mobile app | Installable web app, or a Trusted Web Activity built with Bubblewrap | ◇ | |
 | Enterprise device management | **Headwind MDM** (open source; deploys apps and remotely configures third-party apps); the standard **Android RestrictionsManager** managed-configuration API; Android Management API (Google) | ✓ h-mdm.com; RestrictionsManager ✓; Android Management API ◇ | Since 2026 Google limits provisioning with custom builds of Headwind's launcher; a custom build must change its package name and be signed with its own key |
 
-**Unofficial routes that exist, and why they are not the plan.** Aurora Store (GPL-3.0) and gplaydl log in to Google Play anonymously through a token dispenser and download from it. Their own pages say the interface is reverse engineered, may break when Google changes it, and the dispenser is not reliable. That is outside Google's terms and GPL-3.0 code cannot simply be folded into a differently licensed app. It is recorded here so nobody re-discovers it as a shortcut; the sanctioned third-party source stays Aptoide through its MCP.
+**Unofficial routes that exist, and how they are held.** (The full list, with risk marks, is `docs/UNOFFICIAL-ROUTES.md`.) Aurora Store (GPL-3.0) and gplaydl log in to Google Play anonymously through a token dispenser; the `GPlayApi` library behind Aurora and the `playstoreapi` forks do the same from code. Their own pages say the interface is reverse engineered and may break when Google changes it, and that is outside Google's terms. **Operator decision (2026-10-10): they are used as dependencies, because they have not broken to date.** They are held behind one adapter with pinned and vendored versions, a daily canary, a self-hosted dispenser, a cache and a catalogue-only fallback (section 1.1 of that file), and GPL-3.0 code is kept in its own process on the MIT servers. Aptoide through its MCP stays the sanctioned third-party source.
 
 ## Suggested order *(not a decision; the operator picks)*
 
@@ -110,4 +110,4 @@ Key: ✅ have · ◐ partial · ❌ missing · ➖ not applicable by design · �
 3. Content declarations and device-targeting fields (Task 34), the privacy and deletion URLs, then the Appstore age and device filters that wait on them.
 4. Anonymous reviews (principle 2) as one task cut by the TSF, then the reviews inbox and developer replies (Tasks 31b, 33).
 5. Enterprise tier: audit log, roles, report export, SSO and SCIM; Headwind MDM and managed configuration as a separate project.
-6. Task 50 (revenue reporting and payouts) over Hyperswitch payouts, if the operator confirms.
+6. Task 50 (revenue reporting and payouts) over B-Pay-backend's payout routes, if the operator confirms.
