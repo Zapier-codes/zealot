@@ -5,7 +5,9 @@
 #
 #     python3 -m pip install -r script/play-backend-playstoreapi.requirements.txt
 #
-# These are the same pins the vendored project declares in its own setup.py (install_requires).
+# These are the same pins the vendored project declares in its own setup.py (install_requires), except
+# protobuf is floored at the version the committed googleplay_pb2.py was generated with: that file calls
+# ValidateProtobufRuntimeVersion and refuses an older runtime.
 requests
 cryptography
-protobuf
+protobuf>=7.35.1
