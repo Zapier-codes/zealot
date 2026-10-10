@@ -57,9 +57,13 @@ class Api::Apps::ApiTokensController < Api::BaseController
                     status: :unprocessable_entity
     end
 
+    # Z-P17: `scope` is optional and defaults to publish, so an existing client is unchanged.
+    scope = params[:scope].to_s
+    scope = AppApiToken::PUBLISH_SCOPE unless AppApiToken::SCOPES.include?(scope)
+
     issued = AppApiToken.issue!(
       app: @app, name: name.strip, created_by: current_user,
-      expires_at: EXPIRY_CHOICES[expiry]&.from_now
+      expires_at: EXPIRY_CHOICES[expiry]&.from_now, scopes: [scope]
     )
     audit('created', issued.token)
     render json: token_json(issued.token).merge(secret: issued.secret), status: :created

@@ -210,8 +210,23 @@ above: D-P1/D-P2/D-P3/D-P4/D-P5/D-P6/D-P7/D-P8 (web) and S-P1/S-P2 (client). No 
   tool is live and link out to the operator's BI tool (`METABASE_URL`/`SUPERSET_URL`) and pgHero; en/zh-CN
   locales + sidebar link. Zealot holds no BI credentials and never proxies it — CSV/warehouse export stays
   the BI tool's job, stated on the page.
-- [ ] **Z-P17 · Opt-in crash/vitals (ACRA + Acrarium/GlitchTip)** — off by default; the person turns it on.
-  Owner **S** library, **Z** endpoint.
+- [x] **Z-P17 · Opt-in crash/vitals (ACRA + Acrarium/GlitchTip)** — off by default; the person turns it on.
+  Owner **S** library, **Z** endpoint. <u>Both halves built 2026-10-10</u>: `CrashReport` model +
+  `crash_reports` table + `apps.crash_reporting_enabled` (off, NOT NULL; migration
+  `20261010190000_create_crash_reports.rb`); `Api::CrashReportsController` at `POST /api/crash_reports`,
+  behind a per-app **vitals**-scoped token (`AppApiToken::VITALS_SCOPE`, a token that can only report and can
+  never publish) AND the app opt-in (a disabled app answers 403 and stores nothing); append-only, grouped by
+  `fingerprint` (message + top stack frames); duplicate `report_id` is a harmless 200. Console:
+  `Apps::CrashReportsController` + `apps/crash_reports/index` ("Crashes and ANRs", worst first, stack
+  trace/device of the latest in each group), reachable from the app page, gated by `CrashReportPolicy`; the
+  opt-in toggle lives on the App-content screen (`save_toggles`, never staged/published); the API-token page
+  now offers a purpose selector (publish vs crash reporting). en + zh-CN. <u>S half built 2026-10-10, by hand
+  rather than ACRA</u>: the whole job is one `Thread.setDefaultUncaughtExceptionHandler` plus a capped spool and
+  one POST, which is what ACRA would do through a dependency and a JSON config that is not needed here — so
+  `com.vythera.vyxelapps.crash.CrashReporter` (handler, opt-in mirror, spool) + `CrashSender` (vitals-token
+  POST) + `CrashProto` (pure wire rules, JVM-tested) replace it. Off by default twice over (the Settings switch
+  AND a configured vitals token), wired in both shells, en + 15 locales. Shipped in the single cross-repo
+  `apply-all-20261010-1450-parity-crash-vitals.sh` (zealot → Storeapp; D-Store carries the handover note only).
 - [x] **Z-P18 · SSO, SAML, SCIM, audit log** — `omniauth-saml` / Keycloak / Authentik, `scimitar`,
   `audited`/`paper_trail`. Enterprise tier. Owner **Z**. <u>Both halves built 2026-10-10</u>.
   <u>Audit log slice</u>: `AuditEntry` — append-only, polymorphic subject that survives the thing

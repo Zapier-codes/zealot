@@ -19,7 +19,10 @@ class AppApiToken < ApplicationRecord
   SECRET_BODY_LENGTH = 43
   SECRET_FORMAT = /\A#{PREFIX}[A-Za-z0-9_-]{#{SECRET_BODY_LENGTH}}\z/
   PUBLISH_SCOPE = 'publish'
-  SCOPES = [PUBLISH_SCOPE].freeze
+  # Z-P17: a token a crash reporter may hold -- only the vitals intake accepts it, and it can never publish.
+  # Least privilege: the token compiled into a shipped build must not be able to upload a release.
+  VITALS_SCOPE = 'vitals'
+  SCOPES = [PUBLISH_SCOPE, VITALS_SCOPE].freeze
   MAX_LIVE_PER_APP = 10
   NAME_MAX_LENGTH = 100
   # `last_used_at` is written at most this often per token, so a busy CI job does not write on every call.
@@ -60,7 +63,9 @@ class AppApiToken < ApplicationRecord
     # cannot both slip under it. Raises ActiveRecord::RecordInvalid when the name is blank, the expiry is
     # in the past, a scope is unknown or the app already has MAX_LIVE_PER_APP live tokens.
     # @return [Issued] the row and the plaintext secret, shown to the owner once
-    def issue!(app:, name:, created_by:, expires_at: nil, scopes: SCOPES)
+    # The default is publish-only (least privilege): a caller that wants a vitals token must ask for it
+    # explicitly with `scopes: [VITALS_SCOPE]`, so this new scope never silently widens an old token.
+    def issue!(app:, name:, created_by:, expires_at: nil, scopes: [PUBLISH_SCOPE])
       secret = generate_secret
       token = nil
       transaction do

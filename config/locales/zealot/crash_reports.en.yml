@@ -1,0 +1,21 @@
+en:
+  apps:
+    show:
+      crash_reports: Crashes and ANRs
+    crash_reports:
+      index:
+        title: Crashes and ANRs
+        card_title: Android vitals
+        intro: "Reports your app sent through the opt-in crash reporter, grouped so the same crash is one line. Nothing is collected until you turn crash reporting on for this app, and the reporter sends only the message, the stack trace and the build and device it happened on."
+        disabled: Crash reporting is off for this app.
+        disabled_hint: "Turn it on on the App content page. Give a build the vitals-scoped API token so it can send reports."
+        groups: "%{count} distinct"
+        reports: "%{count} reports"
+        empty: No crash has been reported. A report arrives when a build with the reporter installed and working meets a crash.
+        occurrences: "%{count}×"
+        last_seen: "last %{when}"
+        ago: ago
+        kind:
+          crash: Crash
+          anr: ANR
+          exception: Exception

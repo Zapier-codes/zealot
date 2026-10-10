@@ -164,6 +164,9 @@ en:
         reviewer_title: Reviewer access
         reviewer_note: "Only your team and Zealot see this. It is never published to the store or the signed catalog index. Give Google's reviewers an account to sign in with, if your app needs one."
         reviewer_saved: Reviewer access saved.
+        crash_reporting_title: Crash reporting
+        crash_reporting_note: "Off by default, and never published. When on, a build holding the vitals-scoped API token may send crashes and ANRs here, where the Crashes and ANRs page groups them. Only the message, the stack trace and the build and device are stored."
+        crash_reporting_label: Accept crash and ANR reports from this app
         draft_notice: "You have an unpublished draft that changes: %{fields}."
         live_now: "Live now: %{text}"
         empty: none

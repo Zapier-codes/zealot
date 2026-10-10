@@ -44,6 +44,13 @@
                 [ [ t('.expiry.30'), '30' ], [ t('.expiry.90'), '90' ], [ t('.expiry.365'), '365' ], [ t('.expiry.none'), 'none' ] ], \
                 { selected: @form_expiry }, class: 'd-select w-full', 'aria-describedby': 'api-token-expiry-hint'
               p.text-xs.opacity-65.mt-1 id="api-token-expiry-hint" = t('.hints.expiry')
+            / Z-P17: a publishing token or a crash-reporter (vitals) token. Least privilege.
+            div
+              = f.label :scope, t('.fields.scope'), class: 'block text-sm font-semibold mb-1'
+              = f.select :scope, \
+                [ [ t('.scope.publish'), AppApiToken::PUBLISH_SCOPE ], [ t('.scope.vitals'), AppApiToken::VITALS_SCOPE ] ], \
+                { selected: @form_scope }, class: 'd-select w-full', 'aria-describedby': 'api-token-scope-hint'
+              p.text-xs.opacity-65.mt-1 id="api-token-scope-hint" = t('.hints.scope')
             div class="flex flex-wrap items-center gap-3"
               = f.submit t('.create'), class: 'd-btn d-btn-primary'
               = link_to t('.back'), app_path(@app), class: 'd-link', data: { turbo_frame: '_top' }
@@ -61,6 +68,7 @@
                 thead
                   tr
                     th = t('.columns.name')
+                    th = t('.columns.scope')
                     th = t('.columns.token')
                     th = t('.columns.created_by')
                     th = t('.columns.last_used')
@@ -71,6 +79,7 @@
                   - @tokens.each do |token|
                     tr
                       td = token.name
+                      td = token.scope?(AppApiToken::VITALS_SCOPE) ? t('.scope.vitals') : t('.scope.publish')
                       td.font-mono = "#{AppApiToken::PREFIX}…#{token.last_four}"
                       td = token.created_by&.username || t('.unknown_creator')
                       td = token.last_used_at ? l(token.last_used_at, format: :short) : t('.never')

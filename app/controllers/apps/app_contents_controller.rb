@@ -25,6 +25,11 @@ class Apps::AppContentsController < ApplicationController
     data_safety_deletion_url contains_ads has_in_app_purchases privacy_policy_url available_regions
   ].freeze
 
+  # Z-P17: the crash-reporting opt-in is NOT a public listing fact -- it is an operational switch, so it is
+  # saved straight to the app like the reviewer access, never staged and never published in the signed index.
+  # It is off by default ("no telemetry by default"); this is the one place a person turns it on.
+  TOGGLE_FIELDS = %w[crash_reporting_enabled].freeze
+
   # A short, stable list of the countries the Console offers (the column itself is a free-form alpha-2 array).
   # Empty = offered everywhere; the index publishes null for that.
   REGION_CHOICES = %w[
@@ -69,11 +74,12 @@ class Apps::AppContentsController < ApplicationController
 
     # Backend-only: never staged, never published. Saved directly.
     saved_reviewer = save_reviewer_access(submitted.delete('reviewer_access_instructions'))
+    saved_toggle = save_toggles(submitted)
 
     changes, reverts = split_changes(submitted)
     if changes.empty? && reverts.empty?
       return redirect_to(app_app_content_path(@app),
-                         notice: saved_reviewer ? t('.reviewer_saved') : t('.unchanged'))
+                         notice: saved_reviewer || saved_toggle ? t('.reviewer_saved') : t('.unchanged'))
     end
 
     service = ListingEditService.new(app: @app, editor: current_user)
@@ -136,7 +142,7 @@ class Apps::AppContentsController < ApplicationController
     raw = params[:app_content]
     return nil unless raw.respond_to?(:key?) && raw.respond_to?(:permit)
 
-    permitted = raw.permit(*STAGED_FIELDS, :reviewer_access_instructions, data_safety_types: [], available_regions: [])
+    permitted = raw.permit(*STAGED_FIELDS, *TOGGLE_FIELDS, :reviewer_access_instructions, data_safety_types: [], available_regions: [])
     kept = permitted.to_h
     return nil if kept.empty?
 
@@ -171,6 +177,23 @@ class Apps::AppContentsController < ApplicationController
       end
     end
     [ changes, reverts ]
+  end
+
+  # Z-P17: the crash-reporting switch and the other operational toggles, saved straight to the app (never
+  # staged, never published). Returns true when any changed without error. Deleting each key means the shared
+  # `split_changes` never sees it as a public field to stage.
+  def save_toggles(submitted)
+    saved = false
+    TOGGLE_FIELDS.each do |field|
+      next unless submitted.key?(field)
+
+      value = boolean_value(submitted.delete(field)) || false
+      next if @app[field] == value
+
+      @app.update(field => value)
+      saved = true
+    end
+    saved
   end
 
   # Normalizes a submitted value the way the column stores it, so a comparison, a stage and a preview all
@@ -224,6 +247,7 @@ class Apps::AppContentsController < ApplicationController
       end
     end
     @reviewer_access = @app.reviewer_access_instructions
+    @crash_reporting_enabled = @app.crash_reporting_enabled?
     staged = @draft ? @draft.staged_attributes.stringify_keys : {}
     @staged = STAGED_FIELDS.select { |field| staged.key?(field) && staged[field] != @live[field] }
     @title = t('apps.app_contents.show.title')

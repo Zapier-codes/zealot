@@ -164,6 +164,9 @@ zh-CN:
         reviewer_title: 审核方访问
         reviewer_note: 仅你的团队和 Zealot 可见。它绝不会发布到商店或签名的目录索引。如果你的应用需要登录，请为 Google 的审核人员提供一个账号。
         reviewer_saved: 审核方访问信息已保存。
+        crash_reporting_title: 崩溃上报
+        crash_reporting_note: 默认关闭，且绝不发布。开启后，持有 vitals 范围 API 令牌的构建可将崩溃和 ANR 发送至此，“崩溃与 ANR”页面会将它们归并。仅存储消息、堆栈跟踪，以及构建和设备信息。
+        crash_reporting_label: 接受此应用的崩溃与 ANR 报告
         draft_notice: "你有一个未发布的草稿，更改了：%{fields}。"
         live_now: "当前线上：%{text}"
         empty: 无

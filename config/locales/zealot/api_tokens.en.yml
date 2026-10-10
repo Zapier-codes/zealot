@@ -16,9 +16,14 @@ en:
         fields:
           name: Name
           expiry: Expires
+          scope: Purpose
         hints:
           name: What it is for, for example "GitHub Actions release job".
           expiry: A token that never expires is convenient but stays valid until you revoke it. 90 days is a good default.
+          scope: A publishing token can upload releases and change the listing. A crash-reporting token can only send crashes and ANRs from the app.
+        scope:
+          publish: Publish (CI)
+          vitals: Crash reporting
         expiry:
           '30': In 30 days
           '90': In 90 days (recommended)
@@ -29,6 +34,7 @@ en:
         empty: No tokens yet.
         columns:
           name: Name
+          scope: Purpose
           token: Token
           created_by: Created by
           last_used: Last used

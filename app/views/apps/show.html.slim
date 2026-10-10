@@ -48,6 +48,11 @@
         = button_link_to '', app_reviews_path(@app), 'comments', \
           class: 'd-join-item d-btn d-tooltip', \
           data: { tip: t('apps.show.reviews'), turbo_frame: '_top' }
+      - if !@app.archived && policy(CrashReport.new(app: @app)).index?
+        / Z-P17: the opt-in crash/vitals inbox.
+        = button_link_to '', app_crash_reports_path(@app), 'bug', \
+          class: 'd-join-item d-btn d-tooltip', \
+          data: { tip: t('apps.show.crash_reports'), turbo_frame: '_top' }
       - if !@app.archived && policy(AnonymousReview.new(app: @app)).index?
         / Z-P9: moderate anonymous reviews the automated moderator held.
         = button_link_to '', app_anonymous_reviews_path(@app), 'user-shield', \

@@ -1,0 +1,21 @@
+zh-CN:
+  apps:
+    show:
+      crash_reports: 崩溃与 ANR
+    crash_reports:
+      index:
+        title: 崩溃与 ANR
+        card_title: Android 性能指标
+        intro: "应用通过可选的崩溃上报器发送的报告，同一次崩溃会归并为一行。除非你为该应用开启崩溃上报，否则不会收集任何数据；上报器只发送消息、堆栈跟踪，以及发生时的构建和设备信息。"
+        disabled: 该应用已关闭崩溃上报。
+        disabled_hint: "请在“应用内容”页面开启。为构建提供具有 vitals 范围的 API 令牌，以便发送报告。"
+        groups: "%{count} 种"
+        reports: "%{count} 条报告"
+        empty: 尚无崩溃报告。安装了上报器且正常工作的构建遇到崩溃时会上报。
+        occurrences: "%{count} 次"
+        last_seen: "最近于 %{when}"
+        ago: 前
+        kind:
+          crash: 崩溃
+          anr: ANR
+          exception: 异常

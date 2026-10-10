@@ -16,9 +16,14 @@ zh-CN:
         fields:
           name: 名称
           expiry: 有效期
+          scope: 用途
         hints:
           name: 用途说明，例如“GitHub Actions 发布任务”。
           expiry: 永不过期的令牌虽然方便，但在你撤销之前一直有效。建议使用 90 天。
+          scope: 发布令牌可上传版本并修改上架信息。崩溃上报令牌只能从应用发送崩溃与 ANR。
+        scope:
+          publish: 发布（CI）
+          vitals: 崩溃上报
         expiry:
           '30': 30 天后
           '90': 90 天后（推荐）
@@ -29,6 +34,7 @@ zh-CN:
         empty: 还没有令牌。
         columns:
           name: 名称
+          scope: 用途
           token: 令牌
           created_by: 创建者
           last_used: 最近使用

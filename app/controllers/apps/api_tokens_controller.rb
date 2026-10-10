@@ -42,13 +42,18 @@ class Apps::ApiTokensController < ApplicationController
     expiry = raw[:expiry].to_s.presence || DEFAULT_EXPIRY
     return head(:bad_request) unless raw[:name].is_a?(String) && EXPIRY_CHOICES.key?(expiry)
 
+    # Z-P17: a token is either a publishing token or a crash-reporter (vitals) token. Default publish keeps
+    # every existing client unchanged; a bad value falls back to publish rather than being trusted.
+    scope = raw[:scope].to_s
+    scope = AppApiToken::PUBLISH_SCOPE unless AppApiToken::SCOPES.include?(scope)
+
     begin
       issued = AppApiToken.issue!(
         app: @app, name: raw[:name].strip, created_by: current_user,
-        expires_at: EXPIRY_CHOICES[expiry]&.from_now
+        expires_at: EXPIRY_CHOICES[expiry]&.from_now, scopes: [scope]
       )
     rescue ActiveRecord::RecordInvalid => e
-      load_page(name: raw[:name], expiry: expiry)
+      load_page(name: raw[:name], expiry: expiry, scope: scope)
       flash.now[:alert] = t('apps.api_tokens.create.refused', reasons: e.record.errors.full_messages.to_sentence)
       return render :index, status: :unprocessable_entity
     end
@@ -76,11 +81,12 @@ class Apps::ApiTokensController < ApplicationController
     @app = App.find(params[:app_id])
   end
 
-  def load_page(name: nil, expiry: DEFAULT_EXPIRY)
+  def load_page(name: nil, expiry: DEFAULT_EXPIRY, scope: AppApiToken::PUBLISH_SCOPE)
     @tokens = @app.api_tokens.includes(:created_by).order(created_at: :desc).limit(100)
     @live_count = @app.api_tokens.live.count
     @form_name = name
     @form_expiry = expiry
+    @form_scope = scope
     @title = t('apps.api_tokens.index.title')
   end
 end

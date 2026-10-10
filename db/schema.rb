@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_10_170000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_10_190000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -156,6 +156,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_10_170000) do
     t.string "category"
     t.boolean "contains_ads"
     t.string "content_rating"
+    t.boolean "crash_reporting_enabled", default: false, null: false
     t.datetime "created_at", null: false
     t.boolean "data_safety_collects"
     t.string "data_safety_deletion_url"
@@ -290,6 +291,29 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_10_170000) do
     t.datetime "updated_at", null: false
     t.index ["slug"], name: "index_collections_on_slug", unique: true
     t.index ["tenant_id"], name: "index_collections_on_tenant_id"
+  end
+
+  create_table "crash_reports", force: :cascade do |t|
+    t.string "android_version"
+    t.bigint "app_id", null: false
+    t.string "app_version_code"
+    t.string "app_version_name"
+    t.datetime "created_at", null: false
+    t.string "device_model"
+    t.string "fingerprint", null: false
+    t.string "kind", default: "crash", null: false
+    t.text "message"
+    t.datetime "occurred_at"
+    t.bigint "release_id"
+    t.string "report_id"
+    t.text "stack_trace"
+    t.bigint "tenant_id"
+    t.datetime "updated_at", null: false
+    t.index ["app_id", "fingerprint"], name: "index_crash_reports_on_app_id_and_fingerprint"
+    t.index ["app_id"], name: "index_crash_reports_on_app_id"
+    t.index ["occurred_at"], name: "index_crash_reports_on_occurred_at"
+    t.index ["release_id"], name: "index_crash_reports_on_release_id"
+    t.index ["tenant_id"], name: "index_crash_reports_on_tenant_id"
   end
 
   create_table "debug_file_metadata", force: :cascade do |t|

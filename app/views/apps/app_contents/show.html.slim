@@ -108,6 +108,16 @@
             p.text-xs.opacity-65 = t('.reviewer_note')
             = f.text_area :reviewer_access_instructions, value: @reviewer_access, rows: 5, class: 'd-textarea w-full'
 
+          / Z-P17: the crash-reporting opt-in (backend-only, off by default). Saved straight to the app.
+          .border-t.border-base-300.pt-4.space-y-2
+            h4.text-sm.font-semibold = t('.crash_reporting_title')
+            p.text-xs.opacity-65 = t('.crash_reporting_note')
+            = hidden_field_tag 'app_content[crash_reporting_enabled]', 'false', id: nil
+            label class="inline-flex items-center gap-2 text-sm"
+              = check_box_tag 'app_content[crash_reporting_enabled]', 'true', @crash_reporting_enabled, \
+                id: 'app_content_crash_reporting_enabled'
+              span = t('.crash_reporting_label')
+
           div class="flex flex-wrap items-center gap-3"
             = f.submit t('.save'), class: 'd-btn d-btn-primary'
             = link_to t('.back'), app_path(@app), class: 'd-link', data: { turbo_frame: '_top' }

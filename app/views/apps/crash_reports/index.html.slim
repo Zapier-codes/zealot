@@ -1,0 +1,47 @@
+/ Z-P17: the opt-in crash/vitals inbox. Distinct crashes, worst first, with a count and last-seen time; the
+/ stack trace and device context are shown from the most recent report in each group. Read-only (a report is
+/ append-only). When crash reporting is off for the app, the page says how to turn it on, not an empty list.
+- content_for :title do
+  = @title
+
+- content_for :section_title do
+  = @title
+  small class="pl-2 text-sm"
+    = @app.name
+
+.row
+  .col-md-12
+    .card
+      .card-header
+        h3.card-title = t('.card_title')
+      .card-body class="space-y-4"
+        p.text-sm.opacity-70 = t('.intro')
+
+        - unless @enabled
+          .d-alert.d-alert-warning role="status"
+            p.text-sm = t('.disabled')
+            p.text-xs.opacity-70 = t('.disabled_hint')
+
+        div class="flex flex-wrap items-center gap-4 text-sm opacity-80"
+          span = t('.groups', count: @groups.size)
+          span = t('.reports', count: @total)
+
+        - if @groups.empty?
+          p.opacity-70 = t('.empty')
+        - else
+          - @groups.each do |group|
+            - latest = @latest[group.fingerprint]
+            .border.border-base-300.rounded.p-4.space-y-2
+              div class="flex items-center justify-between gap-2"
+                div class="flex items-center gap-2"
+                  span.badge = t(".kind.#{group.kind}", default: group.kind)
+                  span.font-semibold = truncate(group.message.to_s, length: 120)
+                span.text-xs.opacity-60
+                  = t('.occurrences', count: group.occurrences)
+                  - if group.last_seen_at
+                    |  · #{t('.last_seen', when: "#{time_ago_in_words(group.last_seen_at)} #{t('.ago')}")}
+              - if latest&.stack_trace.present?
+                pre.text-xs.bg-base-200.rounded.p-2.overflow-x-auto.whitespace-pre = truncate(latest.stack_trace, length: 2000)
+              - if latest
+                p.text-xs.opacity-60
+                  = [latest.app_version_name, latest.android_version, latest.device_model].compact.reject(&:blank?).join(' · ')

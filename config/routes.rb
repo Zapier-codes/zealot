@@ -116,6 +116,8 @@ Rails.application.routes.draw do
     delete 'listing_translations/:locale', to: 'apps/listing_translations#destroy', as: :listing_translation
     # Z-P8: the reviews inbox — read an app's reviews and write the developer reply (one per review).
     resources :reviews, only: %i[index update], module: :apps
+    # Z-P17: the opt-in crash/vitals inbox — the distinct crashes for an app, worst first (read-only).
+    resources :crash_reports, only: %i[index], module: :apps
     # Z-P9: moderate anonymous reviews the automated moderator held for a person (publish / reject).
     resources :anonymous_reviews, only: %i[index], module: :apps do
       member do
@@ -462,6 +464,10 @@ Rails.application.routes.draw do
   end
 
   namespace :api do
+    # Z-P17: the opt-in crash/vitals intake. A per-app token with the `vitals` scope, and only for an app
+    # whose crash reporting is turned on. See Api::CrashReportsController.
+    resources :crash_reports, only: %i[create]
+
     resources :users, except: %i[new edit] do
       collection do
         get :me
